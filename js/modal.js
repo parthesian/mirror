@@ -11,6 +11,7 @@ class Modal {
         this.modalDescription = document.getElementById('modal-description');
         this.modalLocation = document.getElementById('modal-location');
         this.modalTimestamp = document.getElementById('modal-timestamp');
+        this.globeContainer = document.getElementById('modal-globe');
         this.closeBtn = document.getElementById('close-modal');
         this.prevBtn = document.getElementById('prev-btn');
         this.nextBtn = document.getElementById('next-btn');
@@ -37,6 +38,9 @@ class Modal {
         this.currentImageId = null;
         this.isOpen = false;
         this.isUploadModalOpen = false;
+        
+        // Globe integration
+        this.globeService = new GlobeService();
         
         this.init();
     }
@@ -205,6 +209,12 @@ class Modal {
     close() {
         this.isOpen = false;
         this.currentImageId = null;
+
+        // Tear down globe
+        if (this.globeService && this.globeContainer) {
+            this.globeService.destroy(this.globeContainer);
+            this.globeContainer.classList.add('hidden');
+        }
         
         // Hide modal
         this.modal.classList.remove('active');
@@ -235,6 +245,32 @@ class Modal {
         this.modalDescription.textContent = image.description;
         this.modalLocation.textContent = image.location;
         this.modalTimestamp.textContent = this.imageService.formatTimestamp(image.timestamp);
+
+        // Update animated globe under description
+        this.updateGlobe(image.location);
+    }
+
+    /**
+     * Update globe display under modal description
+     */
+    async updateGlobe(location) {
+        try {
+            if (!this.globeService || !this.globeContainer) return;
+            
+            // Hide by default; GlobeService will unhide on success
+            this.globeContainer.classList.add('hidden');
+            await this.globeService.createOrUpdate(this.globeContainer, location);
+            // If unsupported or failed, container will likely be empty; keep hidden
+            if (!this.globeContainer.firstChild) {
+                this.globeContainer.classList.add('hidden');
+            }
+        } catch (e) {
+            console.warn('Modal.updateGlobe error:', e);
+            if (this.globeService && this.globeContainer) {
+                this.globeService.destroy(this.globeContainer);
+                this.globeContainer.classList.add('hidden');
+            }
+        }
     }
 
     /**

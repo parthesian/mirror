@@ -656,3 +656,23 @@ body {
 .gallery-item:hover::after {
     background: rgba(0, 0, 0, 0.05);
 }
+
+/* Globe container styles for modal */
+.globe-container {
+    width: 160px;
+    height: 160px;
+    margin: 0.5rem 0 0.75rem 0;
+    filter: grayscale(1) contrast(1.05) brightness(0.9);
+    border-radius: 50%; /* Make it circular */
+    overflow: hidden; /* hide canvas edges and ensure circular crop */
+    position: relative;
+    align-self: flex-end; /* Position in bottom-right of modal info panel */
+}
+
+/* Ensure canvas fills the container and maintains aspect ratio */
+.globe-container canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover; /* Ensure full coverage within circular container */
+}
