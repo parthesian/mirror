@@ -97,8 +97,8 @@ class Modal {
         });
 
         // Password input change event for validation
-        this.uploadPasswordInput.addEventListener('input', () => {
-            this.validatePassword();
+        this.uploadPasswordInput.addEventListener('input', async () => {
+            await this.validatePassword();
         });
 
         // File input change event

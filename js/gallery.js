@@ -211,9 +211,7 @@ class Gallery {
         emptyState.className = 'empty-state';
         emptyState.innerHTML = `
             <div style="text-align: center; padding: 3rem; color: #666;">
-                <h3>No Images Found</h3>
-                <p>There are no images to display at the moment.</p>
-                <button class="btn" onclick="gallery.loadImages()">Try Again</button>
+                <h3>_______</h3>
             </div>
         `;
         this.galleryContainer.appendChild(emptyState);
