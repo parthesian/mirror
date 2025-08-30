@@ -1,9 +1,11 @@
 /**
- * Modal - Handles the fullscreen image modal with navigation
+ * Modal - Handles the fullscreen image modal with navigation and upload functionality
  */
 class Modal {
     constructor(imageService) {
         this.imageService = imageService;
+        
+        // View modal elements
         this.modal = document.getElementById('modal');
         this.modalImage = document.getElementById('modal-image');
         this.modalTitle = document.getElementById('modal-title');
@@ -14,8 +16,23 @@ class Modal {
         this.prevBtn = document.getElementById('prev-btn');
         this.nextBtn = document.getElementById('next-btn');
         
+        // Upload modal elements
+        this.uploadModal = document.getElementById('upload-modal');
+        this.uploadForm = document.getElementById('upload-form');
+        this.photoFileInput = document.getElementById('photo-file');
+        this.photoLocationInput = document.getElementById('photo-location');
+        this.photoDescriptionInput = document.getElementById('photo-description');
+        this.filePreview = document.getElementById('file-preview');
+        this.previewImage = document.getElementById('preview-image');
+        this.closeUploadBtn = document.getElementById('close-upload-modal');
+        this.cancelUploadBtn = document.getElementById('cancel-upload');
+        this.submitUploadBtn = document.getElementById('submit-upload');
+        this.uploadProgress = document.getElementById('upload-progress');
+        this.uploadError = document.getElementById('upload-error');
+        
         this.currentImageId = null;
         this.isOpen = false;
+        this.isUploadModalOpen = false;
         
         this.init();
     }
@@ -31,12 +48,11 @@ class Modal {
      * Bind event listeners
      */
     bindEvents() {
-        // Close button
+        // View modal events
         this.closeBtn.addEventListener('click', () => {
             this.close();
         });
 
-        // Navigation buttons
         this.prevBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             this.showPreviousImage();
@@ -47,20 +63,53 @@ class Modal {
             this.showNextImage();
         });
 
-        // Click outside modal to close
         this.modal.addEventListener('click', (e) => {
             if (e.target === this.modal) {
                 this.close();
             }
         });
 
-        // Prevent modal content clicks from closing modal
         this.modal.querySelector('.modal-content').addEventListener('click', (e) => {
             e.stopPropagation();
         });
 
+        // Upload modal events
+        this.closeUploadBtn.addEventListener('click', () => {
+            this.closeUploadModal();
+        });
+
+        this.cancelUploadBtn.addEventListener('click', () => {
+            this.closeUploadModal();
+        });
+
+        this.uploadModal.addEventListener('click', (e) => {
+            if (e.target === this.uploadModal) {
+                this.closeUploadModal();
+            }
+        });
+
+        this.uploadModal.querySelector('.modal-content').addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+
+        // File input change event
+        this.photoFileInput.addEventListener('change', (e) => {
+            this.handleFileSelect(e);
+        });
+
+        // Form submission
+        this.uploadForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.handleUploadSubmit();
+        });
+
         // Keyboard navigation
         document.addEventListener('keydown', (e) => {
+            if (this.isUploadModalOpen && e.key === 'Escape') {
+                this.closeUploadModal();
+                return;
+            }
+            
             if (!this.isOpen) return;
 
             switch (e.key) {
@@ -78,10 +127,14 @@ class Modal {
             }
         });
 
-        // Listen for custom open modal events
+        // Listen for custom events
         document.addEventListener('openModal', (e) => {
             console.log('Modal: Received openModal event for image:', e.detail.imageId);
             this.open(e.detail.imageId);
+        });
+
+        document.addEventListener('openUploadModal', () => {
+            this.openUploadModal();
         });
 
         // Handle image load events
@@ -287,6 +340,158 @@ class Modal {
         } else {
             this.open(imageId);
         }
+    }
+
+    /**
+     * Open upload modal
+     */
+    openUploadModal() {
+        this.isUploadModalOpen = true;
+        this.uploadModal.classList.remove('hidden');
+        this.uploadModal.classList.add('active');
+        document.body.style.overflow = 'hidden';
+        
+        // Reset form
+        this.resetUploadForm();
+        
+        // Focus on file input
+        this.photoFileInput.focus();
+    }
+
+    /**
+     * Close upload modal
+     */
+    closeUploadModal() {
+        this.isUploadModalOpen = false;
+        this.uploadModal.classList.remove('active');
+        this.uploadModal.classList.add('hidden');
+        document.body.style.overflow = '';
+        
+        // Reset form
+        this.resetUploadForm();
+    }
+
+    /**
+     * Reset upload form
+     */
+    resetUploadForm() {
+        this.uploadForm.reset();
+        this.filePreview.classList.add('hidden');
+        this.uploadProgress.classList.add('hidden');
+        this.uploadError.classList.add('hidden');
+        this.previewImage.src = '';
+    }
+
+    /**
+     * Handle file selection
+     * @param {Event} event - File input change event
+     */
+    handleFileSelect(event) {
+        const file = event.target.files[0];
+        if (!file) {
+            this.filePreview.classList.add('hidden');
+            return;
+        }
+
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+            this.showUploadError('Please select a valid image file.');
+            return;
+        }
+
+        // Validate file size (10MB limit)
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        if (file.size > maxSize) {
+            this.showUploadError('File size must be less than 10MB.');
+            return;
+        }
+
+        // Show preview
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            this.previewImage.src = e.target.result;
+            this.filePreview.classList.remove('hidden');
+        };
+        reader.readAsDataURL(file);
+
+        // Clear any previous errors
+        this.hideUploadError();
+    }
+
+    /**
+     * Handle upload form submission
+     */
+    async handleUploadSubmit() {
+        const file = this.photoFileInput.files[0];
+        const location = this.photoLocationInput.value.trim();
+        const description = this.photoDescriptionInput.value.trim();
+
+        // Validate required fields
+        if (!file) {
+            this.showUploadError('Please select a photo to upload.');
+            return;
+        }
+
+        if (!location) {
+            this.showUploadError('Please enter a location for the photo.');
+            return;
+        }
+
+        try {
+            // Show progress
+            this.showUploadProgress();
+            this.hideUploadError();
+
+            // Upload photo
+            const result = await this.imageService.uploadPhoto(file, location, description);
+
+            // Success - close modal and refresh gallery
+            this.closeUploadModal();
+            
+            // Dispatch event to refresh gallery
+            document.dispatchEvent(new CustomEvent('photoUploaded', {
+                detail: { result }
+            }));
+
+        } catch (error) {
+            console.error('Upload failed:', error);
+            this.hideUploadProgress();
+            this.showUploadError(error.message || 'Failed to upload photo. Please try again.');
+        }
+    }
+
+    /**
+     * Show upload progress
+     */
+    showUploadProgress() {
+        this.uploadProgress.classList.remove('hidden');
+        this.submitUploadBtn.disabled = true;
+        this.submitUploadBtn.textContent = 'Uploading...';
+    }
+
+    /**
+     * Hide upload progress
+     */
+    hideUploadProgress() {
+        this.uploadProgress.classList.add('hidden');
+        this.submitUploadBtn.disabled = false;
+        this.submitUploadBtn.textContent = 'Upload Photo';
+    }
+
+    /**
+     * Show upload error
+     * @param {string} message - Error message
+     */
+    showUploadError(message) {
+        this.uploadError.querySelector('p').textContent = message;
+        this.uploadError.classList.remove('hidden');
+    }
+
+    /**
+     * Hide upload error
+     */
+    hideUploadError() {
+        this.uploadError.classList.add('hidden');
     }
 
     /**

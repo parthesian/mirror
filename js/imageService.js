@@ -1,36 +1,114 @@
 /**
- * Image Service - Handles loading images from data source
- * This service is designed to be easily replaced with AWS S3 integration
+ * Image Service - Handles loading and uploading images via AWS API Gateway
  */
 class ImageService {
     constructor() {
         this.images = [];
         this.isLoading = false;
+        this.apiBaseUrl = this.getApiBaseUrl();
     }
 
     /**
-     * Fetch images from the data source
-     * In production, this would connect to AWS S3
+     * Get API base URL from environment or fallback
+     * @returns {string} API base URL
+     */
+    getApiBaseUrl() {
+        // Try to get from environment variable or use default
+        return window.AWS_INVOKE_URL || 'https://n6ntegdbxi.execute-api.us-west-2.amazonaws.com/prod';
+    }
+
+    /**
+     * Fetch images from the AWS API
      * @returns {Promise<Array>} Array of image objects
      */
     async fetchImages() {
         this.isLoading = true;
         
         try {
-            // Simulate API call delay
-            await this.delay(1000);
+            const response = await fetch(`${this.apiBaseUrl}/photos`);
             
-            // Placeholder data - in production this would come from AWS
-            const placeholderImages = this.generatePlaceholderImages();
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
             
-            this.images = placeholderImages;
+            const data = await response.json();
+            
+            // Transform API response to match our expected format
+            this.images = data.photos.map(photo => ({
+                id: photo.photoId,
+                title: photo.description || 'Untitled Photo',
+                description: photo.description || 'No description available',
+                location: photo.location,
+                timestamp: photo.timestamp,
+                uploadedAt: photo.uploadedAt,
+                url: photo.imageUrl,
+                thumbnailUrl: photo.imageUrl, // Using same URL for thumbnail
+                s3Key: photo.s3Key
+            }));
+            
             this.isLoading = false;
-            
             return this.images;
         } catch (error) {
             this.isLoading = false;
+            console.error('Failed to fetch images:', error);
             throw new Error('Failed to fetch images: ' + error.message);
         }
+    }
+
+    /**
+     * Upload a new photo to the API
+     * @param {File} file - Image file to upload
+     * @param {string} location - Required location information
+     * @param {string} description - Optional description
+     * @returns {Promise<Object>} Upload response
+     */
+    async uploadPhoto(file, location, description = '') {
+        try {
+            // Convert file to base64
+            const base64Data = await this.fileToBase64(file);
+            
+            const requestBody = {
+                imageData: base64Data,
+                location: location,
+                description: description
+            };
+
+            const response = await fetch(`${this.apiBaseUrl}/photos`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            
+            // Refresh images after successful upload
+            await this.fetchImages();
+            
+            return result;
+        } catch (error) {
+            console.error('Failed to upload photo:', error);
+            throw new Error('Failed to upload photo: ' + error.message);
+        }
+    }
+
+    /**
+     * Convert file to base64 data URL
+     * @param {File} file - File to convert
+     * @returns {Promise<string>} Base64 data URL
+     */
+    fileToBase64(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
     }
 
     /**

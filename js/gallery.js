@@ -28,6 +28,19 @@ class Gallery {
         this.refreshBtn.addEventListener('click', () => {
             this.loadImages();
         });
+
+        // Upload button
+        const uploadBtn = document.getElementById('upload-btn');
+        if (uploadBtn) {
+            uploadBtn.addEventListener('click', () => {
+                document.dispatchEvent(new CustomEvent('openUploadModal'));
+            });
+        }
+
+        // Listen for photo uploaded event
+        document.addEventListener('photoUploaded', () => {
+            this.loadImages();
+        });
     }
 
     /**
