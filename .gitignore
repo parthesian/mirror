@@ -5,6 +5,9 @@
 .env.test.local
 .env.production.local
 
+# Configuration files
+config.js
+
 # Dependencies
 node_modules/
 npm-debug.log*

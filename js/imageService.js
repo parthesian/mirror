@@ -9,12 +9,12 @@ class ImageService {
     }
 
     /**
-     * Get API base URL from environment or fallback
+     * Get API base URL from config or fallback
      * @returns {string} API base URL
      */
     getApiBaseUrl() {
-        // Try to get from environment variable or use default
-        return window.AWS_INVOKE_URL || 'https://n6ntegdbxi.execute-api.us-west-2.amazonaws.com/prod';
+        // Try to get from config or use default
+        return window.CONFIG?.API_BASE_URL;
     }
 
     /**
