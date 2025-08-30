@@ -6,7 +6,8 @@ class ImageService {
         this.images = [];
         this.isLoading = false;
         this.apiBaseUrl = this.getApiBaseUrl();
-        this.lastEvaluatedKey = null;
+        this.currentPage = 0;
+        this.limit = 50;
         this.hasMore = true;
     }
 
@@ -28,7 +29,7 @@ class ImageService {
         
         try {
             // Reset pagination state for initial load
-            this.lastEvaluatedKey = null;
+            this.currentPage = 1;
             this.hasMore = true;
             
             // Check if API base URL is configured
@@ -40,7 +41,7 @@ class ImageService {
                 return this.images;
             }
 
-            const response = await fetch(`${this.apiBaseUrl}/photos`, {
+            const response = await fetch(`${this.apiBaseUrl}/photos?page=${this.currentPage}&limit=${this.limit}`, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
@@ -66,7 +67,7 @@ class ImageService {
                 }
             }
             
-            // Handle the new paginated API response format
+            // Handle the paginated API response format
             if (parsedData && parsedData.photos && Array.isArray(parsedData.photos)) {
                 // Transform API response to match our expected format
                 this.images = parsedData.photos.map(photo => ({
@@ -80,11 +81,10 @@ class ImageService {
                     s3Key: photo.s3Key || photo.key || ''
                 }));
                 
-                // Update pagination state
-                this.lastEvaluatedKey = parsedData.lastEvaluatedKey;
-                this.hasMore = parsedData.hasMore || false;
+                // Update pagination state based on response
+                this.hasMore = parsedData.hasMore !== undefined ? parsedData.hasMore : (parsedData.photos.length === this.limit);
                 
-                console.log(`Loaded ${this.images.length} initial photos. Has more: ${this.hasMore}`);
+                console.log(`Loaded ${this.images.length} initial photos (page ${this.currentPage}). Has more: ${this.hasMore}`);
             } else {
                 console.warn('Unexpected API response format:', parsedData);
                 this.images = [];
@@ -115,7 +115,7 @@ class ImageService {
      */
     async loadMorePhotos() {
         // Don't load if already loading or no more photos available
-        if (this.isLoading || !this.hasMore || !this.lastEvaluatedKey) {
+        if (this.isLoading || !this.hasMore) {
             return [];
         }
 
@@ -129,8 +129,10 @@ class ImageService {
                 return [];
             }
 
-            const url = `${this.apiBaseUrl}/photos?lastKey=${encodeURIComponent(this.lastEvaluatedKey)}`;
-            const response = await fetch(url, {
+            // Increment page for next batch
+            this.currentPage++;
+
+            const response = await fetch(`${this.apiBaseUrl}/photos?page=${this.currentPage}&limit=${this.limit}`, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
@@ -143,7 +145,7 @@ class ImageService {
             }
             
             const data = await response.json();
-            console.log('Load more photos API response:', data);
+            console.log(`Load more photos API response (page ${this.currentPage}):`, data);
             
             // Parse the actual response - check if data is wrapped in body property
             let parsedData = data;
@@ -175,11 +177,10 @@ class ImageService {
                 // Append new photos to existing collection
                 this.images = [...this.images, ...newPhotos];
                 
-                // Update pagination state
-                this.lastEvaluatedKey = parsedData.lastEvaluatedKey;
-                this.hasMore = parsedData.hasMore || false;
+                // Update pagination state - if we got fewer photos than requested, we've reached the end
+                this.hasMore = parsedData.hasMore !== undefined ? parsedData.hasMore : (newPhotos.length === this.limit);
                 
-                console.log(`Loaded ${newPhotos.length} more photos. Total: ${this.images.length}. Has more: ${this.hasMore}`);
+                console.log(`Loaded ${newPhotos.length} more photos (page ${this.currentPage}). Total: ${this.images.length}. Has more: ${this.hasMore}`);
             } else {
                 console.warn('Unexpected API response format for load more:', parsedData);
                 this.hasMore = false;
@@ -190,6 +191,8 @@ class ImageService {
         } catch (error) {
             this.isLoading = false;
             console.error('Failed to load more photos:', error);
+            // Decrement page on error so we can retry
+            this.currentPage--;
             throw new Error('Failed to load more photos: ' + error.message);
         }
     }
