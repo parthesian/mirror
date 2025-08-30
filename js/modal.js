@@ -117,12 +117,19 @@ class Modal {
                     this.close();
                     break;
                 case 'ArrowLeft':
+                case 'ArrowUp':
                     e.preventDefault();
                     this.showPreviousImage();
                     break;
                 case 'ArrowRight':
+                case 'ArrowDown':
                     e.preventDefault();
                     this.showNextImage();
+                    break;
+                case ' ':
+                case 'Enter':
+                    e.preventDefault();
+                    // Optional: Could toggle play/pause or other functionality
                     break;
             }
         });

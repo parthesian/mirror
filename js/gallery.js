@@ -104,38 +104,8 @@ class Gallery {
             img.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgdmlld0JveD0iMCAwIDQwMCAzMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0xNzUgMTI1SDE4NVYxMzVIMTc1VjEyNVoiIGZpbGw9IiM5Q0EzQUYiLz4KPHA+SW1hZ2UgTm90IEZvdW5kPC9wPgo8L3N2Zz4K';
         };
 
-        // Create info section
-        const info = document.createElement('div');
-        info.className = 'gallery-item-info';
-
-        const title = document.createElement('h3');
-        title.className = 'gallery-item-title';
-        title.textContent = image.title;
-
-        const description = document.createElement('p');
-        description.className = 'gallery-item-description';
-        description.textContent = this.truncateText(image.description, 100);
-
-        const metadata = document.createElement('div');
-        metadata.className = 'gallery-item-metadata';
-
-        const location = document.createElement('span');
-        location.className = 'metadata-item';
-        location.textContent = image.location;
-
-        const timestamp = document.createElement('span');
-        timestamp.className = 'metadata-item';
-        timestamp.textContent = this.formatDate(image.timestamp);
-
-        metadata.appendChild(location);
-        metadata.appendChild(timestamp);
-
-        info.appendChild(title);
-        info.appendChild(description);
-        info.appendChild(metadata);
-
+        // Only add the image - no metadata in grid view for minimal aesthetic
         item.appendChild(img);
-        item.appendChild(info);
 
         // Add click event to open modal
         item.addEventListener('click', () => {
