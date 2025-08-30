@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo Gallery</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header class="header">
+        <h1>Photo Gallery</h1>
+        <div class="gallery-controls">
+            <button id="refresh-btn" class="btn">Refresh Gallery</button>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <div id="loading" class="loading hidden">
+            <div class="spinner"></div>
+            <p>Loading images...</p>
+        </div>
+
+        <div id="gallery-container" class="gallery-container">
+            <!-- Gallery items will be dynamically inserted here -->
+        </div>
+
+        <div id="error-message" class="error-message hidden">
+            <p>Failed to load images. Please try again.</p>
+        </div>
+    </main>
+
+    <!-- Modal for fullscreen view -->
+    <div id="modal" class="modal hidden">
+        <div class="modal-content">
+            <button id="close-modal" class="close-btn">&times;</button>
+            <div class="modal-image-container">
+                <img id="modal-image" src="" alt="">
+                <button id="prev-btn" class="nav-btn prev-btn">&lt;</button>
+                <button id="next-btn" class="nav-btn next-btn">&gt;</button>
+            </div>
+            <div class="modal-info">
+                <h3 id="modal-title"></h3>
+                <p id="modal-description"></p>
+                <div class="modal-metadata">
+                    <span id="modal-location" class="metadata-item"></span>
+                    <span id="modal-timestamp" class="metadata-item"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/imageService.js"></script>
+    <script src="js/gallery.js"></script>
+    <script src="js/modal.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
