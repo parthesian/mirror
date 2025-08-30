@@ -18,6 +18,7 @@ class Modal {
         // Upload modal elements
         this.uploadModal = document.getElementById('upload-modal');
         this.uploadForm = document.getElementById('upload-form');
+        this.uploadPasswordInput = document.getElementById('upload-password');
         this.photoFileInput = document.getElementById('photo-file');
         this.photoLocationInput = document.getElementById('photo-location');
         this.photoDescriptionInput = document.getElementById('photo-description');
@@ -28,6 +29,9 @@ class Modal {
         this.submitUploadBtn = document.getElementById('submit-upload');
         this.uploadProgress = document.getElementById('upload-progress');
         this.uploadError = document.getElementById('upload-error');
+        
+        // File input elements for custom styling
+        this.fileStatusIcon = document.getElementById('file-status-icon');
         
         this.currentImageId = null;
         this.isOpen = false;
@@ -89,6 +93,11 @@ class Modal {
 
         this.uploadModal.querySelector('.modal-content').addEventListener('click', (e) => {
             e.stopPropagation();
+        });
+
+        // Password input change event for validation
+        this.uploadPasswordInput.addEventListener('input', () => {
+            this.validatePassword();
         });
 
         // File input change event
@@ -385,6 +394,53 @@ class Modal {
         this.uploadProgress.classList.add('hidden');
         this.uploadError.classList.add('hidden');
         this.previewImage.src = '';
+        
+        // Reset file status icon
+        if (this.fileStatusIcon) {
+            this.fileStatusIcon.textContent = '✕';
+            this.fileStatusIcon.classList.remove('selected');
+        }
+        
+        // Disable upload button initially
+        this.submitUploadBtn.disabled = true;
+    }
+
+    /**
+     * Validate password using secure client-side hashing
+     * @returns {boolean} Whether password is valid
+     */
+    async validatePassword() {
+        const password = this.uploadPasswordInput.value;
+        
+        if (!password) {
+            this.submitUploadBtn.disabled = true;
+            return false;
+        }
+
+        try {
+            // Hash the password using SHA-256
+            const encoder = new TextEncoder();
+            const data = encoder.encode(password);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            
+            // Compare with stored hash
+            const isValid = hashHex === window.CONFIG?.UPLOAD_PASSWORD_HASH;
+            
+            // Enable/disable upload button based on password validity
+            this.submitUploadBtn.disabled = !isValid;
+            
+            if (isValid) {
+                this.hideUploadError();
+            }
+            
+            return isValid;
+        } catch (error) {
+            console.error('Password validation error:', error);
+            this.submitUploadBtn.disabled = true;
+            return false;
+        }
     }
 
     /**
@@ -393,7 +449,13 @@ class Modal {
      */
     handleFileSelect(event) {
         const file = event.target.files[0];
+        
         if (!file) {
+            // Reset to X icon when no file selected
+            if (this.fileStatusIcon) {
+                this.fileStatusIcon.textContent = '✕';
+                this.fileStatusIcon.classList.remove('selected');
+            }
             this.filePreview.classList.add('hidden');
             return;
         }
@@ -401,6 +463,10 @@ class Modal {
         // Validate file type
         if (!file.type.startsWith('image/')) {
             this.showUploadError('Please select a valid image file.');
+            if (this.fileStatusIcon) {
+                this.fileStatusIcon.textContent = '✕';
+                this.fileStatusIcon.classList.remove('selected');
+            }
             return;
         }
 
@@ -408,7 +474,17 @@ class Modal {
         const maxSize = 10 * 1024 * 1024; // 10MB
         if (file.size > maxSize) {
             this.showUploadError('File size must be less than 10MB.');
+            if (this.fileStatusIcon) {
+                this.fileStatusIcon.textContent = '✕';
+                this.fileStatusIcon.classList.remove('selected');
+            }
             return;
+        }
+
+        // Update icon to checkmark when file is successfully selected
+        if (this.fileStatusIcon) {
+            this.fileStatusIcon.textContent = '✓';
+            this.fileStatusIcon.classList.add('selected');
         }
 
         // Show preview
@@ -427,9 +503,17 @@ class Modal {
      * Handle upload form submission
      */
     async handleUploadSubmit() {
+        const password = this.uploadPasswordInput.value;
         const file = this.photoFileInput.files[0];
         const location = this.photoLocationInput.value.trim();
         const description = this.photoDescriptionInput.value.trim();
+
+        // Validate password first
+        const isPasswordValid = await this.validatePassword();
+        if (!isPasswordValid) {
+            this.showUploadError('Invalid upload password. Please enter the correct password.');
+            return;
+        }
 
         // Validate required fields
         if (!file) {
