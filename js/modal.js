@@ -8,7 +8,6 @@ class Modal {
         // View modal elements
         this.modal = document.getElementById('modal');
         this.modalImage = document.getElementById('modal-image');
-        this.modalTitle = document.getElementById('modal-title');
         this.modalDescription = document.getElementById('modal-description');
         this.modalLocation = document.getElementById('modal-location');
         this.modalTimestamp = document.getElementById('modal-timestamp');
@@ -220,10 +219,9 @@ class Modal {
         
         // Set image
         this.modalImage.src = image.url;
-        this.modalImage.alt = image.title;
+        this.modalImage.alt = image.description || 'Photo';
         
         // Set text content
-        this.modalTitle.textContent = image.title;
         this.modalDescription.textContent = image.description;
         this.modalLocation.textContent = image.location;
         this.modalTimestamp.textContent = this.imageService.formatTimestamp(image.timestamp);
@@ -280,9 +278,9 @@ class Modal {
             const nextImage = this.imageService.getNextImage(this.currentImageId);
             
             this.prevBtn.setAttribute('aria-label', 
-                prevImage ? `Previous image: ${prevImage.title}` : 'Previous image');
+                prevImage ? `Previous image: ${prevImage.description || 'Previous image'}` : 'Previous image');
             this.nextBtn.setAttribute('aria-label', 
-                nextImage ? `Next image: ${nextImage.title}` : 'Next image');
+                nextImage ? `Next image: ${nextImage.description || 'Next image'}` : 'Next image');
         }
     }
 

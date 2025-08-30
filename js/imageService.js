@@ -83,7 +83,6 @@ class ImageService {
             // Transform API response to match our expected format
             this.images = photosArray.map(photo => ({
                 id: photo.photoId || photo.id || `img-${Date.now()}-${Math.random()}`,
-                title: photo.description || photo.title || 'Untitled Photo',
                 description: photo.description || 'No description available',
                 location: photo.location || 'Unknown location',
                 timestamp: photo.timestamp || photo.createdAt || new Date().toISOString(),
@@ -321,7 +320,6 @@ class ImageService {
         const placeholderImages = [
             {
                 id: 'img-001',
-                title: 'Mountain Sunrise',
                 description: 'A breathtaking sunrise over the Rocky Mountains, captured during an early morning hike. The golden light illuminates the peaks while morning mist dances through the valleys below.',
                 location: 'Rocky Mountain National Park, Colorado',
                 timestamp: '2024-03-15T06:30:00Z',
@@ -330,7 +328,6 @@ class ImageService {
             },
             {
                 id: 'img-002',
-                title: 'Ocean Waves',
                 description: 'Powerful waves crash against the rugged coastline during a spectacular sunset. The interplay of light and water creates a mesmerizing display of natural beauty.',
                 location: 'Big Sur, California',
                 timestamp: '2024-03-10T19:45:00Z',
@@ -339,7 +336,6 @@ class ImageService {
             },
             {
                 id: 'img-003',
-                title: 'Forest Path',
                 description: 'A winding path through an ancient forest, where shafts of sunlight filter through the canopy, creating a magical atmosphere perfect for contemplation.',
                 location: 'Olympic National Park, Washington',
                 timestamp: '2024-03-08T14:20:00Z',
@@ -348,7 +344,6 @@ class ImageService {
             },
             {
                 id: 'img-004',
-                title: 'Desert Landscape',
                 description: 'The vast expanse of the desert stretches endlessly under a brilliant blue sky. Ancient rock formations tell stories of millions of years of geological history.',
                 location: 'Joshua Tree National Park, California',
                 timestamp: '2024-03-05T12:15:00Z',
@@ -357,7 +352,6 @@ class ImageService {
             },
             {
                 id: 'img-005',
-                title: 'City Skyline',
                 description: 'The urban landscape comes alive at twilight, with countless lights beginning to twinkle as the city transitions from day to night.',
                 location: 'Seattle, Washington',
                 timestamp: '2024-03-01T20:30:00Z',
@@ -366,7 +360,6 @@ class ImageService {
             },
             {
                 id: 'img-006',
-                title: 'Autumn Leaves',
                 description: 'Fall foliage creates a stunning tapestry of colors, with vibrant reds, oranges, and yellows painting the landscape in nature\'s finest palette.',
                 location: 'Vermont',
                 timestamp: '2024-02-28T15:45:00Z',
@@ -375,7 +368,6 @@ class ImageService {
             },
             {
                 id: 'img-007',
-                title: 'Snowy Mountains',
                 description: 'Fresh powder snow blankets the mountain peaks, creating a pristine winter wonderland that sparkles under the clear blue sky.',
                 location: 'Aspen, Colorado',
                 timestamp: '2024-02-25T11:00:00Z',
@@ -384,7 +376,6 @@ class ImageService {
             },
             {
                 id: 'img-008',
-                title: 'Tropical Beach',
                 description: 'Crystal clear turquoise waters meet pristine white sand beaches, while palm trees sway gently in the tropical breeze.',
                 location: 'Maui, Hawaii',
                 timestamp: '2024-02-20T16:20:00Z',
