@@ -6,7 +6,8 @@
 .env.production.local
 
 # Configuration files
-config.js
+config_template.js
+config.template.js
 
 # Dependencies
 node_modules/
