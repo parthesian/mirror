@@ -22,6 +22,7 @@ class Modal {
         this.photoFileInput = document.getElementById('photo-file');
         this.photoLocationInput = document.getElementById('photo-location');
         this.photoDescriptionInput = document.getElementById('photo-description');
+        this.photoTimestampInput = document.getElementById('photo-timestamp');
         this.filePreview = document.getElementById('file-preview');
         this.previewImage = document.getElementById('preview-image');
         this.closeUploadBtn = document.getElementById('close-upload-modal');
@@ -470,16 +471,7 @@ class Modal {
             return;
         }
 
-        // Validate file size (10MB limit)
-        const maxSize = 10 * 1024 * 1024; // 10MB
-        if (file.size > maxSize) {
-            this.showUploadError('File size must be less than 10MB.');
-            if (this.fileStatusIcon) {
-                this.fileStatusIcon.textContent = '✕';
-                this.fileStatusIcon.classList.remove('selected');
-            }
-            return;
-        }
+        // No file size limit since we compress images
 
         // Update icon to checkmark when file is successfully selected
         if (this.fileStatusIcon) {
@@ -507,6 +499,7 @@ class Modal {
         const file = this.photoFileInput.files[0];
         const location = this.photoLocationInput.value.trim();
         const description = this.photoDescriptionInput.value.trim();
+        const timestampValue = this.photoTimestampInput.value;
 
         // Validate password first
         const isPasswordValid = await this.validatePassword();
@@ -526,13 +519,24 @@ class Modal {
             return;
         }
 
+        // Parse timestamp if provided
+        let timestamp = null;
+        if (timestampValue) {
+            const date = new Date(timestampValue);
+            timestamp = {
+                day: date.getDate(),
+                month: date.getMonth() + 1, // JavaScript months are 0-indexed
+                year: date.getFullYear()
+            };
+        }
+
         try {
             // Show progress
             this.showUploadProgress();
             this.hideUploadError();
 
-            // Upload photo
-            const result = await this.imageService.uploadPhoto(file, location, description);
+            // Upload photo with optional timestamp
+            const result = await this.imageService.uploadPhoto(file, location, description, timestamp);
 
             // Success - close modal and refresh gallery
             this.closeUploadModal();

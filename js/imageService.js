@@ -114,9 +114,10 @@ class ImageService {
      * @param {File} file - Image file to upload
      * @param {string} location - Required location information
      * @param {string} description - Optional description
+     * @param {Object} timestamp - Optional timestamp object with day, month, year
      * @returns {Promise<Object>} Upload response
      */
-    async uploadPhoto(file, location, description = '') {
+    async uploadPhoto(file, location, description = '', timestamp = null) {
         try {
             // Check if API base URL is configured
             if (!this.apiBaseUrl) {
@@ -139,10 +140,16 @@ class ImageService {
                 contentType: compressedFile.type
             };
 
+            // Add timestamp if provided
+            if (timestamp) {
+                requestBody.timestamp = timestamp;
+            }
+
             console.log('Uploading photo with request body:', {
                 location: requestBody.location,
                 description: requestBody.description,
                 contentType: requestBody.contentType,
+                timestamp: requestBody.timestamp || 'not provided',
                 imageDataSize: requestBody.imageData.length + ' characters'
             });
 
@@ -201,7 +208,7 @@ class ImageService {
             }
 
             // If file is already small enough, return as is
-            if (file.size < 1024 * 1024) { // Less than 1MB
+            if (file.size < 2 * 1024 * 1024) { // Less than 2MB
                 resolve(file);
                 return;
             }
