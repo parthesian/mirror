@@ -6,6 +6,8 @@ class ImageService {
         this.images = [];
         this.isLoading = false;
         this.apiBaseUrl = this.getApiBaseUrl();
+        this.lastEvaluatedKey = null;
+        this.hasMore = true;
     }
 
     /**
@@ -18,17 +20,22 @@ class ImageService {
     }
 
     /**
-     * Fetch images from the AWS API
+     * Load initial photos from the AWS API
      * @returns {Promise<Array>} Array of image objects
      */
     async fetchImages() {
         this.isLoading = true;
         
         try {
+            // Reset pagination state for initial load
+            this.lastEvaluatedKey = null;
+            this.hasMore = true;
+            
             // Check if API base URL is configured
             if (!this.apiBaseUrl) {
                 console.warn('API base URL not configured, using placeholder images');
                 this.images = this.generatePlaceholderImages();
+                this.hasMore = false;
                 this.isLoading = false;
                 return this.images;
             }
@@ -38,7 +45,7 @@ class ImageService {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                mode: 'cors' // Explicitly set CORS mode
+                mode: 'cors'
             });
             
             if (!response.ok) {
@@ -46,51 +53,32 @@ class ImageService {
             }
             
             const data = await response.json();
-            console.log('API Response received:', data);
+            console.log('Initial photos API response:', data);
             
-            // Handle different possible response structures
-            let photosArray = [];
-            let actualData = data;
-            
-            // Check if response is wrapped in AWS API Gateway format
-            if (data && data.body && typeof data.body === 'string') {
-                try {
-                    actualData = JSON.parse(data.body);
-                    console.log('Parsed response body:', actualData);
-                } catch (e) {
-                    console.error('Failed to parse response body:', e);
-                    actualData = data;
-                }
-            }
-            
-            if (actualData && Array.isArray(actualData)) {
-                // Response is directly an array
-                photosArray = actualData;
-                console.log('Using direct array format, found', photosArray.length, 'photos');
-            } else if (actualData && actualData.photos && Array.isArray(actualData.photos)) {
-                // Response has photos property
-                photosArray = actualData.photos;
-                console.log('Using photos property format, found', photosArray.length, 'photos');
-            } else if (actualData && actualData.Items && Array.isArray(actualData.Items)) {
-                // DynamoDB response format
-                photosArray = actualData.Items;
-                console.log('Using DynamoDB Items format, found', photosArray.length, 'photos');
+            // Handle the new paginated API response format
+            if (data && data.photos && Array.isArray(data.photos)) {
+                // Transform API response to match our expected format
+                this.images = data.photos.map(photo => ({
+                    id: photo.photoId || photo.id || `img-${Date.now()}-${Math.random()}`,
+                    description: photo.description || 'No description available',
+                    location: photo.location || 'Unknown location',
+                    timestamp: photo.timestamp || photo.createdAt || new Date().toISOString(),
+                    uploadedAt: photo.uploadedAt || photo.timestamp || new Date().toISOString(),
+                    url: photo.imageUrl || photo.url || '',
+                    thumbnailUrl: photo.thumbnailUrl || photo.imageUrl || photo.url || '',
+                    s3Key: photo.s3Key || photo.key || ''
+                }));
+                
+                // Update pagination state
+                this.lastEvaluatedKey = data.lastEvaluatedKey;
+                this.hasMore = data.hasMore || false;
+                
+                console.log(`Loaded ${this.images.length} initial photos. Has more: ${this.hasMore}`);
             } else {
-                console.warn('Unexpected API response format:', actualData);
-                photosArray = [];
+                console.warn('Unexpected API response format:', data);
+                this.images = [];
+                this.hasMore = false;
             }
-            
-            // Transform API response to match our expected format
-            this.images = photosArray.map(photo => ({
-                id: photo.photoId || photo.id || `img-${Date.now()}-${Math.random()}`,
-                description: photo.description || 'No description available',
-                location: photo.location || 'Unknown location',
-                timestamp: photo.timestamp || photo.createdAt || new Date().toISOString(),
-                uploadedAt: photo.uploadedAt || photo.timestamp || new Date().toISOString(),
-                url: photo.imageUrl || photo.url || '',
-                thumbnailUrl: photo.thumbnailUrl || photo.imageUrl || photo.url || '',
-                s3Key: photo.s3Key || photo.key || ''
-            }));
             
             this.isLoading = false;
             return this.images;
@@ -102,10 +90,85 @@ class ImageService {
             if (error.name === 'TypeError' && error.message.includes('fetch')) {
                 console.warn('Network error detected, using placeholder images');
                 this.images = this.generatePlaceholderImages();
+                this.hasMore = false;
                 return this.images;
             }
             
             throw new Error('Failed to fetch images: ' + error.message);
+        }
+    }
+
+    /**
+     * Load more photos for infinite scrolling
+     * @returns {Promise<Array>} Array of newly loaded image objects
+     */
+    async loadMorePhotos() {
+        // Don't load if already loading or no more photos available
+        if (this.isLoading || !this.hasMore || !this.lastEvaluatedKey) {
+            return [];
+        }
+
+        this.isLoading = true;
+        
+        try {
+            // Check if API base URL is configured
+            if (!this.apiBaseUrl) {
+                console.warn('API base URL not configured');
+                this.isLoading = false;
+                return [];
+            }
+
+            const url = `${this.apiBaseUrl}/photos?lastKey=${encodeURIComponent(this.lastEvaluatedKey)}`;
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                mode: 'cors'
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            console.log('Load more photos API response:', data);
+            
+            let newPhotos = [];
+            
+            // Handle the paginated API response format
+            if (data && data.photos && Array.isArray(data.photos)) {
+                // Transform API response to match our expected format
+                newPhotos = data.photos.map(photo => ({
+                    id: photo.photoId || photo.id || `img-${Date.now()}-${Math.random()}`,
+                    description: photo.description || 'No description available',
+                    location: photo.location || 'Unknown location',
+                    timestamp: photo.timestamp || photo.createdAt || new Date().toISOString(),
+                    uploadedAt: photo.uploadedAt || photo.timestamp || new Date().toISOString(),
+                    url: photo.imageUrl || photo.url || '',
+                    thumbnailUrl: photo.thumbnailUrl || photo.imageUrl || photo.url || '',
+                    s3Key: photo.s3Key || photo.key || ''
+                }));
+                
+                // Append new photos to existing collection
+                this.images = [...this.images, ...newPhotos];
+                
+                // Update pagination state
+                this.lastEvaluatedKey = data.lastEvaluatedKey;
+                this.hasMore = data.hasMore || false;
+                
+                console.log(`Loaded ${newPhotos.length} more photos. Total: ${this.images.length}. Has more: ${this.hasMore}`);
+            } else {
+                console.warn('Unexpected API response format for load more:', data);
+                this.hasMore = false;
+            }
+            
+            this.isLoading = false;
+            return newPhotos;
+        } catch (error) {
+            this.isLoading = false;
+            console.error('Failed to load more photos:', error);
+            throw new Error('Failed to load more photos: ' + error.message);
         }
     }
 

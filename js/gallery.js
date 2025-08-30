@@ -41,6 +41,48 @@ class Gallery {
         document.addEventListener('photoUploaded', () => {
             this.loadImages();
         });
+
+        // Infinite scroll
+        window.addEventListener('scroll', this.throttle(() => {
+            this.handleScroll();
+        }, 200));
+    }
+
+    /**
+     * Handle scroll events for infinite scrolling
+     */
+    handleScroll() {
+        // Check if we're near the bottom of the page
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const windowHeight = window.innerHeight;
+        const documentHeight = document.documentElement.scrollHeight;
+        
+        // Load more when we're within 1000px of the bottom
+        const threshold = 1000;
+        const nearBottom = scrollTop + windowHeight >= documentHeight - threshold;
+        
+        if (nearBottom && !this.imageService.isLoading && this.imageService.hasMore) {
+            this.loadMoreImages();
+        }
+    }
+
+    /**
+     * Throttle function to limit how often a function can be called
+     * @param {Function} func - Function to throttle
+     * @param {number} limit - Time limit in milliseconds
+     * @returns {Function} Throttled function
+     */
+    throttle(func, limit) {
+        let inThrottle;
+        return function() {
+            const args = arguments;
+            const context = this;
+            if (!inThrottle) {
+                func.apply(context, args);
+                inThrottle = true;
+                setTimeout(() => inThrottle = false, limit);
+            }
+        }
     }
 
     /**
@@ -60,6 +102,45 @@ class Gallery {
             this.hideLoading();
             this.showError();
         }
+    }
+
+    /**
+     * Load more images for infinite scrolling
+     */
+    async loadMoreImages() {
+        try {
+            console.log('Loading more images...');
+            const newImages = await this.imageService.loadMorePhotos();
+            
+            if (newImages && newImages.length > 0) {
+                this.renderMoreImages(newImages);
+                console.log(`Loaded ${newImages.length} more images`);
+            } else {
+                console.log('No more images to load');
+            }
+        } catch (error) {
+            console.error('Error loading more images:', error);
+            // Don't show error state for load more failures, just log it
+        }
+    }
+
+    /**
+     * Render additional images and append to existing gallery
+     * @param {Array} images - Array of new image objects
+     */
+    renderMoreImages(images) {
+        if (!images || images.length === 0) {
+            return;
+        }
+
+        const fragment = document.createDocumentFragment();
+
+        images.forEach(image => {
+            const galleryItem = this.createGalleryItem(image);
+            fragment.appendChild(galleryItem);
+        });
+
+        this.galleryContainer.appendChild(fragment);
     }
 
     /**
