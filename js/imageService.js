@@ -35,7 +35,7 @@ class ImageService {
             // Check if API base URL is configured
             if (!this.apiBaseUrl) {
                 console.warn('API base URL not configured, using placeholder images');
-                this.images = this.generatePlaceholderImages();
+                this.images = []
                 this.hasMore = false;
                 this.isLoading = false;
                 return this.images;
@@ -100,7 +100,7 @@ class ImageService {
             // If it's a CORS or network error, fall back to placeholder images
             if (error.name === 'TypeError' && error.message.includes('fetch')) {
                 console.warn('Network error detected, using placeholder images');
-                this.images = this.generatePlaceholderImages();
+                this.images = []
                 this.hasMore = false;
                 return this.images;
             }
@@ -404,82 +404,6 @@ class ImageService {
         
         const prevIndex = currentIndex === 0 ? this.images.length - 1 : currentIndex - 1;
         return this.images[prevIndex];
-    }
-
-    /**
-     * Generate placeholder images for development
-     * In production, this would be replaced with AWS S3 API calls
-     * @returns {Array} Array of placeholder image objects
-     */
-    generatePlaceholderImages() {
-        const placeholderImages = [
-            {
-                id: 'img-001',
-                description: 'A breathtaking sunrise over the Rocky Mountains, captured during an early morning hike. The golden light illuminates the peaks while morning mist dances through the valleys below.',
-                location: 'Rocky Mountain National Park, Colorado',
-                timestamp: '2024-03-15T06:30:00Z',
-                url: 'https://picsum.photos/800/600?random=1',
-                thumbnailUrl: 'https://picsum.photos/400/300?random=1'
-            },
-            {
-                id: 'img-002',
-                description: 'Powerful waves crash against the rugged coastline during a spectacular sunset. The interplay of light and water creates a mesmerizing display of natural beauty.',
-                location: 'Big Sur, California',
-                timestamp: '2024-03-10T19:45:00Z',
-                url: 'https://picsum.photos/800/600?random=2',
-                thumbnailUrl: 'https://picsum.photos/400/300?random=2'
-            },
-            {
-                id: 'img-003',
-                description: 'A winding path through an ancient forest, where shafts of sunlight filter through the canopy, creating a magical atmosphere perfect for contemplation.',
-                location: 'Olympic National Park, Washington',
-                timestamp: '2024-03-08T14:20:00Z',
-                url: 'https://picsum.photos/800/600?random=3',
-                thumbnailUrl: 'https://picsum.photos/400/300?random=3'
-            },
-            {
-                id: 'img-004',
-                description: 'The vast expanse of the desert stretches endlessly under a brilliant blue sky. Ancient rock formations tell stories of millions of years of geological history.',
-                location: 'Joshua Tree National Park, California',
-                timestamp: '2024-03-05T12:15:00Z',
-                url: 'https://picsum.photos/800/600?random=4',
-                thumbnailUrl: 'https://picsum.photos/400/300?random=4'
-            },
-            {
-                id: 'img-005',
-                description: 'The urban landscape comes alive at twilight, with countless lights beginning to twinkle as the city transitions from day to night.',
-                location: 'Seattle, Washington',
-                timestamp: '2024-03-01T20:30:00Z',
-                url: 'https://picsum.photos/800/600?random=5',
-                thumbnailUrl: 'https://picsum.photos/400/300?random=5'
-            },
-            {
-                id: 'img-006',
-                description: 'Fall foliage creates a stunning tapestry of colors, with vibrant reds, oranges, and yellows painting the landscape in nature\'s finest palette.',
-                location: 'Vermont',
-                timestamp: '2024-02-28T15:45:00Z',
-                url: 'https://picsum.photos/800/600?random=6',
-                thumbnailUrl: 'https://picsum.photos/400/300?random=6'
-            },
-            {
-                id: 'img-007',
-                description: 'Fresh powder snow blankets the mountain peaks, creating a pristine winter wonderland that sparkles under the clear blue sky.',
-                location: 'Aspen, Colorado',
-                timestamp: '2024-02-25T11:00:00Z',
-                url: 'https://picsum.photos/800/600?random=7',
-                thumbnailUrl: 'https://picsum.photos/400/300?random=7'
-            },
-            {
-                id: 'img-008',
-                description: 'Crystal clear turquoise waters meet pristine white sand beaches, while palm trees sway gently in the tropical breeze.',
-                location: 'Maui, Hawaii',
-                timestamp: '2024-02-20T16:20:00Z',
-                url: 'https://picsum.photos/800/600?random=8',
-                thumbnailUrl: 'https://picsum.photos/400/300?random=8'
-            }
-        ];
-
-        return placeholderImages;
     }
 
     /**
