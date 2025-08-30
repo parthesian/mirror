@@ -66,9 +66,9 @@ class GlobeService {
       case 'japan':
         return { lat: 36.2048, lon: 138.2529 };
       case 'usa':
-        return { lat: 46.2276, lon: 2.2137 };
-      case 'france':
         return { lat: 39.8283, lon: -98.5795 };
+      case 'france':
+        return { lat: 46.2276, lon: 2.2137 };
       case 'india':
         return { lat: 20.5937, lon: 78.9629 };
       default:
@@ -83,11 +83,12 @@ class GlobeService {
     const lonRad = THREE.MathUtils.degToRad(lon);
 
     // Map so the given lat/lon faces the camera (+Z):
-    // - Positive longitude (E) => rotate negative around Y
-    // - Positive latitude (N) => rotate positive around X
+    // - Positive latitude (north rotates up toward camera)
+    // - Negative longitude to match typical map projections
+    // - Globe mesh is pre-rotated -90° to align texture seam
     return {
       x: latRad,
-      y: lonRad
+      y: -lonRad
     };
   }
 
@@ -168,6 +169,8 @@ class GlobeService {
       color: 0xcccccc,     // Brightens the diffuse color
     });
     const globe = new THREE.Mesh(geometry, material);
+    // Pre-rotate globe to align texture seam so 0° longitude faces camera
+    globe.rotation.y = -Math.PI / 2;
     group.add(globe);
 
     // State for animation
