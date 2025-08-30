@@ -427,8 +427,7 @@ class Modal {
      */
     resetUploadForm() {
         this.uploadForm.reset();
-        this.filePreview.classList.add('hidden');
-        this.uploadProgress.classList.add('hidden');
+        this.uploadProgress.classList.remove('active');
         this.uploadError.classList.add('hidden');
         this.previewImage.src = '';
         
@@ -493,7 +492,7 @@ class Modal {
                 this.fileStatusIcon.textContent = '✕';
                 this.fileStatusIcon.classList.remove('selected');
             }
-            this.filePreview.classList.add('hidden');
+            this.previewImage.src = '';
             return;
         }
 
@@ -519,7 +518,6 @@ class Modal {
         const reader = new FileReader();
         reader.onload = (e) => {
             this.previewImage.src = e.target.result;
-            this.filePreview.classList.remove('hidden');
         };
         reader.readAsDataURL(file);
 
@@ -594,7 +592,7 @@ class Modal {
      * Show upload progress
      */
     showUploadProgress() {
-        this.uploadProgress.classList.remove('hidden');
+        this.uploadProgress.classList.add('active');
         this.submitUploadBtn.disabled = true;
         this.submitUploadBtn.textContent = 'uploading';
     }
@@ -603,7 +601,7 @@ class Modal {
      * Hide upload progress
      */
     hideUploadProgress() {
-        this.uploadProgress.classList.add('hidden');
+        this.uploadProgress.classList.remove('active');
         this.submitUploadBtn.disabled = false;
         this.submitUploadBtn.textContent = 'upload';
     }

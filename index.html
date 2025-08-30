@@ -68,8 +68,10 @@
                             <span class="file-status-icon" id="file-status-icon">✕</span>
                         </div>
                     </div>
-                    <div id="file-preview" class="file-preview hidden">
-                        <img id="preview-image" src="" alt="Preview">
+                    <div id="file-preview" class="file-preview">
+                        <div class="preview-placeholder">
+                            <img id="preview-image" src="" alt="Preview">
+                        </div>
                     </div>
                 </div>
                 
@@ -98,11 +100,10 @@
                     <button type="submit" id="submit-upload" class="btn btn-primary">upload</button>
                 </div>
                 
-                <div id="upload-progress" class="upload-progress hidden">
+                <div id="upload-progress" class="upload-progress">
                     <div class="progress-bar">
                         <div class="progress-fill"></div>
                     </div>
-                    <p>uploading</p>
                 </div>
                 
                 <div id="upload-error" class="upload-error hidden">

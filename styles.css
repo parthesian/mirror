@@ -325,9 +325,9 @@ body {
 
 /* Upload Modal Styles */
 .upload-modal-content {
-    max-width: 500px;
+    max-width: 450px;
     width: 90vw;
-    max-height: 90vh;
+    max-height: 95vh;
     overflow-y: auto;
     background: rgba(255, 255, 255, 0.95);
     border-radius: 8px;
@@ -344,11 +344,11 @@ body {
 }
 
 .upload-form {
-    padding: 2rem;
+    padding: 1.5rem;
 }
 
 .form-group {
-    margin-bottom: 1.5rem;
+    margin-bottom: 1rem;
 }
 
 .form-group label {
@@ -434,19 +434,42 @@ body {
 
 .form-group textarea {
     resize: vertical;
-    min-height: 80px;
+    min-height: 60px;
 }
 
 .file-preview {
-    margin-top: 1rem;
+    margin-top: 0.75rem;
     text-align: center;
+    height: 120px; /* Fixed height to prevent layout shift */
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-.file-preview img {
-    max-width: 30%;
-    max-height: 200px;
+.preview-placeholder {
+    width: 160px; /* Fixed width for 4:3 aspect ratio */
+    height: 120px; /* Fixed height for 4:3 aspect ratio */
+    background-color: #f5f5f5;
     border-radius: 4px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+    aspect-ratio: 4 / 3;
+}
+
+.preview-placeholder img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.preview-placeholder img[src]:not([src=""]) {
+    opacity: 1;
 }
 
 .form-actions {
@@ -497,6 +520,7 @@ body {
 .upload-progress {
     margin-top: 1rem;
     text-align: center;
+    height: 4px; /* Fixed height to prevent layout shift */
 }
 
 .progress-bar {
@@ -505,13 +529,16 @@ body {
     background: #eee;
     border-radius: 2px;
     overflow: hidden;
-    margin-bottom: 0.5rem;
 }
 
 .progress-fill {
     height: 100%;
     background: #666;
     width: 0%;
+    transition: width 0.3s ease;
+}
+
+.upload-progress.active .progress-fill {
     animation: progressAnimation 2s ease-in-out infinite;
 }
 
@@ -621,6 +648,56 @@ body {
     #modal-image {
         max-width: 95vw;
         max-height: 85vh;
+    }
+    
+    /* Mobile upload modal adjustments */
+    .upload-modal-content {
+        max-height: 98vh;
+        width: 95vw;
+    }
+    
+    .upload-form {
+        padding: 1rem;
+    }
+    
+    .form-group {
+        margin-bottom: 0.75rem;
+    }
+    
+    .form-group label {
+        margin-bottom: 0.25rem;
+        font-size: 0.85rem;
+    }
+    
+    .form-group input[type="text"],
+    .form-group input[type="password"],
+    .form-group input[type="date"],
+    .form-group textarea {
+        padding: 0.6rem;
+        font-size: 0.85rem;
+    }
+    
+    .form-group textarea {
+        min-height: 50px;
+    }
+    
+    .file-preview {
+        height: 100px;
+        margin-top: 0.5rem;
+    }
+    
+    .preview-placeholder {
+        width: 133px; /* Maintain 4:3 ratio */
+        height: 100px;
+    }
+    
+    .form-actions {
+        margin-top: 1rem;
+    }
+    
+    .btn {
+        padding: 0.6rem 1.2rem;
+        font-size: 0.85rem;
     }
 }
 

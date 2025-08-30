@@ -148,10 +148,16 @@ class GlobeService {
     camera.position.set(0, 0, 2.8); // Pull back slightly to show full globe in circular container
 
     // Lights
-    scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+    scene.add(new THREE.AmbientLight(0xffffff, 1.1));
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
     dirLight.position.set(3, 2, 4);
     scene.add(dirLight);
+    
+    // Add a light from the camera direction to brighten the front-facing surface
+    const frontLight = new THREE.DirectionalLight(0xffffff, 0.7);
+    frontLight.position.set(0, 0, 5); // From camera direction
+    scene.add(frontLight);
+    
     const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.4);
     scene.add(hemiLight);
 
