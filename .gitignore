@@ -8,6 +8,7 @@
 # Configuration files
 config_template.js
 config.template.js
+js/config.js
 
 # Dependencies
 node_modules/

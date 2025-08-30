@@ -1,0 +1,11 @@
+{
+  "name": "mirror-gallery",
+  "version": "1.0.0",
+  "description": "Photo gallery application",
+  "scripts": {
+    "build": "node build.js"
+  },
+  "engines": {
+    "node": ">=14"
+  }
+}
