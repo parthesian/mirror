@@ -569,7 +569,7 @@ class Modal {
     hideUploadProgress() {
         this.uploadProgress.classList.add('hidden');
         this.submitUploadBtn.disabled = false;
-        this.submitUploadBtn.textContent = 'Upload Photo';
+        this.submitUploadBtn.textContent = 'upload';
     }
 
     /**
