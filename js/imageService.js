@@ -25,25 +25,72 @@ class ImageService {
         this.isLoading = true;
         
         try {
-            const response = await fetch(`${this.apiBaseUrl}/photos`);
+            // Check if API base URL is configured
+            if (!this.apiBaseUrl) {
+                console.warn('API base URL not configured, using placeholder images');
+                this.images = this.generatePlaceholderImages();
+                this.isLoading = false;
+                return this.images;
+            }
+
+            const response = await fetch(`${this.apiBaseUrl}/photos`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                mode: 'cors' // Explicitly set CORS mode
+            });
             
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             
             const data = await response.json();
+            console.log('API Response received:', data);
+            
+            // Handle different possible response structures
+            let photosArray = [];
+            let actualData = data;
+            
+            // Check if response is wrapped in AWS API Gateway format
+            if (data && data.body && typeof data.body === 'string') {
+                try {
+                    actualData = JSON.parse(data.body);
+                    console.log('Parsed response body:', actualData);
+                } catch (e) {
+                    console.error('Failed to parse response body:', e);
+                    actualData = data;
+                }
+            }
+            
+            if (actualData && Array.isArray(actualData)) {
+                // Response is directly an array
+                photosArray = actualData;
+                console.log('Using direct array format, found', photosArray.length, 'photos');
+            } else if (actualData && actualData.photos && Array.isArray(actualData.photos)) {
+                // Response has photos property
+                photosArray = actualData.photos;
+                console.log('Using photos property format, found', photosArray.length, 'photos');
+            } else if (actualData && actualData.Items && Array.isArray(actualData.Items)) {
+                // DynamoDB response format
+                photosArray = actualData.Items;
+                console.log('Using DynamoDB Items format, found', photosArray.length, 'photos');
+            } else {
+                console.warn('Unexpected API response format:', actualData);
+                photosArray = [];
+            }
             
             // Transform API response to match our expected format
-            this.images = data.photos.map(photo => ({
-                id: photo.photoId,
-                title: photo.description || 'Untitled Photo',
+            this.images = photosArray.map(photo => ({
+                id: photo.photoId || photo.id || `img-${Date.now()}-${Math.random()}`,
+                title: photo.description || photo.title || 'Untitled Photo',
                 description: photo.description || 'No description available',
-                location: photo.location,
-                timestamp: photo.timestamp,
-                uploadedAt: photo.uploadedAt,
-                url: photo.imageUrl,
-                thumbnailUrl: photo.imageUrl, // Using same URL for thumbnail
-                s3Key: photo.s3Key
+                location: photo.location || 'Unknown location',
+                timestamp: photo.timestamp || photo.createdAt || new Date().toISOString(),
+                uploadedAt: photo.uploadedAt || photo.timestamp || new Date().toISOString(),
+                url: photo.imageUrl || photo.url || '',
+                thumbnailUrl: photo.thumbnailUrl || photo.imageUrl || photo.url || '',
+                s3Key: photo.s3Key || photo.key || ''
             }));
             
             this.isLoading = false;
@@ -51,6 +98,14 @@ class ImageService {
         } catch (error) {
             this.isLoading = false;
             console.error('Failed to fetch images:', error);
+            
+            // If it's a CORS or network error, fall back to placeholder images
+            if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                console.warn('Network error detected, using placeholder images');
+                this.images = this.generatePlaceholderImages();
+                return this.images;
+            }
+            
             throw new Error('Failed to fetch images: ' + error.message);
         }
     }
@@ -64,28 +119,53 @@ class ImageService {
      */
     async uploadPhoto(file, location, description = '') {
         try {
+            // Check if API base URL is configured
+            if (!this.apiBaseUrl) {
+                throw new Error('API base URL not configured. Cannot upload photos.');
+            }
+
+            // Compress image if it's too large
+            const compressedFile = await this.compressImage(file);
+            
             // Convert file to base64
-            const base64Data = await this.fileToBase64(file);
+            const base64Data = await this.fileToBase64(compressedFile);
+            
+            // Remove data URL prefix to get just the base64 data
+            const base64Only = base64Data.split(',')[1];
             
             const requestBody = {
-                imageData: base64Data,
+                imageData: base64Only,
                 location: location,
-                description: description
+                description: description,
+                contentType: compressedFile.type
             };
+
+            console.log('Uploading photo with request body:', {
+                location: requestBody.location,
+                description: requestBody.description,
+                contentType: requestBody.contentType,
+                imageDataSize: requestBody.imageData.length + ' characters'
+            });
 
             const response = await fetch(`${this.apiBaseUrl}/photos`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
+                mode: 'cors',
                 body: JSON.stringify(requestBody)
             });
 
             if (!response.ok) {
+                console.error('Upload failed with status:', response.status, response.statusText);
+                if (response.status === 413) {
+                    throw new Error('Image file is too large. Please try a smaller image or reduce the quality.');
+                }
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
             const result = await response.json();
+            console.log('Upload response received:', result);
             
             // Refresh images after successful upload
             await this.fetchImages();
@@ -93,8 +173,85 @@ class ImageService {
             return result;
         } catch (error) {
             console.error('Failed to upload photo:', error);
+            
+            // Handle specific error types
+            if (error.message.includes('413') || error.message.includes('too large')) {
+                throw new Error('Image file is too large. Please try a smaller image.');
+            } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                throw new Error('Network error. Please check your connection and try again.');
+            }
+            
             throw new Error('Failed to upload photo: ' + error.message);
         }
+    }
+
+    /**
+     * Compress image to reduce file size
+     * @param {File} file - Image file to compress
+     * @param {number} maxWidth - Maximum width (default: 1920)
+     * @param {number} maxHeight - Maximum height (default: 1080)
+     * @param {number} quality - Compression quality 0-1 (default: 0.8)
+     * @returns {Promise<File>} Compressed image file
+     */
+    compressImage(file, maxWidth = 1920, maxHeight = 1080, quality = 0.8) {
+        return new Promise((resolve, reject) => {
+            // If file is not an image, return as is
+            if (!file.type.startsWith('image/')) {
+                resolve(file);
+                return;
+            }
+
+            // If file is already small enough, return as is
+            if (file.size < 1024 * 1024) { // Less than 1MB
+                resolve(file);
+                return;
+            }
+
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+
+            img.onload = () => {
+                // Calculate new dimensions
+                let { width, height } = img;
+                
+                if (width > maxWidth || height > maxHeight) {
+                    const ratio = Math.min(maxWidth / width, maxHeight / height);
+                    width *= ratio;
+                    height *= ratio;
+                }
+
+                // Set canvas dimensions
+                canvas.width = width;
+                canvas.height = height;
+
+                // Draw and compress
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                canvas.toBlob(
+                    (blob) => {
+                        if (blob) {
+                            // Create new File object with compressed data
+                            const compressedFile = new File([blob], file.name, {
+                                type: file.type,
+                                lastModified: Date.now()
+                            });
+                            resolve(compressedFile);
+                        } else {
+                            reject(new Error('Failed to compress image'));
+                        }
+                    },
+                    file.type,
+                    quality
+                );
+            };
+
+            img.onerror = () => {
+                reject(new Error('Failed to load image for compression'));
+            };
+
+            img.src = URL.createObjectURL(file);
+        });
     }
 
     /**
