@@ -538,7 +538,8 @@ class Modal {
             // Upload photo with optional timestamp
             const result = await this.imageService.uploadPhoto(file, location, description, timestamp);
 
-            // Success - close modal and refresh gallery
+            // Success - reset button state before closing modal
+            this.hideUploadProgress();
             this.closeUploadModal();
             
             // Dispatch event to refresh gallery
@@ -559,7 +560,7 @@ class Modal {
     showUploadProgress() {
         this.uploadProgress.classList.remove('hidden');
         this.submitUploadBtn.disabled = true;
-        this.submitUploadBtn.textContent = 'Uploading...';
+        this.submitUploadBtn.textContent = 'uploading';
     }
 
     /**

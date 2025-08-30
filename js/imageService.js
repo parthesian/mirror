@@ -194,12 +194,12 @@ class ImageService {
     /**
      * Compress image to reduce file size
      * @param {File} file - Image file to compress
-     * @param {number} maxWidth - Maximum width (default: 1920)
-     * @param {number} maxHeight - Maximum height (default: 1080)
-     * @param {number} quality - Compression quality 0-1 (default: 0.8)
+     * @param {number} maxWidth - Maximum width (default: 2560)
+     * @param {number} maxHeight - Maximum height (default: 1440)
+     * @param {number} quality - Compression quality 0-1 (default: 0.92)
      * @returns {Promise<File>} Compressed image file
      */
-    compressImage(file, maxWidth = 1920, maxHeight = 1080, quality = 0.8) {
+    compressImage(file, maxWidth = 2560, maxHeight = 1440, quality = 0.92) {
         return new Promise((resolve, reject) => {
             // If file is not an image, return as is
             if (!file.type.startsWith('image/')) {
@@ -409,15 +409,13 @@ class ImageService {
      * @returns {string} Formatted date string
      */
     formatTimestamp(timestamp) {
-        const date = new Date(timestamp);
-        return date.toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    }
+    const date = new Date(timestamp);
+    return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+}
 
     /**
      * Check if service is currently loading
