@@ -55,10 +55,21 @@ class ImageService {
             const data = await response.json();
             console.log('Initial photos API response:', data);
             
+            // Parse the actual response - check if data is wrapped in body property
+            let parsedData = data;
+            if (data.body && typeof data.body === 'string') {
+                try {
+                    parsedData = JSON.parse(data.body);
+                } catch (parseError) {
+                    console.error('Failed to parse response body:', parseError);
+                    throw new Error('Invalid API response format');
+                }
+            }
+            
             // Handle the new paginated API response format
-            if (data && data.photos && Array.isArray(data.photos)) {
+            if (parsedData && parsedData.photos && Array.isArray(parsedData.photos)) {
                 // Transform API response to match our expected format
-                this.images = data.photos.map(photo => ({
+                this.images = parsedData.photos.map(photo => ({
                     id: photo.photoId || photo.id || `img-${Date.now()}-${Math.random()}`,
                     description: photo.description || 'No description available',
                     location: photo.location || 'Unknown location',
@@ -70,12 +81,12 @@ class ImageService {
                 }));
                 
                 // Update pagination state
-                this.lastEvaluatedKey = data.lastEvaluatedKey;
-                this.hasMore = data.hasMore || false;
+                this.lastEvaluatedKey = parsedData.lastEvaluatedKey;
+                this.hasMore = parsedData.hasMore || false;
                 
                 console.log(`Loaded ${this.images.length} initial photos. Has more: ${this.hasMore}`);
             } else {
-                console.warn('Unexpected API response format:', data);
+                console.warn('Unexpected API response format:', parsedData);
                 this.images = [];
                 this.hasMore = false;
             }
@@ -134,12 +145,23 @@ class ImageService {
             const data = await response.json();
             console.log('Load more photos API response:', data);
             
+            // Parse the actual response - check if data is wrapped in body property
+            let parsedData = data;
+            if (data.body && typeof data.body === 'string') {
+                try {
+                    parsedData = JSON.parse(data.body);
+                } catch (parseError) {
+                    console.error('Failed to parse response body:', parseError);
+                    throw new Error('Invalid API response format');
+                }
+            }
+            
             let newPhotos = [];
             
             // Handle the paginated API response format
-            if (data && data.photos && Array.isArray(data.photos)) {
+            if (parsedData && parsedData.photos && Array.isArray(parsedData.photos)) {
                 // Transform API response to match our expected format
-                newPhotos = data.photos.map(photo => ({
+                newPhotos = parsedData.photos.map(photo => ({
                     id: photo.photoId || photo.id || `img-${Date.now()}-${Math.random()}`,
                     description: photo.description || 'No description available',
                     location: photo.location || 'Unknown location',
@@ -154,12 +176,12 @@ class ImageService {
                 this.images = [...this.images, ...newPhotos];
                 
                 // Update pagination state
-                this.lastEvaluatedKey = data.lastEvaluatedKey;
-                this.hasMore = data.hasMore || false;
+                this.lastEvaluatedKey = parsedData.lastEvaluatedKey;
+                this.hasMore = parsedData.hasMore || false;
                 
                 console.log(`Loaded ${newPhotos.length} more photos. Total: ${this.images.length}. Has more: ${this.hasMore}`);
             } else {
-                console.warn('Unexpected API response format for load more:', data);
+                console.warn('Unexpected API response format for load more:', parsedData);
                 this.hasMore = false;
             }
             
