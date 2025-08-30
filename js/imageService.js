@@ -7,7 +7,7 @@ class ImageService {
         this.isLoading = false;
         this.apiBaseUrl = this.getApiBaseUrl();
         this.currentPage = 0;
-        this.limit = 50;
+        this.limit = 54;
         this.hasMore = true;
     }
 
