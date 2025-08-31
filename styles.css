@@ -860,6 +860,11 @@ body.exposure-3 .modal {
     text-align: right;
 }
 
+/* Fix text visibility for exposure-0 */
+body.exposure-0 .modal-metadata {
+    color: #333;
+}
+
 .metadata-item::before {
     display: none;
 }
@@ -1613,7 +1618,7 @@ body.exposure-3 .btn-secondary:hover {
     }
     
     .gallery-controls {
-        top: 1.5rem;
+        top: 2.1rem;
         right: 1.5rem;
     }
     

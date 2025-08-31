@@ -68,6 +68,11 @@ class ExposureDial {
             return;
         }
 
+        // Don't handle exposure controls when modal is open
+        if (window.app && window.app.modal && window.app.modal.isModalOpen()) {
+            return;
+        }
+
         let newExposure = this.currentExposure;
         
         switch(e.key) {
