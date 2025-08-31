@@ -704,16 +704,27 @@ body.exposure-3 .modal {
     gap: 15px;
 }
 
-/* Gallery item - Minimal styling */
+/* Gallery item - Minimal styling with animation support */
 .gallery-item {
     cursor: pointer;
     transition: all 0.4s ease;
     position: relative;
     overflow: hidden;
     aspect-ratio: 4 / 3;
+    opacity: 0;
+    transform: scale(0.8);
+}
+
+.gallery-item.loaded {
+    opacity: 1;
+    transform: scale(1);
 }
 
 .gallery-item:hover {
+    transform: scale(1.02);
+}
+
+.gallery-item.loaded:hover {
     transform: scale(1.02);
 }
 
@@ -729,6 +740,102 @@ body.exposure-3 .modal {
 
 .gallery-item:hover .gallery-item-image {
     filter: grayscale(0);
+}
+
+/* Skeleton placeholder for loading state */
+.gallery-item-skeleton {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 4px;
+}
+
+/* Skeleton animation */
+@keyframes shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+/* Cascading animation classes */
+.gallery-item.animate-in {
+    animation: cascadeIn 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes cascadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.8) translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+/* Respect reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+    .gallery-item {
+        transition: none;
+        animation: none;
+    }
+    
+    .gallery-item.loaded {
+        opacity: 1;
+        transform: scale(1);
+    }
+    
+    .gallery-item-skeleton {
+        animation: none;
+        background: #f0f0f0;
+    }
+    
+    .gallery-item.animate-in {
+        animation: none;
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Skeleton themes for different exposures */
+body.exposure--3 .gallery-item-skeleton {
+    background: linear-gradient(90deg, #333333 25%, #222222 50%, #333333 75%);
+    background-size: 200% 100%;
+}
+
+body.exposure--2 .gallery-item-skeleton {
+    background: linear-gradient(90deg, #555555 25%, #444444 50%, #555555 75%);
+    background-size: 200% 100%;
+}
+
+body.exposure--1 .gallery-item-skeleton {
+    background: linear-gradient(90deg, #888888 25%, #777777 50%, #888888 75%);
+    background-size: 200% 100%;
+}
+
+body.exposure-0 .gallery-item-skeleton {
+    background: linear-gradient(90deg, #c8c8c8 25%, #b8b8b8 50%, #c8c8c8 75%);
+    background-size: 200% 100%;
+}
+
+body.exposure-1 .gallery-item-skeleton {
+    background: linear-gradient(90deg, #dddddd 25%, #cccccc 50%, #dddddd 75%);
+    background-size: 200% 100%;
+}
+
+body.exposure-2 .gallery-item-skeleton {
+    background: linear-gradient(90deg, #f5f5f5 25%, #eeeeee 50%, #f5f5f5 75%);
+    background-size: 200% 100%;
+}
+
+body.exposure-3 .gallery-item-skeleton {
+    background: linear-gradient(90deg, #ffffff 25%, #f8f8f8 50%, #ffffff 75%);
+    background-size: 200% 100%;
 }
 
 .gallery-item-info {

@@ -15,6 +15,13 @@ class Gallery {
         this.minZoom = 2;
         this.maxZoom = 6;
         
+        // Image preloader for smooth loading
+        this.imagePreloader = new ImagePreloader();
+        
+        // Animation state
+        this.isAnimating = false;
+        this.animationQueue = [];
+        
         this.init();
     }
 
@@ -194,35 +201,229 @@ class Gallery {
      * Render additional images and append to existing gallery
      * @param {Array} images - Array of new image objects
      */
-    renderMoreImages(images) {
+    async renderMoreImages(images) {
         if (!images || images.length === 0) {
             return;
         }
 
-        const fragment = document.createDocumentFragment();
+        // For infinite scroll, use simpler approach - preload then render immediately
+        try {
+            // Preload new images in background
+            await this.imagePreloader.preloadGalleryImages(images, images.length, (loaded, total) => {
+                console.log(`Preloaded ${loaded}/${total} additional images`);
+            });
 
-        images.forEach(image => {
-            const galleryItem = this.createGalleryItem(image);
-            fragment.appendChild(galleryItem);
-        });
+            // Render with loaded class (no animation for infinite scroll)
+            const fragment = document.createDocumentFragment();
+            images.forEach(image => {
+                const galleryItem = this.createGalleryItem(image);
+                galleryItem.classList.add('loaded'); // Skip animation for infinite scroll
+                fragment.appendChild(galleryItem);
+            });
 
-        this.galleryContainer.appendChild(fragment);
+            this.galleryContainer.appendChild(fragment);
+
+        } catch (error) {
+            console.error('Error preloading additional images:', error);
+            // Fallback to immediate rendering
+            const fragment = document.createDocumentFragment();
+            images.forEach(image => {
+                const galleryItem = this.createGalleryItem(image);
+                galleryItem.classList.add('loaded');
+                fragment.appendChild(galleryItem);
+            });
+            this.galleryContainer.appendChild(fragment);
+        }
     }
 
     /**
-     * Render the gallery with images
+     * Render the gallery with images using preloading and cascading animation
      * @param {Array} images - Array of image objects
      */
-    renderGallery(images) {
+    async renderGallery(images) {
         if (!images || images.length === 0) {
             this.showEmptyState();
             return;
         }
 
+        // Show skeleton placeholders immediately
+        this.renderSkeletonGrid(images.length);
+
+        try {
+            // Preload images in the background
+            const priority = this.calculatePriorityImages();
+            await this.imagePreloader.preloadGalleryImages(images, priority, (loaded, total) => {
+                console.log(`Preloaded ${loaded}/${total} images`);
+            });
+
+            // Replace skeletons with real images using cascading animation
+            await this.renderImagesWithCascade(images);
+
+        } catch (error) {
+            console.error('Error rendering gallery with preloading:', error);
+            // Fallback to immediate rendering without preloading
+            this.renderGalleryImmediate(images);
+        }
+    }
+
+    /**
+     * Render skeleton placeholders immediately
+     * @param {number} count - Number of skeleton items to render
+     */
+    renderSkeletonGrid(count) {
+        const fragment = document.createDocumentFragment();
+
+        for (let i = 0; i < count; i++) {
+            const skeletonItem = document.createElement('div');
+            skeletonItem.className = 'gallery-item';
+            skeletonItem.dataset.skeletonIndex = i;
+
+            const skeleton = document.createElement('div');
+            skeleton.className = 'gallery-item-skeleton';
+            
+            skeletonItem.appendChild(skeleton);
+            fragment.appendChild(skeletonItem);
+        }
+
+        this.galleryContainer.appendChild(fragment);
+    }
+
+    /**
+     * Calculate number of priority images based on viewport and zoom level
+     * @returns {number} Number of priority images to load first
+     */
+    calculatePriorityImages() {
+        // Estimate visible images based on zoom level and viewport
+        const baseImages = this.currentZoom * 2; // 2 rows worth
+        const mobileMultiplier = window.innerWidth <= 768 ? 1.5 : 1;
+        return Math.ceil(baseImages * mobileMultiplier);
+    }
+
+    /**
+     * Render images with cascading animation, replacing skeletons
+     * @param {Array} images - Array of image objects
+     */
+    async renderImagesWithCascade(images) {
+        const skeletonItems = this.galleryContainer.querySelectorAll('[data-skeleton-index]');
+        
+        // Check if user prefers reduced motion
+        const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        
+        if (prefersReducedMotion) {
+            // No animation - replace all at once
+            images.forEach((image, index) => {
+                if (skeletonItems[index]) {
+                    this.replaceSkeletonWithImage(skeletonItems[index], image);
+                }
+            });
+            return;
+        }
+
+        // Calculate grid dimensions for cascading animation
+        const gridInfo = this.calculateGridDimensions();
+        
+        // Group images by rows for wave animation
+        const imageRows = this.groupImagesByRows(images, gridInfo.columns);
+        
+        // Animate each row with staggered timing
+        for (let rowIndex = 0; rowIndex < imageRows.length; rowIndex++) {
+            const row = imageRows[rowIndex];
+            const rowDelay = rowIndex * 150; // 150ms between rows
+            
+            // Animate items in this row with internal stagger
+            row.forEach((image, colIndex) => {
+                const globalIndex = rowIndex * gridInfo.columns + colIndex;
+                const itemDelay = rowDelay + (colIndex * 50); // 50ms between items in row
+                
+                setTimeout(() => {
+                    if (skeletonItems[globalIndex]) {
+                        this.replaceSkeletonWithImage(skeletonItems[globalIndex], image, true);
+                    }
+                }, itemDelay);
+            });
+        }
+    }
+
+    /**
+     * Replace skeleton with actual image
+     * @param {HTMLElement} skeletonItem - Skeleton element to replace
+     * @param {Object} image - Image object
+     * @param {boolean} animate - Whether to animate the replacement
+     */
+    replaceSkeletonWithImage(skeletonItem, image, animate = false) {
+        // Create the real gallery item
+        const galleryItem = this.createGalleryItem(image);
+        
+        if (animate) {
+            // Add animation class
+            galleryItem.classList.add('animate-in');
+            
+            // Remove animation class after animation completes
+            setTimeout(() => {
+                galleryItem.classList.remove('animate-in');
+                galleryItem.classList.add('loaded');
+            }, 600); // Match CSS animation duration
+        } else {
+            galleryItem.classList.add('loaded');
+        }
+        
+        // Replace skeleton with real item
+        skeletonItem.parentNode.replaceChild(galleryItem, skeletonItem);
+    }
+
+    /**
+     * Calculate current grid dimensions
+     * @returns {Object} Grid information
+     */
+    calculateGridDimensions() {
+        const containerWidth = this.galleryContainer.offsetWidth;
+        const gap = 20; // Default gap from CSS
+        
+        // Estimate columns based on zoom level and container width
+        let columns = this.currentZoom;
+        
+        // Adjust for mobile
+        if (window.innerWidth <= 768) {
+            const minItemWidth = 150; // From mobile CSS
+            columns = Math.floor(containerWidth / (minItemWidth + gap));
+        }
+        
+        return {
+            columns: Math.max(1, columns),
+            gap: gap
+        };
+    }
+
+    /**
+     * Group images into rows for animation
+     * @param {Array} images - Array of image objects
+     * @param {number} columns - Number of columns in grid
+     * @returns {Array<Array>} Array of rows, each containing image objects
+     */
+    groupImagesByRows(images, columns) {
+        const rows = [];
+        
+        for (let i = 0; i < images.length; i += columns) {
+            const row = images.slice(i, i + columns);
+            rows.push(row);
+        }
+        
+        return rows;
+    }
+
+    /**
+     * Fallback rendering without preloading (immediate)
+     * @param {Array} images - Array of image objects
+     */
+    renderGalleryImmediate(images) {
+        // Clear any skeletons
+        this.clearGallery();
+        
         const fragment = document.createDocumentFragment();
 
         images.forEach(image => {
             const galleryItem = this.createGalleryItem(image);
+            galleryItem.classList.add('loaded'); // Skip animation
             fragment.appendChild(galleryItem);
         });
 
@@ -243,7 +444,7 @@ class Gallery {
         const img = document.createElement('img');
         img.className = 'gallery-item-image';
         img.src = image.thumbnailUrl;
-        img.alt = image.title;
+        img.alt = image.description || 'Photo';
         img.loading = 'lazy'; // Lazy loading for performance
 
         // Handle image load errors
@@ -262,7 +463,7 @@ class Gallery {
         // Add keyboard accessibility
         item.setAttribute('tabindex', '0');
         item.setAttribute('role', 'button');
-        item.setAttribute('aria-label', `View ${image.title} in fullscreen`);
+        item.setAttribute('aria-label', `View ${image.description || 'photo'} in fullscreen`);
 
         item.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' || e.key === ' ') {
