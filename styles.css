@@ -5,6 +5,28 @@
     box-sizing: border-box;
 }
 
+html {
+    scroll-behavior: smooth;
+}
+
+/* Custom faster smooth scrolling */
+@media (prefers-reduced-motion: no-preference) {
+    html {
+        scroll-behavior: auto;
+    }
+    
+    * {
+        scroll-behavior: smooth;
+        scroll-padding-top: 2rem;
+    }
+}
+
+/* Override for even faster scrolling */
+html, body {
+    scroll-behavior: smooth;
+    scroll-snap-type: y proximity;
+}
+
 body {
     font-family: 'Helvetica Neue', Arial, sans-serif;
     background-color: #a8a8a8;
@@ -863,6 +885,24 @@ body.exposure-3 .modal {
 /* Fix text visibility for exposure-0 */
 body.exposure-0 .modal-metadata {
     color: #333;
+}
+
+/* Fix text visibility for exposure--1 */
+body.exposure--1 .modal-metadata {
+    color: #000;
+}
+
+/* Fix title color for dark exposures */
+body.exposure--3 #modal-description {
+    color: #ccc;
+}
+
+body.exposure--2 #modal-description {
+    color: #ccc;
+}
+
+body.exposure--1 #modal-description {
+    color: #ccc;
 }
 
 .metadata-item::before {

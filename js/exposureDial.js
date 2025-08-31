@@ -76,12 +76,10 @@ class ExposureDial {
         let newExposure = this.currentExposure;
         
         switch(e.key) {
-            case 'ArrowUp':
             case 'ArrowRight':
                 e.preventDefault();
                 newExposure = Math.min(3, this.currentExposure + 1);
                 break;
-            case 'ArrowDown':
             case 'ArrowLeft':
                 e.preventDefault();
                 newExposure = Math.max(-3, this.currentExposure - 1);

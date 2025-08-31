@@ -51,11 +51,23 @@ class Gallery {
             });
         }
 
-        // Keyboard controls for zoom
+        // Initialize scroll state tracking
+        this.scrollState = {
+            isScrolling: false,
+            scrollDirection: 0,
+            lastScrollTime: 0
+        };
+
+        // Keyboard controls for zoom and enhanced scrolling
         document.addEventListener('keydown', (e) => {
             // Only handle keys when no input is focused
             if (document.activeElement.tagName === 'INPUT' || 
                 document.activeElement.tagName === 'TEXTAREA') {
+                return;
+            }
+
+            // Don't handle scrolling when modal is open
+            if (window.app && window.app.modal && window.app.modal.isModalOpen()) {
                 return;
             }
 
@@ -70,6 +82,21 @@ class Gallery {
                     e.preventDefault();
                     this.zoomIn();
                     break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    this.handleScrollKey(-200, e.repeat);
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    this.handleScrollKey(200, e.repeat);
+                    break;
+            }
+        });
+
+        // Handle key release to stop continuous scrolling
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                this.scrollState.isScrolling = false;
             }
         });
 
@@ -414,6 +441,55 @@ class Gallery {
 
         console.log(`Zoom level: ${this.currentZoom} columns`);
     }
+
+    /**
+     * Handle scroll key press with improved repeat behavior
+     * @param {number} distance - Distance to scroll in pixels
+     * @param {boolean} isRepeat - Whether this is a key repeat event
+     */
+    handleScrollKey(distance, isRepeat) {
+        const now = Date.now();
+        
+        if (!isRepeat) {
+            // First key press - use smooth scrolling with full distance
+            this.scrollState.isScrolling = true;
+            this.scrollState.scrollDirection = distance;
+            this.scrollState.lastScrollTime = now;
+            this.scrollByDistance(distance);
+        } else {
+            // Key repeat - use faster, smaller increments for responsive hold-to-scroll
+            const timeSinceLastScroll = now - this.scrollState.lastScrollTime;
+            
+            // Use instant scrolling for key repeats to feel more responsive
+            if (timeSinceLastScroll > 16) { // ~60fps throttling
+                const currentScrollY = window.pageYOffset || document.documentElement.scrollTop;
+                const scrollIncrement = Math.sign(distance) * 50; // Smaller increments for smooth hold
+                const targetScrollY = Math.max(0, currentScrollY + scrollIncrement);
+                
+                window.scrollTo({
+                    top: targetScrollY,
+                    behavior: 'instant' // Use instant for key repeats
+                });
+                
+                this.scrollState.lastScrollTime = now;
+            }
+        }
+    }
+
+    /**
+     * Scroll the page by a specific distance
+     * @param {number} distance - Distance to scroll in pixels (negative for up, positive for down)
+     */
+    scrollByDistance(distance) {
+        const currentScrollY = window.pageYOffset || document.documentElement.scrollTop;
+        const targetScrollY = Math.max(0, currentScrollY + distance);
+        
+        window.scrollTo({
+            top: targetScrollY,
+            behavior: 'smooth'
+        });
+    }
+
 }
 
 // Export for use in other modules
