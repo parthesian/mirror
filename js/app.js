@@ -41,8 +41,7 @@ class PhotoGalleryApp {
             this.gallery = new Gallery(this.imageService);
             this.modal = new Modal(this.imageService);
             
-            // Enable mobile swipe support
-            this.modal.addSwipeSupport();
+            // Swipe support is already enabled in modal constructor
             
             // Set up global error handling
             this.setupErrorHandling();

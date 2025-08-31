@@ -1819,19 +1819,22 @@ body.exposure-3 .btn-secondary:hover {
         overflow-y: auto;
         align-items: stretch;
         justify-content: flex-start;
+        /* Enable smooth scrolling on mobile */
+        -webkit-overflow-scrolling: touch;
+        scroll-behavior: smooth;
     }
     
     .modal-image-container {
         max-width: 100%;
         height: auto;
-        flex: none;
+        flex: 0 0 auto; /* Don't grow or shrink, use natural size */
         order: 1;
         margin-bottom: 1rem;
     }
     
     #modal-image {
         max-width: 100%;
-        max-height: 50vh;
+        max-height: 60vh; /* Increased from 50vh to give more space for image */
         width: auto;
         height: auto;
     }
@@ -1841,8 +1844,10 @@ body.exposure-3 .btn-secondary:hover {
         width: 100%;
         text-align: center;
         padding: 1rem 0;
-        flex: none;
+        flex: 0 0 auto; /* Don't grow or shrink, use natural size */
         order: 2;
+        /* Ensure metadata is always visible and scrollable */
+        min-height: auto;
     }
     
     #modal-description,
@@ -1871,7 +1876,7 @@ body.exposure-3 .btn-secondary:hover {
     /* Mobile modal image adjustments */
     #modal-image {
         max-width: 95vw;
-        max-height: 45vh;
+        max-height: 50vh; /* Increased from 45vh to give more space for image while ensuring metadata is visible */
     }
     
     .modal-content {
