@@ -7,7 +7,13 @@ class Gallery {
         this.galleryContainer = document.getElementById('gallery-container');
         this.loadingElement = document.getElementById('loading');
         this.errorElement = document.getElementById('error-message');
-        this.refreshBtn = document.getElementById('refresh-btn');
+        this.zoomInBtn = document.getElementById('zoom-in-btn');
+        this.zoomOutBtn = document.getElementById('zoom-out-btn');
+        
+        // Zoom state
+        this.currentZoom = 6; // Default 6 images per row
+        this.minZoom = 2;
+        this.maxZoom = 6;
         
         this.init();
     }
@@ -24,16 +30,24 @@ class Gallery {
      * Bind event listeners
      */
     bindEvents() {
-        // Refresh button
-        this.refreshBtn.addEventListener('click', () => {
-            this.loadImages();
-        });
-
         // Upload button
         const uploadBtn = document.getElementById('upload-btn');
         if (uploadBtn) {
             uploadBtn.addEventListener('click', () => {
                 document.dispatchEvent(new CustomEvent('openUploadModal'));
+            });
+        }
+
+        // Zoom buttons
+        if (this.zoomInBtn) {
+            this.zoomInBtn.addEventListener('click', () => {
+                this.zoomIn();
+            });
+        }
+
+        if (this.zoomOutBtn) {
+            this.zoomOutBtn.addEventListener('click', () => {
+                this.zoomOut();
             });
         }
 
@@ -46,6 +60,9 @@ class Gallery {
         window.addEventListener('scroll', this.throttle(() => {
             this.handleScroll();
         }, 200));
+
+        // Initialize zoom state
+        this.updateZoomState();
     }
 
     /**
@@ -330,6 +347,50 @@ class Gallery {
         this.getGalleryItems().forEach(item => {
             item.classList.remove('highlighted');
         });
+    }
+
+    /**
+     * Zoom in (reduce number of columns)
+     */
+    zoomIn() {
+        if (this.currentZoom > this.minZoom) {
+            this.currentZoom--;
+            this.updateZoomState();
+        }
+    }
+
+    /**
+     * Zoom out (increase number of columns)
+     */
+    zoomOut() {
+        if (this.currentZoom < this.maxZoom) {
+            this.currentZoom++;
+            this.updateZoomState();
+        }
+    }
+
+    /**
+     * Update the zoom state and apply CSS classes
+     */
+    updateZoomState() {
+        // Remove all existing zoom classes
+        for (let i = 1; i <= 6; i++) {
+            this.galleryContainer.classList.remove(`zoom-${i}`);
+        }
+
+        // Add current zoom class
+        this.galleryContainer.classList.add(`zoom-${this.currentZoom}`);
+
+        // Update button states
+        if (this.zoomInBtn) {
+            this.zoomInBtn.disabled = this.currentZoom <= this.minZoom;
+        }
+
+        if (this.zoomOutBtn) {
+            this.zoomOutBtn.disabled = this.currentZoom >= this.maxZoom;
+        }
+
+        console.log(`Zoom level: ${this.currentZoom} columns`);
     }
 }
 

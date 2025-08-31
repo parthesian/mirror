@@ -68,11 +68,12 @@ body {
     top: 2rem;
     right: 2rem;
     display: flex;
-    gap: 1rem;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.5rem;
 }
 
-.upload-btn,
-.refresh-btn {
+.upload-btn {
     background: transparent;
     color: #666;
     border: 1px solid #999;
@@ -87,11 +88,50 @@ body {
     justify-content: center;
 }
 
-.upload-btn:hover,
-.refresh-btn:hover {
+.upload-btn:hover {
     color: #333;
     border-color: #333;
     transform: scale(1.05);
+}
+
+.zoom-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.zoom-btn {
+    background: transparent;
+    color: #666;
+    border: 1px solid #999;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+}
+
+.zoom-btn:hover {
+    color: #333;
+    border-color: #333;
+    transform: scale(1.05);
+}
+
+.zoom-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.zoom-btn:disabled:hover {
+    color: #666;
+    border-color: #999;
+    transform: none;
 }
 
 /* Main content */
@@ -129,6 +169,37 @@ body {
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 20px;
     padding: 2rem 0;
+}
+
+/* Zoom level classes */
+.gallery-container.zoom-1 {
+    grid-template-columns: 1fr;
+    gap: 30px;
+}
+
+.gallery-container.zoom-2 {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 25px;
+}
+
+.gallery-container.zoom-3 {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 22px;
+}
+
+.gallery-container.zoom-4 {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+}
+
+.gallery-container.zoom-5 {
+    grid-template-columns: repeat(5, 1fr);
+    gap: 18px;
+}
+
+.gallery-container.zoom-6 {
+    grid-template-columns: repeat(6, 1fr);
+    gap: 15px;
 }
 
 /* Gallery item - Minimal styling */
@@ -586,11 +657,27 @@ body {
         right: 1.5rem;
     }
     
+    /* Hide zoom controls on mobile */
+    .zoom-controls {
+        display: none;
+    }
+    
     .main-content {
         padding: 1rem;
     }
     
     .gallery-container {
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 15px;
+    }
+    
+    /* Override zoom classes on mobile - always use responsive grid */
+    .gallery-container.zoom-1,
+    .gallery-container.zoom-2,
+    .gallery-container.zoom-3,
+    .gallery-container.zoom-4,
+    .gallery-container.zoom-5,
+    .gallery-container.zoom-6 {
         grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
         gap: 15px;
     }
