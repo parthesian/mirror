@@ -51,6 +51,28 @@ class Gallery {
             });
         }
 
+        // Keyboard controls for zoom
+        document.addEventListener('keydown', (e) => {
+            // Only handle keys when no input is focused
+            if (document.activeElement.tagName === 'INPUT' || 
+                document.activeElement.tagName === 'TEXTAREA') {
+                return;
+            }
+
+            switch(e.key) {
+                case '-':
+                    e.preventDefault();
+                    if (e.shiftKey) return; // Ignore underscore
+                    this.zoomOut();
+                    break;
+                case '=':
+                case '+':
+                    e.preventDefault();
+                    this.zoomIn();
+                    break;
+            }
+        });
+
         // Listen for photo uploaded event
         document.addEventListener('photoUploaded', () => {
             this.loadImages();

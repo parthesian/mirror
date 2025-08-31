@@ -69,8 +69,488 @@ body {
     right: 2rem;
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
+    align-items: center;
     gap: 0.5rem;
+}
+
+/* Exposure Dial Styles - Now positioned on the left */
+.exposure-dial-left {
+    position: absolute;
+    top: 2rem;
+    left: 2rem;
+}
+
+.dial-container {
+    width: 48px;
+    height: 48px;
+    position: relative;
+    cursor: pointer;
+}
+
+.dial-face {
+    width: 100%;
+    height: 100%;
+    border: 1px solid #999;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #f0f0f0 0%, #e0e0e0 50%, #d0d0d0 100%);
+    position: relative;
+    transition: all 0.3s ease;
+    box-shadow: 
+        inset 0 1px 3px rgba(0, 0, 0, 0.1),
+        0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.dial-face:hover {
+    border-color: #333;
+    box-shadow: 
+        inset 0 1px 3px rgba(0, 0, 0, 0.15),
+        0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+.dial-markings {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+}
+
+.dial-mark {
+    position: absolute;
+    font-size: 6px;
+    font-weight: bold;
+    color: #333;
+    transform-origin: center;
+    width: 12px;
+    height: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.dial-mark:hover {
+    color: #000;
+    transform: scale(1.1);
+}
+
+.dial-mark.active {
+    color: #000;
+    font-weight: 900;
+}
+
+/* Position dial marks around the circle */
+.dial-mark[data-value="0"] {
+    top: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.dial-mark[data-value="1"] {
+    top: 6px;
+    right: 6px;
+    transform: rotate(45deg);
+}
+
+.dial-mark[data-value="2"] {
+    top: 50%;
+    right: 2px;
+    transform: translateY(-50%) rotate(90deg);
+}
+
+.dial-mark[data-value="3"] {
+    bottom: 6px;
+    right: 6px;
+    transform: rotate(135deg);
+}
+
+.dial-mark[data-value="-1"] {
+    top: 6px;
+    left: 6px;
+    transform: rotate(-45deg);
+}
+
+.dial-mark[data-value="-2"] {
+    top: 50%;
+    left: 2px;
+    transform: translateY(-50%) rotate(-90deg);
+}
+
+.dial-mark[data-value="-3"] {
+    bottom: 6px;
+    left: 6px;
+    transform: rotate(-135deg);
+}
+
+
+/* Dial face rotation for each exposure value */
+.exposure-dial-left[data-exposure="0"] .dial-face {
+    transform: rotate(0deg);
+}
+
+.exposure-dial-left[data-exposure="1"] .dial-face {
+    transform: rotate(-45deg);
+}
+
+.exposure-dial-left[data-exposure="2"] .dial-face {
+    transform: rotate(-90deg);
+}
+
+.exposure-dial-left[data-exposure="3"] .dial-face {
+    transform: rotate(-135deg);
+}
+
+.exposure-dial-left[data-exposure="-1"] .dial-face {
+    transform: rotate(45deg);
+}
+
+.exposure-dial-left[data-exposure="-2"] .dial-face {
+    transform: rotate(90deg);
+}
+
+.exposure-dial-left[data-exposure="-3"] .dial-face {
+    transform: rotate(135deg);
+}
+
+/* Default dial colors (exposure-0) */
+body.exposure-0 .dial-face {
+    background: linear-gradient(135deg, #c8c8c8 0%, #b8b8b8 50%, #a8a8a8 100%);
+    border-color: #999999;
+}
+
+body.exposure-0 .dial-mark {
+    color: #666666;
+}
+
+body.exposure-0 .dial-mark:hover,
+body.exposure-0 .dial-mark.active {
+    color: #333333;
+}
+
+/* Dial color themes for different exposures */
+body.exposure--3 .dial-face {
+    background: linear-gradient(135deg, #333333 0%, #222222 50%, #111111 100%);
+    border-color: #666666;
+}
+
+body.exposure--3 .dial-mark {
+    color: #cccccc;
+}
+
+body.exposure--3 .dial-mark:hover,
+body.exposure--3 .dial-mark.active {
+    color: #ffffff;
+}
+
+body.exposure--2 .dial-face {
+    background: linear-gradient(135deg, #555555 0%, #444444 50%, #333333 100%);
+    border-color: #777777;
+}
+
+body.exposure--2 .dial-mark {
+    color: #cccccc;
+}
+
+body.exposure--2 .dial-mark:hover,
+body.exposure--2 .dial-mark.active {
+    color: #ffffff;
+}
+
+body.exposure--1 .dial-face {
+    background: linear-gradient(135deg, #888888 0%, #777777 50%, #666666 100%);
+    border-color: #999999;
+}
+
+body.exposure--1 .dial-mark {
+    color: #333333;
+}
+
+body.exposure--1 .dial-mark:hover,
+body.exposure--1 .dial-mark.active {
+    color: #000000;
+}
+
+body.exposure-1 .dial-face {
+    background: linear-gradient(135deg, #dddddd 0%, #cccccc 50%, #bbbbbb 100%);
+    border-color: #aaaaaa;
+}
+
+body.exposure-1 .dial-mark {
+    color: #666666;
+}
+
+body.exposure-1 .dial-mark:hover,
+body.exposure-1 .dial-mark.active {
+    color: #000000;
+}
+
+body.exposure-2 .dial-face {
+    background: linear-gradient(135deg, #f5f5f5 0%, #eeeeee 50%, #e0e0e0 100%);
+    border-color: #cccccc;
+}
+
+body.exposure-2 .dial-mark {
+    color: #666666;
+}
+
+body.exposure-2 .dial-mark:hover,
+body.exposure-2 .dial-mark.active {
+    color: #000000;
+}
+
+body.exposure-3 .dial-face {
+    background: linear-gradient(135deg, #ffffff 0%, #f8f8f8 50%, #f0f0f0 100%);
+    border-color: #dddddd;
+}
+
+body.exposure-3 .dial-mark {
+    color: #666666;
+}
+
+body.exposure-3 .dial-mark:hover,
+body.exposure-3 .dial-mark.active {
+    color: #000000;
+}
+
+/* Exposure Theme Classes */
+body.exposure--3 {
+    background-color: #000000;
+    color: #ffffff;
+}
+
+body.exposure--3 .header {
+    background-color: #000000;
+    color: #ffffff;
+}
+
+body.exposure--3 .nav-link {
+    color: #cccccc;
+}
+
+body.exposure--3 .nav-link:hover,
+body.exposure--3 .nav-link.active {
+    color: #ffffff;
+}
+
+body.exposure--3 .nav-link.active::after {
+    background-color: #ffffff;
+}
+
+body.exposure--2 {
+    background-color: #333333;
+    color: #ffffff;
+}
+
+body.exposure--2 .header {
+    background-color: #333333;
+    color: #ffffff;
+}
+
+body.exposure--2 .nav-link {
+    color: #cccccc;
+}
+
+body.exposure--2 .nav-link:hover,
+body.exposure--2 .nav-link.active {
+    color: #ffffff;
+}
+
+body.exposure--2 .nav-link.active::after {
+    background-color: #ffffff;
+}
+
+body.exposure--1 {
+    background-color: #666666;
+    color: #000000;
+}
+
+body.exposure--1 .header {
+    background-color: #666666;
+    color: #000000;
+}
+
+body.exposure--1 .nav-link {
+    color: #333333;
+}
+
+body.exposure--1 .nav-link:hover,
+body.exposure--1 .nav-link.active {
+    color: #000000;
+}
+
+body.exposure--1 .nav-link.active::after {
+    background-color: #000000;
+}
+
+body.exposure-0 {
+    background-color: #a8a8a8;
+    color: #333333;
+}
+
+body.exposure-0 .header {
+    background-color: #a8a8a8;
+    color: #333333;
+}
+
+body.exposure-0 .nav-link {
+    color: #666666;
+}
+
+body.exposure-0 .nav-link:hover,
+body.exposure-0 .nav-link.active {
+    color: #333333;
+}
+
+body.exposure-0 .nav-link.active::after {
+    background-color: #333333;
+}
+
+body.exposure-1 {
+    background-color: #cccccc;
+    color: #000000;
+}
+
+body.exposure-1 .header {
+    background-color: #cccccc;
+    color: #000000;
+}
+
+body.exposure-1 .nav-link {
+    color: #666666;
+}
+
+body.exposure-1 .nav-link:hover,
+body.exposure-1 .nav-link.active {
+    color: #000000;
+}
+
+body.exposure-1 .nav-link.active::after {
+    background-color: #000000;
+}
+
+body.exposure-2 {
+    background-color: #e8e8e8;
+    color: #000000;
+}
+
+body.exposure-2 .header {
+    background-color: #e8e8e8;
+    color: #000000;
+}
+
+body.exposure-2 .nav-link {
+    color: #666666;
+}
+
+body.exposure-2 .nav-link:hover,
+body.exposure-2 .nav-link.active {
+    color: #000000;
+}
+
+body.exposure-2 .nav-link.active::after {
+    background-color: #000000;
+}
+
+body.exposure-3 {
+    background-color: #ffffff;
+    color: #000000;
+}
+
+body.exposure-3 .header {
+    background-color: #ffffff;
+    color: #000000;
+}
+
+body.exposure-3 .nav-link {
+    color: #666666;
+}
+
+body.exposure-3 .nav-link:hover,
+body.exposure-3 .nav-link.active {
+    color: #000000;
+}
+
+body.exposure-3 .nav-link.active::after {
+    background-color: #000000;
+}
+
+/* Update button and control colors for different exposures */
+body.exposure--3 .upload-btn,
+body.exposure--3 .zoom-btn,
+body.exposure--3 .close-btn,
+body.exposure--3 .nav-btn {
+    color: #cccccc;
+    border-color: #666666;
+}
+
+body.exposure--3 .upload-btn:hover,
+body.exposure--3 .zoom-btn:hover,
+body.exposure--3 .close-btn:hover,
+body.exposure--3 .nav-btn:hover {
+    color: #ffffff;
+    border-color: #ffffff;
+}
+
+body.exposure--2 .upload-btn,
+body.exposure--2 .zoom-btn,
+body.exposure--2 .close-btn,
+body.exposure--2 .nav-btn {
+    color: #cccccc;
+    border-color: #666666;
+}
+
+body.exposure--2 .upload-btn:hover,
+body.exposure--2 .zoom-btn:hover,
+body.exposure--2 .close-btn:hover,
+body.exposure--2 .nav-btn:hover {
+    color: #ffffff;
+    border-color: #ffffff;
+}
+
+body.exposure--1 .upload-btn,
+body.exposure--1 .zoom-btn,
+body.exposure--1 .close-btn,
+body.exposure--1 .nav-btn {
+    color: #333333;
+    border-color: #999999;
+}
+
+body.exposure--1 .upload-btn:hover,
+body.exposure--1 .zoom-btn:hover,
+body.exposure--1 .close-btn:hover,
+body.exposure--1 .nav-btn:hover {
+    color: #000000;
+    border-color: #000000;
+}
+
+/* Modal background colors for different exposures */
+body.exposure--3 .modal {
+    background: rgba(0, 0, 0, 0.98);
+}
+
+body.exposure--2 .modal {
+    background: rgba(51, 51, 51, 0.98);
+}
+
+body.exposure--1 .modal {
+    background: rgba(102, 102, 102, 0.98);
+}
+
+body.exposure-0 .modal {
+    background: rgba(168, 168, 168, 0.98);
+}
+
+body.exposure-1 .modal {
+    background: rgba(204, 204, 204, 0.98);
+}
+
+body.exposure-2 .modal {
+    background: rgba(232, 232, 232, 0.98);
+}
+
+body.exposure-3 .modal {
+    background: rgba(255, 255, 255, 0.98);
 }
 
 .upload-btn {
@@ -96,7 +576,7 @@ body {
 
 .zoom-controls {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     gap: 0.25rem;
 }
 
@@ -414,6 +894,70 @@ body {
     letter-spacing: 0.05em;
 }
 
+/* Upload modal background colors for different exposures */
+body.exposure--3 .upload-modal-content {
+    background: rgba(51, 51, 51, 0.95);
+    color: #ffffff;
+}
+
+body.exposure--3 .upload-modal-content h2 {
+    color: #ffffff;
+}
+
+body.exposure--2 .upload-modal-content {
+    background: rgba(85, 85, 85, 0.95);
+    color: #ffffff;
+}
+
+body.exposure--2 .upload-modal-content h2 {
+    color: #ffffff;
+}
+
+body.exposure--1 .upload-modal-content {
+    background: rgba(136, 136, 136, 0.95);
+    color: #000000;
+}
+
+body.exposure--1 .upload-modal-content h2 {
+    color: #000000;
+}
+
+body.exposure-0 .upload-modal-content {
+    background: rgba(200, 200, 200, 0.95);
+    color: #333333;
+}
+
+body.exposure-0 .upload-modal-content h2 {
+    color: #333333;
+}
+
+body.exposure-1 .upload-modal-content {
+    background: rgba(230, 230, 230, 0.95);
+    color: #000000;
+}
+
+body.exposure-1 .upload-modal-content h2 {
+    color: #000000;
+}
+
+body.exposure-2 .upload-modal-content {
+    background: rgba(245, 245, 245, 0.95);
+    color: #000000;
+}
+
+body.exposure-2 .upload-modal-content h2 {
+    color: #000000;
+}
+
+body.exposure-3 .upload-modal-content {
+    background: rgba(255, 255, 255, 0.95);
+    color: #000000;
+}
+
+body.exposure-3 .upload-modal-content h2 {
+    color: #000000;
+}
+
 .upload-form {
     padding: 1.5rem;
 }
@@ -451,6 +995,147 @@ body {
 .form-group textarea:focus {
     outline: none;
     border-color: #666;
+}
+
+/* Form element colors for different exposures */
+body.exposure--3 .form-group label {
+    color: #cccccc;
+}
+
+body.exposure--3 .form-group input[type="text"],
+body.exposure--3 .form-group input[type="password"],
+body.exposure--3 .form-group input[type="date"],
+body.exposure--3 .form-group textarea {
+    background: rgba(85, 85, 85, 0.9);
+    border-color: #666666;
+    color: #ffffff;
+}
+
+body.exposure--3 .form-group input[type="text"]:focus,
+body.exposure--3 .form-group input[type="password"]:focus,
+body.exposure--3 .form-group input[type="date"]:focus,
+body.exposure--3 .form-group textarea:focus {
+    border-color: #999999;
+}
+
+body.exposure--2 .form-group label {
+    color: #cccccc;
+}
+
+body.exposure--2 .form-group input[type="text"],
+body.exposure--2 .form-group input[type="password"],
+body.exposure--2 .form-group input[type="date"],
+body.exposure--2 .form-group textarea {
+    background: rgba(102, 102, 102, 0.9);
+    border-color: #777777;
+    color: #ffffff;
+}
+
+body.exposure--2 .form-group input[type="text"]:focus,
+body.exposure--2 .form-group input[type="password"]:focus,
+body.exposure--2 .form-group input[type="date"]:focus,
+body.exposure--2 .form-group textarea:focus {
+    border-color: #aaaaaa;
+}
+
+body.exposure--1 .form-group label {
+    color: #333333;
+}
+
+body.exposure--1 .form-group input[type="text"],
+body.exposure--1 .form-group input[type="password"],
+body.exposure--1 .form-group input[type="date"],
+body.exposure--1 .form-group textarea {
+    background: rgba(170, 170, 170, 0.9);
+    border-color: #999999;
+    color: #000000;
+}
+
+body.exposure--1 .form-group input[type="text"]:focus,
+body.exposure--1 .form-group input[type="password"]:focus,
+body.exposure--1 .form-group input[type="date"]:focus,
+body.exposure--1 .form-group textarea:focus {
+    border-color: #666666;
+}
+
+body.exposure-0 .form-group label {
+    color: #333333;
+}
+
+body.exposure-0 .form-group input[type="text"],
+body.exposure-0 .form-group input[type="password"],
+body.exposure-0 .form-group input[type="date"],
+body.exposure-0 .form-group textarea {
+    background: rgba(220, 220, 220, 0.9);
+    border-color: #cccccc;
+    color: #333333;
+}
+
+body.exposure-0 .form-group input[type="text"]:focus,
+body.exposure-0 .form-group input[type="password"]:focus,
+body.exposure-0 .form-group input[type="date"]:focus,
+body.exposure-0 .form-group textarea:focus {
+    border-color: #666666;
+}
+
+body.exposure-1 .form-group label {
+    color: #000000;
+}
+
+body.exposure-1 .form-group input[type="text"],
+body.exposure-1 .form-group input[type="password"],
+body.exposure-1 .form-group input[type="date"],
+body.exposure-1 .form-group textarea {
+    background: rgba(240, 240, 240, 0.9);
+    border-color: #dddddd;
+    color: #000000;
+}
+
+body.exposure-1 .form-group input[type="text"]:focus,
+body.exposure-1 .form-group input[type="password"]:focus,
+body.exposure-1 .form-group input[type="date"]:focus,
+body.exposure-1 .form-group textarea:focus {
+    border-color: #666666;
+}
+
+body.exposure-2 .form-group label {
+    color: #000000;
+}
+
+body.exposure-2 .form-group input[type="text"],
+body.exposure-2 .form-group input[type="password"],
+body.exposure-2 .form-group input[type="date"],
+body.exposure-2 .form-group textarea {
+    background: rgba(250, 250, 250, 0.9);
+    border-color: #eeeeee;
+    color: #000000;
+}
+
+body.exposure-2 .form-group input[type="text"]:focus,
+body.exposure-2 .form-group input[type="password"]:focus,
+body.exposure-2 .form-group input[type="date"]:focus,
+body.exposure-2 .form-group textarea:focus {
+    border-color: #666666;
+}
+
+body.exposure-3 .form-group label {
+    color: #000000;
+}
+
+body.exposure-3 .form-group input[type="text"],
+body.exposure-3 .form-group input[type="password"],
+body.exposure-3 .form-group input[type="date"],
+body.exposure-3 .form-group textarea {
+    background: rgba(255, 255, 255, 0.9);
+    border-color: #ffffff;
+    color: #000000;
+}
+
+body.exposure-3 .form-group input[type="text"]:focus,
+body.exposure-3 .form-group input[type="password"]:focus,
+body.exposure-3 .form-group input[type="date"]:focus,
+body.exposure-3 .form-group textarea:focus {
+    border-color: #666666;
 }
 
 /* Custom file input styling */
@@ -497,6 +1182,126 @@ body {
 
 .file-status-icon.selected {
     color: #666;
+}
+
+/* File input box colors for different exposures */
+body.exposure--3 .file-input-box {
+    background: rgba(85, 85, 85, 0.9);
+    border-color: #666666;
+}
+
+body.exposure--3 .file-input-box:hover {
+    border-color: #999999;
+}
+
+body.exposure--3 .file-status-icon {
+    color: #cccccc;
+}
+
+body.exposure--3 .file-status-icon.selected {
+    color: #ffffff;
+}
+
+body.exposure--2 .file-input-box {
+    background: rgba(102, 102, 102, 0.9);
+    border-color: #777777;
+}
+
+body.exposure--2 .file-input-box:hover {
+    border-color: #aaaaaa;
+}
+
+body.exposure--2 .file-status-icon {
+    color: #cccccc;
+}
+
+body.exposure--2 .file-status-icon.selected {
+    color: #ffffff;
+}
+
+body.exposure--1 .file-input-box {
+    background: rgba(170, 170, 170, 0.9);
+    border-color: #999999;
+}
+
+body.exposure--1 .file-input-box:hover {
+    border-color: #666666;
+}
+
+body.exposure--1 .file-status-icon {
+    color: #666666;
+}
+
+body.exposure--1 .file-status-icon.selected {
+    color: #333333;
+}
+
+body.exposure-0 .file-input-box {
+    background: rgba(220, 220, 220, 0.9);
+    border-color: #cccccc;
+}
+
+body.exposure-0 .file-input-box:hover {
+    border-color: #666666;
+}
+
+body.exposure-0 .file-status-icon {
+    color: #999999;
+}
+
+body.exposure-0 .file-status-icon.selected {
+    color: #666666;
+}
+
+body.exposure-1 .file-input-box {
+    background: rgba(240, 240, 240, 0.9);
+    border-color: #dddddd;
+}
+
+body.exposure-1 .file-input-box:hover {
+    border-color: #666666;
+}
+
+body.exposure-1 .file-status-icon {
+    color: #999999;
+}
+
+body.exposure-1 .file-status-icon.selected {
+    color: #666666;
+}
+
+body.exposure-2 .file-input-box {
+    background: rgba(250, 250, 250, 0.9);
+    border-color: #eeeeee;
+}
+
+body.exposure-2 .file-input-box:hover {
+    border-color: #666666;
+}
+
+body.exposure-2 .file-status-icon {
+    color: #999999;
+}
+
+body.exposure-2 .file-status-icon.selected {
+    color: #666666;
+}
+
+body.exposure-3 .file-input-box {
+    background: rgba(255, 255, 255, 0.9);
+    border-color: #ffffff;
+}
+
+body.exposure-3 .file-input-box:hover {
+    border-color: #666666;
+}
+
+body.exposure-3 .file-status-icon {
+    color: #999999;
+}
+
+body.exposure-3 .file-status-icon.selected {
+    color: #666666;
 }
 
 .file-input-wrapper:focus-within .file-input-box {
@@ -586,6 +1391,161 @@ body {
 .btn-secondary:hover {
     background: rgba(0, 0, 0, 0.05);
     border-color: #666;
+}
+
+/* Button colors for different exposures */
+body.exposure--3 .btn-primary {
+    background: #888888;
+    color: #ffffff;
+    border-color: #888888;
+}
+
+body.exposure--3 .btn-primary:hover {
+    background: #aaaaaa;
+    border-color: #aaaaaa;
+}
+
+body.exposure--3 .btn-secondary {
+    background: transparent;
+    color: #cccccc;
+    border-color: #666666;
+}
+
+body.exposure--3 .btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: #cccccc;
+}
+
+body.exposure--2 .btn-primary {
+    background: #777777;
+    color: #ffffff;
+    border-color: #777777;
+}
+
+body.exposure--2 .btn-primary:hover {
+    background: #999999;
+    border-color: #999999;
+}
+
+body.exposure--2 .btn-secondary {
+    background: transparent;
+    color: #cccccc;
+    border-color: #777777;
+}
+
+body.exposure--2 .btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: #cccccc;
+}
+
+body.exposure--1 .btn-primary {
+    background: #555555;
+    color: #ffffff;
+    border-color: #555555;
+}
+
+body.exposure--1 .btn-primary:hover {
+    background: #333333;
+    border-color: #333333;
+}
+
+body.exposure--1 .btn-secondary {
+    background: transparent;
+    color: #333333;
+    border-color: #999999;
+}
+
+body.exposure--1 .btn-secondary:hover {
+    background: rgba(0, 0, 0, 0.1);
+    border-color: #333333;
+}
+
+body.exposure-0 .btn-primary {
+    background: #666666;
+    color: #ffffff;
+    border-color: #666666;
+}
+
+body.exposure-0 .btn-primary:hover {
+    background: #333333;
+    border-color: #333333;
+}
+
+body.exposure-0 .btn-secondary {
+    background: transparent;
+    color: #666666;
+    border-color: #cccccc;
+}
+
+body.exposure-0 .btn-secondary:hover {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: #666666;
+}
+
+body.exposure-1 .btn-primary {
+    background: #555555;
+    color: #ffffff;
+    border-color: #555555;
+}
+
+body.exposure-1 .btn-primary:hover {
+    background: #333333;
+    border-color: #333333;
+}
+
+body.exposure-1 .btn-secondary {
+    background: transparent;
+    color: #666666;
+    border-color: #dddddd;
+}
+
+body.exposure-1 .btn-secondary:hover {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: #666666;
+}
+
+body.exposure-2 .btn-primary {
+    background: #444444;
+    color: #ffffff;
+    border-color: #444444;
+}
+
+body.exposure-2 .btn-primary:hover {
+    background: #222222;
+    border-color: #222222;
+}
+
+body.exposure-2 .btn-secondary {
+    background: transparent;
+    color: #666666;
+    border-color: #eeeeee;
+}
+
+body.exposure-2 .btn-secondary:hover {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: #666666;
+}
+
+body.exposure-3 .btn-primary {
+    background: #333333;
+    color: #ffffff;
+    border-color: #333333;
+}
+
+body.exposure-3 .btn-primary:hover {
+    background: #111111;
+    border-color: #111111;
+}
+
+body.exposure-3 .btn-secondary {
+    background: transparent;
+    color: #666666;
+    border-color: #ffffff;
+}
+
+body.exposure-3 .btn-secondary:hover {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: #666666;
 }
 
 .upload-progress {
