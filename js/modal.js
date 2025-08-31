@@ -50,6 +50,7 @@ class Modal {
      */
     init() {
         this.bindEvents();
+        this.addSwipeSupport();
     }
 
     /**

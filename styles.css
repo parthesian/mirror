@@ -1794,19 +1794,20 @@ body.exposure-3 .btn-secondary:hover {
         gap: 15px;
     }
     
-    .close-btn,
+    /* Hide navigation buttons on mobile in modal */
     .nav-btn {
+        display: none !important;
+    }
+    
+    /* Position close button above image container on mobile */
+    .close-btn {
+        position: static;
         width: 35px;
         height: 35px;
         font-size: 1rem;
-    }
-    
-    .prev-btn {
-        left: 1rem;
-    }
-    
-    .next-btn {
-        right: 1rem;
+        align-self: flex-end;
+        margin-bottom: 1rem;
+        order: 0;
     }
     
     /* Mobile modal - make scrollable and reorganize layout */
@@ -1849,7 +1850,7 @@ body.exposure-3 .btn-secondary:hover {
         text-align: center;
     }
     
-    /* Globe container adjustments for mobile */
+    /* Center globe container on mobile */
     .globe-container {
         align-self: center;
         margin: 1rem auto;
@@ -1979,6 +1980,13 @@ body.exposure-3 .btn-secondary:hover {
     overflow: hidden; /* hide canvas edges and ensure circular crop */
     position: relative;
     align-self: flex-end; /* Position in bottom-right of modal info panel */
+}
+
+/* Center globe on mobile */
+@media (max-width: 768px) {
+    .globe-container {
+        align-self: center !important;
+    }
 }
 
 /* Ensure canvas fills the container and maintains aspect ratio */
