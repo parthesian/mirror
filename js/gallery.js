@@ -23,6 +23,10 @@ class Gallery {
         this.isAnimating = false;
         this.animationQueue = [];
         
+        // Globe preloading
+        this.globeService = new GlobeService();
+        this.globePreloaded = false;
+        
         this.init();
     }
 
@@ -381,10 +385,16 @@ class Gallery {
             // Replace skeletons with real images using cascading animation
             await this.renderImagesWithCascade(images);
 
+            // Trigger globe preloading after images are rendered
+            this.triggerGlobePreloading(images);
+
         } catch (error) {
             console.error('Error rendering gallery with preloading:', error);
             // Fallback to immediate rendering without preloading
             this.renderGalleryImmediate(images);
+            
+            // Still try to preload globe even with fallback rendering
+            this.triggerGlobePreloading(images);
         }
     }
 
@@ -865,6 +875,43 @@ class Gallery {
             top: targetScrollY,
             behavior: 'smooth'
         });
+    }
+
+    /**
+     * Trigger globe preloading in background after images are loaded
+     * @param {Array} images - Array of loaded images
+     */
+    triggerGlobePreloading(images) {
+        // Only preload once and only if we have images
+        if (this.globePreloaded || !images || images.length === 0) {
+            return;
+        }
+
+        // Get the first image's location for preloading
+        const firstImage = images[0];
+        if (!firstImage || !firstImage.location) {
+            console.log('Gallery: No location available for globe preloading');
+            return;
+        }
+
+        // Start preloading in background with a small delay to not interfere with image rendering
+        setTimeout(async () => {
+            try {
+                const preloadContainer = document.getElementById('globe-preload-container');
+                if (!preloadContainer) {
+                    console.warn('Gallery: Globe preload container not found');
+                    return;
+                }
+
+                console.log('Gallery: Starting globe preloading for first image location:', firstImage.location);
+                await this.globeService.preloadGlobe(preloadContainer, firstImage.location);
+                this.globePreloaded = true;
+                console.log('Gallery: Globe preloading completed successfully');
+            } catch (error) {
+                console.error('Gallery: Failed to preload globe:', error);
+                this.globePreloaded = false;
+            }
+        }, 500); // Small delay to let image animations settle
     }
 
 }

@@ -16,6 +16,10 @@ class GlobeService {
     this.instances = new Map();
     // Texture: use local texture from public folder
     this.textureUrl = 'public/earth_atmos_2048.jpg';
+    // Preloading state
+    this.preloadContainer = null;
+    this.isPreloaded = false;
+    this.preloadLocation = null;
   }
 
   // Lazy-load Three.js from CDN (once)
@@ -224,6 +228,107 @@ class GlobeService {
     return state;
   }
 
+  /**
+   * Preload globe in background with specified location
+   * @param {HTMLElement} preloadContainer - Hidden container for preloading
+   * @param {string} locationString - Location to initialize globe with
+   */
+  async preloadGlobe(preloadContainer, locationString) {
+    try {
+      console.log('GlobeService: Starting globe preload for location:', locationString);
+      
+      this.preloadContainer = preloadContainer;
+      this.preloadLocation = locationString;
+      
+      // Initialize globe in the preload container
+      await this.createOrUpdate(preloadContainer, locationString);
+      
+      this.isPreloaded = true;
+      console.log('GlobeService: Globe preloaded successfully');
+    } catch (error) {
+      console.error('GlobeService: Failed to preload globe:', error);
+      this.isPreloaded = false;
+    }
+  }
+
+  /**
+   * Check if globe is preloaded and ready
+   * @returns {boolean} Whether globe is preloaded
+   */
+  isGlobePreloaded() {
+    return this.isPreloaded && this.preloadContainer && this.instances.has(this.preloadContainer);
+  }
+
+  /**
+   * Transfer preloaded globe to target container or create new one
+   * @param {HTMLElement} targetContainer - Target container for the globe
+   * @param {string} locationString - Location to display
+   */
+  async transferOrCreate(targetContainer, locationString) {
+    try {
+      // If we have a preloaded globe, try to transfer it
+      if (this.isGlobePreloaded()) {
+        console.log('GlobeService: Transferring preloaded globe to modal');
+        
+        const preloadedInstance = this.instances.get(this.preloadContainer);
+        if (preloadedInstance && !preloadedInstance.disposed) {
+          // Move the renderer DOM element to the target container
+          targetContainer.innerHTML = '';
+          targetContainer.appendChild(preloadedInstance.renderer.domElement);
+          
+          // Update the instance mapping
+          this.instances.delete(this.preloadContainer);
+          this.instances.set(targetContainer, preloadedInstance);
+          
+          // Update target rotation for new location if different
+          const countryKey = this._parseCountry(locationString);
+          if (countryKey) {
+            const coords = this._countryLatLng(countryKey);
+            if (coords) {
+              const THREE = await this._loadThree();
+              const target = this._rotationForLatLng(coords.lat, coords.lon, THREE);
+              preloadedInstance.targetRotation = target;
+            }
+          }
+          
+          // Update resize handler for new container
+          if (preloadedInstance.onResize) {
+            window.removeEventListener('resize', preloadedInstance.onResize);
+          }
+          
+          preloadedInstance.onResize = () => {
+            if (preloadedInstance.disposed) return;
+            const w = targetContainer.clientWidth || 160;
+            const h = targetContainer.clientHeight || 160;
+            preloadedInstance.renderer.setSize(w, h);
+            preloadedInstance.camera.aspect = w / h;
+            preloadedInstance.camera.updateProjectionMatrix();
+          };
+          window.addEventListener('resize', preloadedInstance.onResize);
+          
+          // Ensure target container is visible
+          targetContainer.classList.remove('hidden');
+          
+          // Clear preload state
+          this.preloadContainer = null;
+          this.isPreloaded = false;
+          this.preloadLocation = null;
+          
+          console.log('GlobeService: Globe transferred successfully');
+          return;
+        }
+      }
+      
+      // Fallback to creating new globe instance
+      console.log('GlobeService: No preloaded globe available, creating new instance');
+      await this.createOrUpdate(targetContainer, locationString);
+    } catch (error) {
+      console.error('GlobeService: Failed to transfer globe, falling back to new instance:', error);
+      // Final fallback
+      await this.createOrUpdate(targetContainer, locationString);
+    }
+  }
+
   destroy(containerEl) {
     const state = this.instances.get(containerEl);
     if (!state) {
@@ -261,6 +366,13 @@ class GlobeService {
     }
 
     this.instances.delete(containerEl);
+    
+    // Clear preload state if this was the preload container
+    if (containerEl === this.preloadContainer) {
+      this.preloadContainer = null;
+      this.isPreloaded = false;
+      this.preloadLocation = null;
+    }
   }
 }
 

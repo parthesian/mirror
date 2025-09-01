@@ -260,7 +260,10 @@ class Modal {
             
             // Hide by default; GlobeService will unhide on success
             this.globeContainer.classList.add('hidden');
-            await this.globeService.createOrUpdate(this.globeContainer, location);
+            
+            // Try to use preloaded globe or create new one
+            await this.globeService.transferOrCreate(this.globeContainer, location);
+            
             // If unsupported or failed, container will likely be empty; keep hidden
             if (!this.globeContainer.firstChild) {
                 this.globeContainer.classList.add('hidden');
