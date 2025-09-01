@@ -30,6 +30,8 @@ class Gallery {
      * Initialize the gallery
      */
     init() {
+        // Load saved zoom preference before binding events
+        this.loadZoomPreference();
         this.bindEvents();
         this.loadImages();
     }
@@ -778,7 +780,43 @@ class Gallery {
             this.zoomOutBtn.disabled = this.currentZoom >= this.maxZoom;
         }
 
+        // Store zoom preference
+        this.storeZoomPreference(this.currentZoom);
+
         console.log(`Zoom level: ${this.currentZoom} columns`);
+    }
+
+    /**
+     * Store zoom preference in localStorage
+     * @param {number} value - Zoom level to store
+     */
+    storeZoomPreference(value) {
+        try {
+            localStorage.setItem('mirror-zoom', value.toString());
+        } catch (e) {
+            console.warn('Could not store zoom preference:', e);
+        }
+    }
+
+    /**
+     * Load zoom preference from localStorage
+     * @returns {boolean} Whether a preference was loaded
+     */
+    loadZoomPreference() {
+        try {
+            const stored = localStorage.getItem('mirror-zoom');
+            if (stored !== null) {
+                const value = parseInt(stored);
+                if (value >= this.minZoom && value <= this.maxZoom) {
+                    this.currentZoom = value;
+                    console.log(`Loaded zoom preference: ${value} columns`);
+                    return true;
+                }
+            }
+        } catch (e) {
+            console.warn('Could not load zoom preference:', e);
+        }
+        return false;
     }
 
     /**

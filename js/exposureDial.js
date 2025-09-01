@@ -15,8 +15,11 @@ class ExposureDial {
         this.dialElement = document.getElementById('exposure-dial');
         this.dialMarks = this.dialElement.querySelectorAll('.dial-mark');
         
-        // Set initial state
-        this.setExposure(0);
+        // Load saved preference first, or use default if none exists
+        if (!this.loadExposurePreference()) {
+            // Only set default if no preference was loaded
+            this.setExposure(0);
+        }
         
         // Add event listeners
         this.addEventListeners();
@@ -235,9 +238,6 @@ class ExposureDial {
 // Initialize exposure dial when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     window.exposureDial = new ExposureDial();
-    
-    // Load saved preference
-    window.exposureDial.loadExposurePreference();
 });
 
 // Export for module systems
