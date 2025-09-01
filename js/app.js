@@ -87,28 +87,48 @@ class PhotoGalleryApp {
                 top: 50%;
                 left: 50%;
                 transform: translate(-50%, -50%);
-                background: white;
+                background: rgba(255, 255, 255, 0.95);
                 padding: 2rem;
-                border-radius: 8px;
-                box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+                border-radius: 4px;
+                border: 1px solid #ccc;
+                backdrop-filter: blur(10px);
                 text-align: center;
                 max-width: 400px;
                 z-index: 9999;
+                font-family: 'Helvetica Neue', Arial, sans-serif;
             ">
-                <h3 style="color: #e74c3c; margin-bottom: 1rem;">
+                <h3 style="
+                    color: #333;
+                    margin-bottom: 1rem;
+                    font-size: 1.1rem;
+                    font-weight: 300;
+                    letter-spacing: 0.05em;
+                    text-transform: uppercase;
+                ">
                     Initialization Error
                 </h3>
-                <p style="margin-bottom: 1.5rem; color: #666;">
+                <p style="
+                    margin-bottom: 1.5rem;
+                    color: #666;
+                    font-size: 0.9rem;
+                    line-height: 1.4;
+                    font-weight: 300;
+                ">
                     Failed to initialize the photo gallery. Please refresh the page and try again.
                 </p>
                 <button onclick="window.location.reload()" style="
-                    background: #667eea;
+                    background: #666;
                     color: white;
-                    border: none;
+                    border: 1px solid #666;
                     padding: 0.75rem 1.5rem;
                     border-radius: 4px;
                     cursor: pointer;
-                ">
+                    font-size: 0.9rem;
+                    font-family: 'Helvetica Neue', Arial, sans-serif;
+                    letter-spacing: 0.02em;
+                    transition: all 0.3s ease;
+                " onmouseover="this.style.background='#333'; this.style.borderColor='#333';" 
+                   onmouseout="this.style.background='#666'; this.style.borderColor='#666';">
                     Refresh Page
                 </button>
             </div>
@@ -118,7 +138,7 @@ class PhotoGalleryApp {
                 left: 0;
                 width: 100%;
                 height: 100%;
-                background: rgba(0,0,0,0.5);
+                background: rgba(168, 168, 168, 0.8);
                 z-index: 9998;
             "></div>
         `;
@@ -137,40 +157,55 @@ class PhotoGalleryApp {
             position: fixed;
             top: 20px;
             right: 20px;
-            background: #e74c3c;
-            color: white;
+            background: rgba(255, 255, 255, 0.95);
+            color: #333;
             padding: 1rem 1.5rem;
             border-radius: 4px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border: 1px solid #ccc;
+            backdrop-filter: blur(10px);
             z-index: 10000;
             max-width: 300px;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            font-size: 0.9rem;
+            font-weight: 300;
             animation: slideIn 0.3s ease;
         `;
         
         errorNotification.innerHTML = `
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
-                <span>⚠️</span>
-                <span>${message}</span>
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <span style="color: #666; font-size: 1rem;">⚠</span>
+                <span style="flex: 1; line-height: 1.4;">${message}</span>
                 <button onclick="this.parentElement.parentElement.remove()" style="
-                    background: none;
-                    border: none;
-                    color: white;
+                    background: transparent;
+                    border: 1px solid #999;
+                    color: #666;
                     cursor: pointer;
-                    margin-left: auto;
-                    font-size: 1.2rem;
-                ">&times;</button>
+                    width: 24px;
+                    height: 24px;
+                    border-radius: 50%;
+                    font-size: 1rem;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    transition: all 0.3s ease;
+                    flex-shrink: 0;
+                " onmouseover="this.style.borderColor='#333'; this.style.color='#333';" 
+                   onmouseout="this.style.borderColor='#999'; this.style.color='#666';">&times;</button>
             </div>
         `;
         
-        // Add animation styles
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes slideIn {
-                from { transform: translateX(100%); opacity: 0; }
-                to { transform: translateX(0); opacity: 1; }
-            }
-        `;
-        document.head.appendChild(style);
+        // Add animation styles if not already present
+        if (!document.querySelector('#error-slide-animation')) {
+            const style = document.createElement('style');
+            style.id = 'error-slide-animation';
+            style.textContent = `
+                @keyframes slideIn {
+                    from { transform: translateX(100%); opacity: 0; }
+                    to { transform: translateX(0); opacity: 1; }
+                }
+            `;
+            document.head.appendChild(style);
+        }
         
         document.body.appendChild(errorNotification);
         
