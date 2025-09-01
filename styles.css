@@ -665,6 +665,109 @@ body.exposure-3 .modal {
     100% { transform: rotate(360deg); }
 }
 
+/* Scroll loading indicator */
+.scroll-loading {
+    text-align: center;
+    padding: 2rem;
+    margin: 2rem 0;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: all 0.3s ease;
+}
+
+.scroll-loading:not(.hidden) {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.scroll-loading-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+}
+
+.scroll-spinner {
+    width: 24px;
+    height: 24px;
+    border: 2px solid #ccc;
+    border-top: 2px solid #666;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.scroll-loading p {
+    margin: 0;
+    font-size: 0.9rem;
+    color: #666;
+    font-weight: 300;
+    letter-spacing: 0.05em;
+}
+
+/* Scroll loading indicator themes for different exposures */
+body.exposure--3 .scroll-spinner {
+    border-color: #555555;
+    border-top-color: #cccccc;
+}
+
+body.exposure--3 .scroll-loading p {
+    color: #cccccc;
+}
+
+body.exposure--2 .scroll-spinner {
+    border-color: #666666;
+    border-top-color: #cccccc;
+}
+
+body.exposure--2 .scroll-loading p {
+    color: #cccccc;
+}
+
+body.exposure--1 .scroll-spinner {
+    border-color: #999999;
+    border-top-color: #333333;
+}
+
+body.exposure--1 .scroll-loading p {
+    color: #333333;
+}
+
+body.exposure-0 .scroll-spinner {
+    border-color: #cccccc;
+    border-top-color: #666666;
+}
+
+body.exposure-0 .scroll-loading p {
+    color: #666666;
+}
+
+body.exposure-1 .scroll-spinner {
+    border-color: #dddddd;
+    border-top-color: #666666;
+}
+
+body.exposure-1 .scroll-loading p {
+    color: #666666;
+}
+
+body.exposure-2 .scroll-spinner {
+    border-color: #eeeeee;
+    border-top-color: #666666;
+}
+
+body.exposure-2 .scroll-loading p {
+    color: #666666;
+}
+
+body.exposure-3 .scroll-spinner {
+    border-color: #f0f0f0;
+    border-top-color: #666666;
+}
+
+body.exposure-3 .scroll-loading p {
+    color: #666666;
+}
+
 /* Gallery container - Clean grid layout */
 .gallery-container {
     display: grid;

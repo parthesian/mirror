@@ -6,6 +6,7 @@ class Gallery {
         this.imageService = imageService;
         this.galleryContainer = document.getElementById('gallery-container');
         this.loadingElement = document.getElementById('loading');
+        this.scrollLoadingElement = document.getElementById('scroll-loading');
         this.errorElement = document.getElementById('error-message');
         this.zoomInBtn = document.getElementById('zoom-in-btn');
         this.zoomOutBtn = document.getElementById('zoom-out-btn');
@@ -140,6 +141,29 @@ class Gallery {
     }
 
     /**
+     * Check if page needs more content to enable scrolling
+     * This handles the case where initial images don't fill the viewport
+     */
+    checkIfNeedsMoreContent() {
+        // Don't auto-load if we're already loading or if we're in the middle of an animation
+        if (this.imageService.isLoading || this.isAnimating) {
+            return;
+        }
+        
+        const windowHeight = window.innerHeight;
+        const documentHeight = document.documentElement.scrollHeight;
+        
+        // If document height is less than or equal to window height, we can't scroll
+        // Add a small buffer to account for any margins/padding
+        const needsMoreContent = documentHeight <= windowHeight + 50;
+        
+        if (needsMoreContent && this.imageService.hasMore) {
+            console.log('Page too short for scrolling, loading more images automatically...');
+            this.loadMoreImages();
+        }
+    }
+
+    /**
      * Throttle function to limit how often a function can be called
      * @param {Function} func - Function to throttle
      * @param {number} limit - Time limit in milliseconds
@@ -168,8 +192,13 @@ class Gallery {
             this.clearGallery();
 
             const images = await this.imageService.fetchImages();
-            this.renderGallery(images);
+            await this.renderGallery(images);
             this.hideLoading();
+            
+            // Check if we need more content to enable scrolling
+            setTimeout(() => {
+                this.checkIfNeedsMoreContent();
+            }, 100); // Small delay to ensure DOM is updated
         } catch (error) {
             console.error('Error loading images:', error);
             this.hideLoading();
@@ -183,22 +212,32 @@ class Gallery {
     async loadMoreImages() {
         try {
             console.log('Loading more images...');
+            this.showScrollLoading();
+            
             const newImages = await this.imageService.loadMorePhotos();
             
             if (newImages && newImages.length > 0) {
-                this.renderMoreImages(newImages);
+                await this.renderMoreImages(newImages);
                 console.log(`Loaded ${newImages.length} more images`);
+                
+                // Check if we still need more content after loading this batch
+                setTimeout(() => {
+                    this.checkIfNeedsMoreContent();
+                }, 500); // Longer delay to allow animations to complete
             } else {
                 console.log('No more images to load');
             }
+            
+            this.hideScrollLoading();
         } catch (error) {
             console.error('Error loading more images:', error);
+            this.hideScrollLoading();
             // Don't show error state for load more failures, just log it
         }
     }
 
     /**
-     * Render additional images and append to existing gallery
+     * Render additional images and append to existing gallery with cascading animation
      * @param {Array} images - Array of new image objects
      */
     async renderMoreImages(images) {
@@ -206,22 +245,18 @@ class Gallery {
             return;
         }
 
-        // For infinite scroll, use simpler approach - preload then render immediately
         try {
+            // First, create skeleton placeholders for the new images
+            const startIndex = this.galleryContainer.children.length;
+            this.renderSkeletonGridForMore(images.length, startIndex);
+
             // Preload new images in background
             await this.imagePreloader.preloadGalleryImages(images, images.length, (loaded, total) => {
                 console.log(`Preloaded ${loaded}/${total} additional images`);
             });
 
-            // Render with loaded class (no animation for infinite scroll)
-            const fragment = document.createDocumentFragment();
-            images.forEach(image => {
-                const galleryItem = this.createGalleryItem(image);
-                galleryItem.classList.add('loaded'); // Skip animation for infinite scroll
-                fragment.appendChild(galleryItem);
-            });
-
-            this.galleryContainer.appendChild(fragment);
+            // Use the same cascading animation system as initial load
+            await this.renderMoreImagesWithCascade(images, startIndex);
 
         } catch (error) {
             console.error('Error preloading additional images:', error);
@@ -234,6 +269,91 @@ class Gallery {
             });
             this.galleryContainer.appendChild(fragment);
         }
+    }
+
+    /**
+     * Render skeleton placeholders for additional images
+     * @param {number} count - Number of skeleton items to render
+     * @param {number} startIndex - Starting index for skeleton items
+     */
+    renderSkeletonGridForMore(count, startIndex) {
+        const fragment = document.createDocumentFragment();
+
+        for (let i = 0; i < count; i++) {
+            const skeletonItem = document.createElement('div');
+            skeletonItem.className = 'gallery-item';
+            skeletonItem.dataset.skeletonIndex = startIndex + i;
+
+            const skeleton = document.createElement('div');
+            skeleton.className = 'gallery-item-skeleton';
+            
+            skeletonItem.appendChild(skeleton);
+            fragment.appendChild(skeletonItem);
+        }
+
+        this.galleryContainer.appendChild(fragment);
+    }
+
+    /**
+     * Render additional images with cascading animation, replacing skeletons
+     * @param {Array} images - Array of image objects
+     * @param {number} startIndex - Starting index for the new images
+     */
+    async renderMoreImagesWithCascade(images, startIndex) {
+        const allSkeletonItems = this.galleryContainer.querySelectorAll('[data-skeleton-index]');
+        const newSkeletonItems = Array.from(allSkeletonItems).filter(item => {
+            const index = parseInt(item.dataset.skeletonIndex);
+            return index >= startIndex;
+        });
+        
+        // Check if user prefers reduced motion
+        const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        
+        if (prefersReducedMotion) {
+            // No animation - replace all at once
+            images.forEach((image, index) => {
+                if (newSkeletonItems[index]) {
+                    this.replaceSkeletonWithImage(newSkeletonItems[index], image);
+                }
+            });
+            return;
+        }
+
+        // Set animation state to prevent multiple loads
+        this.isAnimating = true;
+
+        // Calculate grid dimensions for cascading animation
+        const gridInfo = this.calculateGridDimensions();
+        
+        // Group images by rows for wave animation
+        const imageRows = this.groupImagesByRows(images, gridInfo.columns);
+        
+        // Calculate total animation duration
+        const totalRows = imageRows.length;
+        const totalAnimationTime = (totalRows * 100) + (gridInfo.columns * 30) + 600; // Row delays + item delays + animation duration
+        
+        // Animate each row with staggered timing (shorter delays for infinite scroll)
+        for (let rowIndex = 0; rowIndex < imageRows.length; rowIndex++) {
+            const row = imageRows[rowIndex];
+            const rowDelay = rowIndex * 100; // Faster animation for infinite scroll (100ms vs 150ms)
+            
+            // Animate items in this row with internal stagger
+            row.forEach((image, colIndex) => {
+                const globalIndex = rowIndex * gridInfo.columns + colIndex;
+                const itemDelay = rowDelay + (colIndex * 30); // Faster stagger (30ms vs 50ms)
+                
+                setTimeout(() => {
+                    if (newSkeletonItems[globalIndex]) {
+                        this.replaceSkeletonWithImage(newSkeletonItems[globalIndex], image, true);
+                    }
+                }, itemDelay);
+            });
+        }
+
+        // Clear animation state after all animations complete
+        setTimeout(() => {
+            this.isAnimating = false;
+        }, totalAnimationTime);
     }
 
     /**
@@ -542,6 +662,24 @@ class Gallery {
      */
     hideError() {
         this.errorElement.classList.add('hidden');
+    }
+
+    /**
+     * Show scroll loading indicator
+     */
+    showScrollLoading() {
+        if (this.scrollLoadingElement) {
+            this.scrollLoadingElement.classList.remove('hidden');
+        }
+    }
+
+    /**
+     * Hide scroll loading indicator
+     */
+    hideScrollLoading() {
+        if (this.scrollLoadingElement) {
+            this.scrollLoadingElement.classList.add('hidden');
+        }
     }
 
     /**
