@@ -1799,10 +1799,11 @@ body.exposure-3 .btn-secondary:hover {
         display: none !important;
     }
     
-    /* Mobile close button - sticky at top, always visible */
+    /* Mobile close button - fixed at top-right, always visible */
     .close-btn {
-        position: sticky;
-        top: 1rem; /* Stay 1rem from top of viewport */
+        position: fixed;
+        top: max(0.5rem, env(safe-area-inset-top, 0px)); /* Stay close to top edge, respect safe areas */
+        right: max(0.5rem, env(safe-area-inset-right, 0px)); /* Stay close to right edge, respect safe areas */
         width: 35px;
         height: 35px;
         min-width: 35px; /* Prevent squishing */
@@ -1810,10 +1811,8 @@ body.exposure-3 .btn-secondary:hover {
         font-size: 1rem;
         flex-shrink: 0; /* Prevent the button from shrinking */
         border-radius: 50% !important; /* Force circular shape */
-        align-self: flex-end; /* Align to the right */
-        margin-bottom: 1rem; /* Space below the button */
-        margin-right: -0.5rem; /* Move closer to the right edge */
         z-index: 1002; /* Ensure it stays above other content */
+        margin: 0; /* Remove margins since we're using fixed positioning */
     }
     
     /* Mobile modal - proper vertical flow with scrolling */
@@ -1835,7 +1834,7 @@ body.exposure-3 .btn-secondary:hover {
         max-width: 100%;
         height: auto;
         flex: 0 0 auto; /* Don't grow or shrink, use natural size */
-        margin-top: 0.5rem; /* Added padding above image */
+        margin-top: 3rem; /* Increased space above image to clear the X button */
         margin-bottom: 1rem; /* Space below image */
     }
     
