@@ -57,9 +57,10 @@ class GlobeService {
     if (s.includes('japan')) return 'japan';
     if (s.includes('france')) return 'france';
     if (s.includes('india')) return 'india';
+    if (s.includes('china')) return 'china';
 
     // If the string is exactly one of our names
-    if (['usa', 'japan', 'france', 'india'].includes(s.trim())) return s.trim();
+    if (['usa', 'japan', 'france', 'india', 'china'].includes(s.trim())) return s.trim();
 
     return null;
   }
@@ -75,6 +76,8 @@ class GlobeService {
         return { lat: 46.2276, lon: 2.2137 };
       case 'india':
         return { lat: 20.5937, lon: 78.9629 };
+      case 'china':
+        return { lat: 35.8617, lon: 104.1954};
       default:
         return null;
     }
