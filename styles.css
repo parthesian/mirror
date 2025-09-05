@@ -1126,38 +1126,35 @@ body.exposure--1 #modal-description {
     border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-/* Upload Modal Styles */
+/* Upload Modal Styles - Sleek floating design */
 .upload-modal-content {
-    max-width: 450px;
-    width: 90vw;
-    max-height: 95vh;
+    max-width: 520px;
+    width: 85vw;
+    max-height: 90vh;
     overflow-y: auto;
-    background: rgba(255, 255, 255, 0.95);
-    border-radius: 8px;
-    backdrop-filter: blur(10px);
+    background: transparent;
+    border-radius: 0;
+    backdrop-filter: none;
+    /* Hide scrollbars but keep functionality */
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
+}
+
+.upload-modal-content::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
 }
 
 .upload-modal-content h2 {
-    font-size: 1.3rem;
+    font-size: 1.1rem;
     margin-bottom: 1.5rem;
-    color: #333;
     text-align: center;
     font-weight: 300;
     letter-spacing: 0.05em;
+    opacity: 0.9;
 }
 
-/* Upload modal background colors for different exposures */
-body.exposure--3 .upload-modal-content {
-    background: rgba(51, 51, 51, 0.95);
-    color: #ffffff;
-}
-
+/* Upload modal text colors for different exposures */
 body.exposure--3 .upload-modal-content h2 {
-    color: #ffffff;
-}
-
-body.exposure--2 .upload-modal-content {
-    background: rgba(85, 85, 85, 0.95);
     color: #ffffff;
 }
 
@@ -1165,44 +1162,19 @@ body.exposure--2 .upload-modal-content h2 {
     color: #ffffff;
 }
 
-body.exposure--1 .upload-modal-content {
-    background: rgba(136, 136, 136, 0.95);
-    color: #000000;
-}
-
 body.exposure--1 .upload-modal-content h2 {
-    color: #000000;
-}
-
-body.exposure-0 .upload-modal-content {
-    background: rgba(200, 200, 200, 0.95);
-    color: #333333;
+    color: #ffffff;
 }
 
 body.exposure-0 .upload-modal-content h2 {
     color: #333333;
 }
 
-body.exposure-1 .upload-modal-content {
-    background: rgba(230, 230, 230, 0.95);
-    color: #000000;
-}
-
 body.exposure-1 .upload-modal-content h2 {
     color: #000000;
 }
 
-body.exposure-2 .upload-modal-content {
-    background: rgba(245, 245, 245, 0.95);
-    color: #000000;
-}
-
 body.exposure-2 .upload-modal-content h2 {
-    color: #000000;
-}
-
-body.exposure-3 .upload-modal-content {
-    background: rgba(255, 255, 255, 0.95);
     color: #000000;
 }
 
@@ -1215,16 +1187,18 @@ body.exposure-3 .upload-modal-content h2 {
 }
 
 .form-group {
-    margin-bottom: 1rem;
+    margin-bottom: 1.5rem;
+    position: relative;
 }
 
 .form-group label {
     display: block;
     margin-bottom: 0.5rem;
     font-weight: 300;
-    color: #333;
-    font-size: 0.9rem;
-    letter-spacing: 0.02em;
+    font-size: 0.8rem;
+    letter-spacing: 0.1em;
+    text-transform: lowercase;
+    opacity: 0.8;
 }
 
 .form-group input[type="text"],
@@ -1232,13 +1206,17 @@ body.exposure-3 .upload-modal-content h2 {
 .form-group input[type="date"],
 .form-group textarea {
     width: 100%;
-    padding: 0.75rem;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    font-size: 0.9rem;
+    padding: 0.8rem 1rem;
+    border: none;
+    border-radius: 10px;
+    font-size: 0.85rem;
     font-family: 'Helvetica Neue', Arial, sans-serif;
-    transition: border-color 0.3s ease;
-    background: rgba(255, 255, 255, 0.9);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(20px);
+    box-shadow: 
+        0 6px 24px rgba(0, 0, 0, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    position: relative;
 }
 
 .form-group input[type="text"]:focus,
@@ -1246,10 +1224,159 @@ body.exposure-3 .upload-modal-content h2 {
 .form-group input[type="date"]:focus,
 .form-group textarea:focus {
     outline: none;
-    border-color: #666;
+    transform: translateY(-2px);
+    box-shadow: 
+        0 12px 40px rgba(0, 0, 0, 0.15),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
-/* Form element colors for different exposures */
+.form-group input[type="text"]:hover,
+.form-group input[type="password"]:hover,
+.form-group input[type="date"]:hover,
+.form-group textarea:hover {
+    transform: translateY(-1px);
+    box-shadow: 
+        0 10px 36px rgba(0, 0, 0, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+/* Custom date input styling */
+.form-group input[type="date"] {
+    position: relative;
+    color-scheme: light;
+}
+
+.form-group input[type="date"]::-webkit-calendar-picker-indicator {
+    opacity: 0.6;
+    cursor: pointer;
+    transition: opacity 0.3s ease;
+}
+
+.form-group input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+}
+
+/* Custom calendar styling to match floating glass theme */
+.form-group input[type="date"]::-webkit-datetime-edit {
+    padding: 0;
+}
+
+.form-group input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+    padding: 0;
+}
+
+.form-group input[type="date"]::-webkit-datetime-edit-text {
+    padding: 0 0.2em;
+}
+
+.form-group input[type="date"]::-webkit-datetime-edit-month-field,
+.form-group input[type="date"]::-webkit-datetime-edit-day-field,
+.form-group input[type="date"]::-webkit-datetime-edit-year-field {
+    padding: 0 0.1em;
+}
+
+.form-group input[type="date"]::-webkit-inner-spin-button,
+.form-group input[type="date"]::-webkit-clear-button {
+    display: none;
+}
+
+/* Style the calendar popup for WebKit browsers */
+.form-group input[type="date"]::-webkit-calendar-picker-indicator {
+    background: transparent;
+    bottom: 0;
+    color: transparent;
+    cursor: pointer;
+    height: auto;
+    left: 0;
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: auto;
+}
+
+/* Advanced calendar popup styling - this targets the shadow DOM */
+input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.5) opacity(0.6);
+    transition: filter 0.3s ease;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    filter: invert(0.3) opacity(1);
+}
+
+/* Dark theme calendar indicators */
+body.exposure--3 input[type="date"]::-webkit-calendar-picker-indicator,
+body.exposure--2 input[type="date"]::-webkit-calendar-picker-indicator,
+body.exposure--1 input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1) opacity(0.6);
+}
+
+body.exposure--3 input[type="date"]::-webkit-calendar-picker-indicator:hover,
+body.exposure--2 input[type="date"]::-webkit-calendar-picker-indicator:hover,
+body.exposure--1 input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    filter: invert(1) opacity(1);
+}
+
+/* Custom calendar styling - Note: Limited browser support for styling calendar popup */
+/* This is a fallback approach using CSS custom properties */
+:root {
+    --calendar-bg: rgba(255, 255, 255, 0.95);
+    --calendar-text: #333333;
+    --calendar-border: rgba(255, 255, 255, 0.25);
+    --calendar-hover: rgba(255, 255, 255, 0.1);
+}
+
+/* Dark theme calendar variables */
+body.exposure--3 {
+    --calendar-bg: rgba(51, 51, 51, 0.95);
+    --calendar-text: #ffffff;
+    --calendar-border: rgba(255, 255, 255, 0.1);
+    --calendar-hover: rgba(255, 255, 255, 0.05);
+}
+
+body.exposure--2 {
+    --calendar-bg: rgba(85, 85, 85, 0.95);
+    --calendar-text: #ffffff;
+    --calendar-border: rgba(255, 255, 255, 0.15);
+    --calendar-hover: rgba(255, 255, 255, 0.08);
+}
+
+body.exposure--1 {
+    --calendar-bg: rgba(136, 136, 136, 0.95);
+    --calendar-text: #ffffff;
+    --calendar-border: rgba(255, 255, 255, 0.2);
+    --calendar-hover: rgba(255, 255, 255, 0.12);
+}
+
+body.exposure-0 {
+    --calendar-bg: rgba(200, 200, 200, 0.95);
+    --calendar-text: #333333;
+    --calendar-border: rgba(255, 255, 255, 0.25);
+    --calendar-hover: rgba(255, 255, 255, 0.15);
+}
+
+body.exposure-1 {
+    --calendar-bg: rgba(230, 230, 230, 0.95);
+    --calendar-text: #000000;
+    --calendar-border: rgba(255, 255, 255, 0.3);
+    --calendar-hover: rgba(255, 255, 255, 0.2);
+}
+
+body.exposure-2 {
+    --calendar-bg: rgba(245, 245, 245, 0.95);
+    --calendar-text: #000000;
+    --calendar-border: rgba(255, 255, 255, 0.35);
+    --calendar-hover: rgba(255, 255, 255, 0.25);
+}
+
+body.exposure-3 {
+    --calendar-bg: rgba(255, 255, 255, 0.95);
+    --calendar-text: #000000;
+    --calendar-border: rgba(0, 0, 0, 0.1);
+    --calendar-hover: rgba(0, 0, 0, 0.05);
+}
+
+/* Form element colors for different exposures - Floating glass effect */
 body.exposure--3 .form-group label {
     color: #cccccc;
 }
@@ -1258,16 +1385,13 @@ body.exposure--3 .form-group input[type="text"],
 body.exposure--3 .form-group input[type="password"],
 body.exposure--3 .form-group input[type="date"],
 body.exposure--3 .form-group textarea {
-    background: rgba(85, 85, 85, 0.9);
-    border-color: #666666;
+    background: rgba(255, 255, 255, 0.05);
     color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-body.exposure--3 .form-group input[type="text"]:focus,
-body.exposure--3 .form-group input[type="password"]:focus,
-body.exposure--3 .form-group input[type="date"]:focus,
-body.exposure--3 .form-group textarea:focus {
-    border-color: #999999;
+body.exposure--3 .form-group input[type="date"] {
+    color-scheme: dark;
 }
 
 body.exposure--2 .form-group label {
@@ -1278,36 +1402,30 @@ body.exposure--2 .form-group input[type="text"],
 body.exposure--2 .form-group input[type="password"],
 body.exposure--2 .form-group input[type="date"],
 body.exposure--2 .form-group textarea {
-    background: rgba(102, 102, 102, 0.9);
-    border-color: #777777;
+    background: rgba(255, 255, 255, 0.08);
     color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
-body.exposure--2 .form-group input[type="text"]:focus,
-body.exposure--2 .form-group input[type="password"]:focus,
-body.exposure--2 .form-group input[type="date"]:focus,
-body.exposure--2 .form-group textarea:focus {
-    border-color: #aaaaaa;
+body.exposure--2 .form-group input[type="date"] {
+    color-scheme: dark;
 }
 
 body.exposure--1 .form-group label {
-    color: #333333;
+    color: #ffffff;
 }
 
 body.exposure--1 .form-group input[type="text"],
 body.exposure--1 .form-group input[type="password"],
 body.exposure--1 .form-group input[type="date"],
 body.exposure--1 .form-group textarea {
-    background: rgba(170, 170, 170, 0.9);
-    border-color: #999999;
-    color: #000000;
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-body.exposure--1 .form-group input[type="text"]:focus,
-body.exposure--1 .form-group input[type="password"]:focus,
-body.exposure--1 .form-group input[type="date"]:focus,
-body.exposure--1 .form-group textarea:focus {
-    border-color: #666666;
+body.exposure--1 .form-group input[type="date"] {
+    color-scheme: dark;
 }
 
 body.exposure-0 .form-group label {
@@ -1318,16 +1436,9 @@ body.exposure-0 .form-group input[type="text"],
 body.exposure-0 .form-group input[type="password"],
 body.exposure-0 .form-group input[type="date"],
 body.exposure-0 .form-group textarea {
-    background: rgba(220, 220, 220, 0.9);
-    border-color: #cccccc;
+    background: rgba(255, 255, 255, 0.15);
     color: #333333;
-}
-
-body.exposure-0 .form-group input[type="text"]:focus,
-body.exposure-0 .form-group input[type="password"]:focus,
-body.exposure-0 .form-group input[type="date"]:focus,
-body.exposure-0 .form-group textarea:focus {
-    border-color: #666666;
+    border: 1px solid rgba(255, 255, 255, 0.25);
 }
 
 body.exposure-1 .form-group label {
@@ -1338,16 +1449,9 @@ body.exposure-1 .form-group input[type="text"],
 body.exposure-1 .form-group input[type="password"],
 body.exposure-1 .form-group input[type="date"],
 body.exposure-1 .form-group textarea {
-    background: rgba(240, 240, 240, 0.9);
-    border-color: #dddddd;
+    background: rgba(255, 255, 255, 0.2);
     color: #000000;
-}
-
-body.exposure-1 .form-group input[type="text"]:focus,
-body.exposure-1 .form-group input[type="password"]:focus,
-body.exposure-1 .form-group input[type="date"]:focus,
-body.exposure-1 .form-group textarea:focus {
-    border-color: #666666;
+    border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
 body.exposure-2 .form-group label {
@@ -1358,16 +1462,9 @@ body.exposure-2 .form-group input[type="text"],
 body.exposure-2 .form-group input[type="password"],
 body.exposure-2 .form-group input[type="date"],
 body.exposure-2 .form-group textarea {
-    background: rgba(250, 250, 250, 0.9);
-    border-color: #eeeeee;
+    background: rgba(255, 255, 255, 0.25);
     color: #000000;
-}
-
-body.exposure-2 .form-group input[type="text"]:focus,
-body.exposure-2 .form-group input[type="password"]:focus,
-body.exposure-2 .form-group input[type="date"]:focus,
-body.exposure-2 .form-group textarea:focus {
-    border-color: #666666;
+    border: 1px solid rgba(255, 255, 255, 0.35);
 }
 
 body.exposure-3 .form-group label {
@@ -1378,19 +1475,12 @@ body.exposure-3 .form-group input[type="text"],
 body.exposure-3 .form-group input[type="password"],
 body.exposure-3 .form-group input[type="date"],
 body.exposure-3 .form-group textarea {
-    background: rgba(255, 255, 255, 0.9);
-    border-color: #ffffff;
+    background: rgba(0, 0, 0, 0.05);
     color: #000000;
+    border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
-body.exposure-3 .form-group input[type="text"]:focus,
-body.exposure-3 .form-group input[type="password"]:focus,
-body.exposure-3 .form-group input[type="date"]:focus,
-body.exposure-3 .form-group textarea:focus {
-    border-color: #666666;
-}
-
-/* Custom file input styling */
+/* Custom file input styling - Floating glass effect */
 .file-input-wrapper {
     position: relative;
     width: 100%;
@@ -1410,40 +1500,43 @@ body.exposure-3 .form-group textarea:focus {
     align-items: center;
     justify-content: flex-end;
     width: 100%;
-    padding: 0.75rem;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    background: rgba(255, 255, 255, 0.9);
+    padding: 0.8rem 1rem;
+    border: none;
+    border-radius: 10px;
     cursor: pointer;
-    transition: border-color 0.3s ease;
-    font-size: 0.9rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    font-size: 0.85rem;
     font-family: 'Helvetica Neue', Arial, sans-serif;
-    min-height: 45px;
+    min-height: 48px;
+    backdrop-filter: blur(20px);
+    box-shadow: 
+        0 6px 24px rgba(0, 0, 0, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 .file-input-box:hover {
-    border-color: #666;
+    transform: translateY(-1px);
+    box-shadow: 
+        0 10px 36px rgba(0, 0, 0, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.15);
 }
 
 .file-status-icon {
-    color: #999;
     font-size: 1.2rem;
     font-weight: bold;
-    transition: color 0.3s ease;
+    transition: all 0.3s ease;
+    opacity: 0.6;
 }
 
 .file-status-icon.selected {
-    color: #666;
+    opacity: 1;
+    transform: scale(1.1);
 }
 
-/* File input box colors for different exposures */
+/* File input box colors for different exposures - Floating glass effect */
 body.exposure--3 .file-input-box {
-    background: rgba(85, 85, 85, 0.9);
-    border-color: #666666;
-}
-
-body.exposure--3 .file-input-box:hover {
-    border-color: #999999;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 body.exposure--3 .file-status-icon {
@@ -1455,12 +1548,8 @@ body.exposure--3 .file-status-icon.selected {
 }
 
 body.exposure--2 .file-input-box {
-    background: rgba(102, 102, 102, 0.9);
-    border-color: #777777;
-}
-
-body.exposure--2 .file-input-box:hover {
-    border-color: #aaaaaa;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 body.exposure--2 .file-status-icon {
@@ -1472,88 +1561,68 @@ body.exposure--2 .file-status-icon.selected {
 }
 
 body.exposure--1 .file-input-box {
-    background: rgba(170, 170, 170, 0.9);
-    border-color: #999999;
-}
-
-body.exposure--1 .file-input-box:hover {
-    border-color: #666666;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 body.exposure--1 .file-status-icon {
-    color: #666666;
+    color: #ffffff;
 }
 
 body.exposure--1 .file-status-icon.selected {
-    color: #333333;
+    color: #ffffff;
 }
 
 body.exposure-0 .file-input-box {
-    background: rgba(220, 220, 220, 0.9);
-    border-color: #cccccc;
-}
-
-body.exposure-0 .file-input-box:hover {
-    border-color: #666666;
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.25);
 }
 
 body.exposure-0 .file-status-icon {
-    color: #999999;
+    color: #333333;
 }
 
 body.exposure-0 .file-status-icon.selected {
-    color: #666666;
+    color: #333333;
 }
 
 body.exposure-1 .file-input-box {
-    background: rgba(240, 240, 240, 0.9);
-    border-color: #dddddd;
-}
-
-body.exposure-1 .file-input-box:hover {
-    border-color: #666666;
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
 body.exposure-1 .file-status-icon {
-    color: #999999;
+    color: #000000;
 }
 
 body.exposure-1 .file-status-icon.selected {
-    color: #666666;
+    color: #000000;
 }
 
 body.exposure-2 .file-input-box {
-    background: rgba(250, 250, 250, 0.9);
-    border-color: #eeeeee;
-}
-
-body.exposure-2 .file-input-box:hover {
-    border-color: #666666;
+    background: rgba(255, 255, 255, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.35);
 }
 
 body.exposure-2 .file-status-icon {
-    color: #999999;
+    color: #000000;
 }
 
 body.exposure-2 .file-status-icon.selected {
-    color: #666666;
+    color: #000000;
 }
 
 body.exposure-3 .file-input-box {
-    background: rgba(255, 255, 255, 0.9);
-    border-color: #ffffff;
-}
-
-body.exposure-3 .file-input-box:hover {
-    border-color: #666666;
+    background: rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 body.exposure-3 .file-status-icon {
-    color: #999999;
+    color: #000000;
 }
 
 body.exposure-3 .file-status-icon.selected {
-    color: #666666;
+    color: #000000;
 }
 
 .file-input-wrapper:focus-within .file-input-box {
@@ -1577,27 +1646,74 @@ body.exposure-3 .file-status-icon.selected {
 .preview-placeholder {
     width: 160px; /* Fixed width for 4:3 aspect ratio */
     height: 120px; /* Fixed height for 4:3 aspect ratio */
-    background-color: #f5f5f5;
-    border-radius: 4px;
+    border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
     overflow: hidden;
     position: relative;
     aspect-ratio: 4 / 3;
+    backdrop-filter: blur(20px);
+    box-shadow: 
+        0 6px 24px rgba(0, 0, 0, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.preview-placeholder:hover {
+    transform: translateY(-2px);
+    box-shadow: 
+        0 12px 40px rgba(0, 0, 0, 0.15),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .preview-placeholder img {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    border-radius: 4px;
+    border-radius: 12px;
     opacity: 0;
     transition: opacity 0.3s ease;
 }
 
 .preview-placeholder img[src]:not([src=""]) {
     opacity: 1;
+}
+
+/* Preview placeholder colors for different exposures */
+body.exposure--3 .preview-placeholder {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+body.exposure--2 .preview-placeholder {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+body.exposure--1 .preview-placeholder {
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+body.exposure-0 .preview-placeholder {
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+body.exposure-1 .preview-placeholder {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+body.exposure-2 .preview-placeholder {
+    background: rgba(255, 255, 255, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+body.exposure-3 .preview-placeholder {
+    background: rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .form-actions {
@@ -1608,196 +1724,124 @@ body.exposure-3 .file-status-icon.selected {
 }
 
 .btn {
-    padding: 0.75rem 1.5rem;
-    border-radius: 4px;
+    padding: 0.8rem 1.5rem;
+    border-radius: 10px;
     cursor: pointer;
-    font-size: 0.9rem;
-    transition: all 0.3s ease;
-    letter-spacing: 0.02em;
+    font-size: 0.8rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    letter-spacing: 0.1em;
+    text-transform: lowercase;
+    font-weight: 300;
+    border: none;
+    backdrop-filter: blur(20px);
+    box-shadow: 
+        0 6px 24px rgba(0, 0, 0, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
-.btn-primary {
-    background: #666;
-    color: white;
-    border: 1px solid #666;
-}
-
-.btn-primary:hover {
-    background: #333;
-    border-color: #333;
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 
+        0 12px 40px rgba(0, 0, 0, 0.15),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .btn-primary:disabled {
-    background: #ccc;
-    border-color: #ccc;
+    opacity: 0.5;
     cursor: not-allowed;
     transform: none;
 }
 
-.btn-secondary {
-    background: transparent;
-    color: #666;
-    border: 1px solid #ccc;
+.btn-primary:disabled:hover {
+    transform: none;
+    box-shadow: 
+        0 8px 32px rgba(0, 0, 0, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
-.btn-secondary:hover {
-    background: rgba(0, 0, 0, 0.05);
-    border-color: #666;
-}
-
-/* Button colors for different exposures */
+/* Button colors for different exposures - Floating glass effect */
 body.exposure--3 .btn-primary {
-    background: #888888;
+    background: rgba(255, 255, 255, 0.1);
     color: #ffffff;
-    border-color: #888888;
-}
-
-body.exposure--3 .btn-primary:hover {
-    background: #aaaaaa;
-    border-color: #aaaaaa;
+    border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 body.exposure--3 .btn-secondary {
-    background: transparent;
+    background: rgba(255, 255, 255, 0.05);
     color: #cccccc;
-    border-color: #666666;
-}
-
-body.exposure--3 .btn-secondary:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: #cccccc;
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 body.exposure--2 .btn-primary {
-    background: #777777;
+    background: rgba(255, 255, 255, 0.12);
     color: #ffffff;
-    border-color: #777777;
-}
-
-body.exposure--2 .btn-primary:hover {
-    background: #999999;
-    border-color: #999999;
+    border: 1px solid rgba(255, 255, 255, 0.25);
 }
 
 body.exposure--2 .btn-secondary {
-    background: transparent;
+    background: rgba(255, 255, 255, 0.08);
     color: #cccccc;
-    border-color: #777777;
-}
-
-body.exposure--2 .btn-secondary:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: #cccccc;
+    border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 body.exposure--1 .btn-primary {
-    background: #555555;
+    background: rgba(255, 255, 255, 0.15);
     color: #ffffff;
-    border-color: #555555;
-}
-
-body.exposure--1 .btn-primary:hover {
-    background: #333333;
-    border-color: #333333;
+    border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
 body.exposure--1 .btn-secondary {
-    background: transparent;
-    color: #333333;
-    border-color: #999999;
-}
-
-body.exposure--1 .btn-secondary:hover {
-    background: rgba(0, 0, 0, 0.1);
-    border-color: #333333;
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 body.exposure-0 .btn-primary {
-    background: #666666;
-    color: #ffffff;
-    border-color: #666666;
-}
-
-body.exposure-0 .btn-primary:hover {
-    background: #333333;
-    border-color: #333333;
+    background: rgba(255, 255, 255, 0.2);
+    color: #333333;
+    border: 1px solid rgba(255, 255, 255, 0.35);
 }
 
 body.exposure-0 .btn-secondary {
-    background: transparent;
-    color: #666666;
-    border-color: #cccccc;
-}
-
-body.exposure-0 .btn-secondary:hover {
-    background: rgba(0, 0, 0, 0.05);
-    border-color: #666666;
+    background: rgba(255, 255, 255, 0.15);
+    color: #333333;
+    border: 1px solid rgba(255, 255, 255, 0.25);
 }
 
 body.exposure-1 .btn-primary {
-    background: #555555;
-    color: #ffffff;
-    border-color: #555555;
-}
-
-body.exposure-1 .btn-primary:hover {
-    background: #333333;
-    border-color: #333333;
+    background: rgba(255, 255, 255, 0.25);
+    color: #000000;
+    border: 1px solid rgba(255, 255, 255, 0.4);
 }
 
 body.exposure-1 .btn-secondary {
-    background: transparent;
-    color: #666666;
-    border-color: #dddddd;
-}
-
-body.exposure-1 .btn-secondary:hover {
-    background: rgba(0, 0, 0, 0.05);
-    border-color: #666666;
+    background: rgba(255, 255, 255, 0.2);
+    color: #000000;
+    border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
 body.exposure-2 .btn-primary {
-    background: #444444;
-    color: #ffffff;
-    border-color: #444444;
-}
-
-body.exposure-2 .btn-primary:hover {
-    background: #222222;
-    border-color: #222222;
+    background: rgba(255, 255, 255, 0.3);
+    color: #000000;
+    border: 1px solid rgba(255, 255, 255, 0.45);
 }
 
 body.exposure-2 .btn-secondary {
-    background: transparent;
-    color: #666666;
-    border-color: #eeeeee;
-}
-
-body.exposure-2 .btn-secondary:hover {
-    background: rgba(0, 0, 0, 0.05);
-    border-color: #666666;
+    background: rgba(255, 255, 255, 0.25);
+    color: #000000;
+    border: 1px solid rgba(255, 255, 255, 0.35);
 }
 
 body.exposure-3 .btn-primary {
-    background: #333333;
-    color: #ffffff;
-    border-color: #333333;
-}
-
-body.exposure-3 .btn-primary:hover {
-    background: #111111;
-    border-color: #111111;
+    background: rgba(0, 0, 0, 0.1);
+    color: #000000;
+    border: 1px solid rgba(0, 0, 0, 0.2);
 }
 
 body.exposure-3 .btn-secondary {
-    background: transparent;
-    color: #666666;
-    border-color: #ffffff;
-}
-
-body.exposure-3 .btn-secondary:hover {
     background: rgba(0, 0, 0, 0.05);
-    border-color: #666666;
+    color: #000000;
+    border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .upload-progress {
@@ -2112,4 +2156,530 @@ body.exposure-3 .btn-secondary:hover {
     width: 100% !important;
     height: 100% !important;
     object-fit: cover; /* Ensure full coverage within circular container */
+}
+
+/* Custom Calendar Component Styles */
+.custom-calendar {
+    position: fixed;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 12px;
+    box-shadow: 
+        0 20px 60px rgba(0, 0, 0, 0.15),
+        0 8px 24px rgba(0, 0, 0, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    padding: 1rem;
+    width: auto; /* Will be set dynamically to match input width */
+    min-width: 280px;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-10px) scale(0.95);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 10001;
+}
+
+.custom-calendar.active {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0) scale(1);
+}
+
+.calendar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.calendar-month-year {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #333;
+    letter-spacing: 0.05em;
+}
+
+.calendar-nav-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 6px;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 0.8rem;
+    color: #333;
+    transition: all 0.2s ease;
+    backdrop-filter: blur(10px);
+}
+
+.calendar-nav-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: scale(1.05);
+}
+
+.calendar-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+    margin-bottom: 0.5rem;
+}
+
+.calendar-weekday {
+    text-align: center;
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: #666;
+    padding: 0.5rem 0;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.calendar-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+}
+
+.calendar-day {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    color: #333;
+    position: relative;
+}
+
+.calendar-day:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: scale(1.05);
+}
+
+.calendar-day.disabled {
+    color: #999;
+    cursor: not-allowed;
+    opacity: 0.4;
+}
+
+.calendar-day.disabled:hover {
+    background: transparent;
+    transform: none;
+}
+
+.calendar-day.selected {
+    background: rgba(255, 255, 255, 0.4);
+    color: #000;
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.calendar-day.today {
+    background: rgba(255, 255, 255, 0.2);
+    font-weight: 500;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.calendar-day.today.selected {
+    background: rgba(255, 255, 255, 0.5);
+    border-color: rgba(255, 255, 255, 0.6);
+}
+
+/* Calendar themes for different exposures */
+body.exposure--3 .custom-calendar {
+    background: rgba(51, 51, 51, 0.95);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+body.exposure--3 .calendar-header {
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+body.exposure--3 .calendar-month-year {
+    color: #ffffff;
+}
+
+body.exposure--3 .calendar-nav-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+}
+
+body.exposure--3 .calendar-nav-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+body.exposure--3 .calendar-weekday {
+    color: #cccccc;
+}
+
+body.exposure--3 .calendar-day {
+    color: #ffffff;
+}
+
+body.exposure--3 .calendar-day:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+body.exposure--3 .calendar-day.disabled {
+    color: #666;
+}
+
+body.exposure--3 .calendar-day.selected {
+    background: rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+}
+
+body.exposure--3 .calendar-day.today {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+body.exposure--2 .custom-calendar {
+    background: rgba(85, 85, 85, 0.95);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+body.exposure--2 .calendar-header {
+    border-bottom-color: rgba(255, 255, 255, 0.15);
+}
+
+body.exposure--2 .calendar-month-year {
+    color: #ffffff;
+}
+
+body.exposure--2 .calendar-nav-btn {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.25);
+    color: #ffffff;
+}
+
+body.exposure--2 .calendar-nav-btn:hover {
+    background: rgba(255, 255, 255, 0.25);
+}
+
+body.exposure--2 .calendar-weekday {
+    color: #cccccc;
+}
+
+body.exposure--2 .calendar-day {
+    color: #ffffff;
+}
+
+body.exposure--2 .calendar-day:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+body.exposure--2 .calendar-day.disabled {
+    color: #777;
+}
+
+body.exposure--2 .calendar-day.selected {
+    background: rgba(255, 255, 255, 0.25);
+    color: #ffffff;
+}
+
+body.exposure--2 .calendar-day.today {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.35);
+}
+
+body.exposure--1 .custom-calendar {
+    background: rgba(136, 136, 136, 0.95);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+body.exposure--1 .calendar-header {
+    border-bottom-color: rgba(255, 255, 255, 0.2);
+}
+
+body.exposure--1 .calendar-month-year {
+    color: #ffffff;
+}
+
+body.exposure--1 .calendar-nav-btn {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.3);
+    color: #ffffff;
+}
+
+body.exposure--1 .calendar-nav-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+body.exposure--1 .calendar-weekday {
+    color: #ffffff;
+}
+
+body.exposure--1 .calendar-day {
+    color: #ffffff;
+}
+
+body.exposure--1 .calendar-day:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+body.exposure--1 .calendar-day.disabled {
+    color: #999;
+}
+
+body.exposure--1 .calendar-day.selected {
+    background: rgba(255, 255, 255, 0.3);
+    color: #ffffff;
+}
+
+body.exposure--1 .calendar-day.today {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+body.exposure-0 .custom-calendar {
+    background: rgba(200, 200, 200, 0.95);
+    border-color: rgba(255, 255, 255, 0.25);
+}
+
+body.exposure-0 .calendar-header {
+    border-bottom-color: rgba(255, 255, 255, 0.25);
+}
+
+body.exposure-0 .calendar-month-year {
+    color: #333333;
+}
+
+body.exposure-0 .calendar-nav-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.35);
+    color: #333333;
+}
+
+body.exposure-0 .calendar-nav-btn:hover {
+    background: rgba(255, 255, 255, 0.35);
+}
+
+body.exposure-0 .calendar-weekday {
+    color: #666666;
+}
+
+body.exposure-0 .calendar-day {
+    color: #333333;
+}
+
+body.exposure-0 .calendar-day:hover {
+    background: rgba(255, 255, 255, 0.25);
+}
+
+body.exposure-0 .calendar-day.disabled {
+    color: #999999;
+}
+
+body.exposure-0 .calendar-day.selected {
+    background: rgba(255, 255, 255, 0.35);
+    color: #000000;
+}
+
+body.exposure-0 .calendar-day.today {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.45);
+}
+
+body.exposure-1 .custom-calendar {
+    background: rgba(230, 230, 230, 0.95);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+body.exposure-1 .calendar-header {
+    border-bottom-color: rgba(255, 255, 255, 0.3);
+}
+
+body.exposure-1 .calendar-month-year {
+    color: #000000;
+}
+
+body.exposure-1 .calendar-nav-btn {
+    background: rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.4);
+    color: #000000;
+}
+
+body.exposure-1 .calendar-nav-btn:hover {
+    background: rgba(255, 255, 255, 0.4);
+}
+
+body.exposure-1 .calendar-weekday {
+    color: #666666;
+}
+
+body.exposure-1 .calendar-day {
+    color: #000000;
+}
+
+body.exposure-1 .calendar-day:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+body.exposure-1 .calendar-day.disabled {
+    color: #999999;
+}
+
+body.exposure-1 .calendar-day.selected {
+    background: rgba(255, 255, 255, 0.4);
+    color: #000000;
+}
+
+body.exposure-1 .calendar-day.today {
+    background: rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.5);
+}
+
+body.exposure-2 .custom-calendar {
+    background: rgba(245, 245, 245, 0.95);
+    border-color: rgba(255, 255, 255, 0.35);
+}
+
+body.exposure-2 .calendar-header {
+    border-bottom-color: rgba(255, 255, 255, 0.35);
+}
+
+body.exposure-2 .calendar-month-year {
+    color: #000000;
+}
+
+body.exposure-2 .calendar-nav-btn {
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.45);
+    color: #000000;
+}
+
+body.exposure-2 .calendar-nav-btn:hover {
+    background: rgba(255, 255, 255, 0.45);
+}
+
+body.exposure-2 .calendar-weekday {
+    color: #666666;
+}
+
+body.exposure-2 .calendar-day {
+    color: #000000;
+}
+
+body.exposure-2 .calendar-day:hover {
+    background: rgba(255, 255, 255, 0.35);
+}
+
+body.exposure-2 .calendar-day.disabled {
+    color: #999999;
+}
+
+body.exposure-2 .calendar-day.selected {
+    background: rgba(255, 255, 255, 0.45);
+    color: #000000;
+}
+
+body.exposure-2 .calendar-day.today {
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.55);
+}
+
+body.exposure-3 .custom-calendar {
+    background: rgba(255, 255, 255, 0.95);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+body.exposure-3 .calendar-header {
+    border-bottom-color: rgba(0, 0, 0, 0.1);
+}
+
+body.exposure-3 .calendar-month-year {
+    color: #000000;
+}
+
+body.exposure-3 .calendar-nav-btn {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.15);
+    color: #000000;
+}
+
+body.exposure-3 .calendar-nav-btn:hover {
+    background: rgba(0, 0, 0, 0.1);
+}
+
+body.exposure-3 .calendar-weekday {
+    color: #666666;
+}
+
+body.exposure-3 .calendar-day {
+    color: #000000;
+}
+
+body.exposure-3 .calendar-day:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+body.exposure-3 .calendar-day.disabled {
+    color: #999999;
+}
+
+body.exposure-3 .calendar-day.selected {
+    background: rgba(0, 0, 0, 0.1);
+    color: #000000;
+}
+
+body.exposure-3 .calendar-day.today {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.2);
+}
+
+/* Hide native date picker */
+input[type="date"]::-webkit-calendar-picker-indicator {
+    display: none;
+}
+
+input[type="date"]::-webkit-inner-spin-button,
+input[type="date"]::-webkit-clear-button {
+    display: none;
+}
+
+
+/* Mobile calendar adjustments */
+@media (max-width: 768px) {
+    .custom-calendar {
+        min-width: 260px;
+        padding: 0.75rem;
+    }
+    
+    .calendar-header {
+        margin-bottom: 0.75rem;
+        padding-bottom: 0.5rem;
+    }
+    
+    .calendar-month-year {
+        font-size: 0.85rem;
+    }
+    
+    .calendar-nav-btn {
+        width: 26px;
+        height: 26px;
+        font-size: 0.75rem;
+    }
+    
+    .calendar-weekday {
+        font-size: 0.65rem;
+        padding: 0.4rem 0;
+    }
+    
+    .calendar-day {
+        font-size: 0.75rem;
+    }
+    
+    .calendar-trigger-btn {
+        font-size: 0.9rem;
+        padding: 0.2rem;
+    }
 }

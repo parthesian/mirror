@@ -409,6 +409,13 @@ class Modal {
         // Reset form
         this.resetUploadForm();
         
+        // Initialize custom calendars for any date inputs in the modal
+        if (window.initializeCustomCalendars) {
+            setTimeout(() => {
+                window.initializeCustomCalendars();
+            }, 100); // Small delay to ensure modal is fully rendered
+        }
+        
         // Focus on file input
         this.photoFileInput.focus();
     }
