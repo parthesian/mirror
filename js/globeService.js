@@ -1,13 +1,13 @@
 /**
  * GlobeService - Lazy-loads Three.js and renders an animated grayscale globe
- * Centered on a target country (Japan, USA, France, India) inside a given container.
+ * Centered on a target country (Japan, USA, France, India, China, Canada) inside a given container.
  * - Creates one renderer per container
  * - Reuses instance when updating location
  * - Cleans up on destroy(container)
  *
  * Public API:
  *   const svc = new GlobeService();
- *   await svc.createOrUpdate(containerEl, 'Japan'); // or 'USA', 'France', 'India', or a string that includes it
+ *   await svc.createOrUpdate(containerEl, 'Japan'); // or 'USA', 'France', 'India', 'China', 'Canada', or a string that includes it
  *   svc.destroy(containerEl);
  */
 class GlobeService {
@@ -58,9 +58,10 @@ class GlobeService {
     if (s.includes('france')) return 'france';
     if (s.includes('india')) return 'india';
     if (s.includes('china')) return 'china';
+    if (s.includes('canada')) return 'canada';
 
     // If the string is exactly one of our names
-    if (['usa', 'japan', 'france', 'india', 'china'].includes(s.trim())) return s.trim();
+    if (['usa', 'japan', 'france', 'india', 'china', 'canada'].includes(s.trim())) return s.trim();
 
     return null;
   }
@@ -78,6 +79,8 @@ class GlobeService {
         return { lat: 20.5937, lon: 78.9629 };
       case 'china':
         return { lat: 35.8617, lon: 104.1954};
+      case 'canada':
+        return { lat: 56.130366, lon: -106.346771 };
       default:
         return null;
     }
