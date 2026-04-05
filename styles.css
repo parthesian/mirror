@@ -793,13 +793,17 @@ body.exposure-3 .scroll-loading p {
     aspect-ratio: 4 / 3;
     background: rgba(255, 255, 255, 0.08);
     opacity: 0;
-    transform: translateY(10px) scale(0.985);
+    transform: none;
 }
 
 .gallery-item.loaded {
     opacity: 1;
-    transform: translateY(0) scale(1);
-    transition: opacity 0.18s ease, transform 0.18s ease;
+    transition: opacity 0.14s ease;
+}
+
+.gallery-item.instant,
+.gallery-item.instant .gallery-item-image {
+    transition: none !important;
 }
 
 .gallery-item.is-entering {
@@ -816,7 +820,7 @@ body.exposure-3 .scroll-loading p {
     height: 100%;
     display: block;
     opacity: 0;
-    transition: opacity 0.18s ease, filter 0.28s ease;
+    transition: opacity 0.14s ease, filter 0.2s ease;
     filter: grayscale(0.1);
     object-fit: cover;
     object-position: center center;

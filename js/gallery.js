@@ -37,6 +37,7 @@ class Gallery {
         this.renderToken = 0;
         this.activeVisibleRenderToken = 0;
         this.nearbyPrefetchTimer = null;
+        this.rowRevealDelayMs = 42;
 
         this.topSpacer = null;
         this.windowGrid = null;
@@ -306,7 +307,8 @@ class Gallery {
             const { item, loadDescriptor } = this.createGalleryItem(image, {
                 eager: index < eagerLimit,
                 absoluteIndex: index,
-                renderToken
+                renderToken,
+                rowIndex: Math.floor((index - startIndex) / layout.columns)
             });
             fragment.appendChild(item);
             if (loadDescriptor) {
@@ -329,7 +331,7 @@ class Gallery {
         window.clearTimeout(this.nearbyPrefetchTimer);
         this.nearbyPrefetchTimer = window.setTimeout(() => {
             if (this.activeVisibleRenderToken === renderToken) {
-                this.prefetchNearbyImages(endIndex, layout.columns);
+                this.prefetchNearbyImages(endIndex, layout.columns * 2);
             }
         }, 180);
     }
@@ -440,6 +442,7 @@ class Gallery {
 
         const loadDescriptor = {
             absoluteIndex: options.absoluteIndex,
+            rowIndex: options.rowIndex || 0,
             renderToken: options.renderToken,
             url: image.thumbnailUrl,
             img,
@@ -465,36 +468,76 @@ class Gallery {
             return;
         }
 
+        const immediateEntries = orderedEntries.filter((entry) => entry.immediate);
+        immediateEntries.forEach((entry) => {
+            entry.img.src = entry.url;
+            this.revealVisibleItem(entry, renderToken, true);
+        });
+
+        const deferredEntries = orderedEntries.filter((entry) => !entry.immediate);
+        if (deferredEntries.length === 0) {
+            return;
+        }
+
         (async () => {
-            for (const entry of orderedEntries) {
+            const loadPromises = new Map();
+            deferredEntries.forEach((entry) => {
+                loadPromises.set(entry.url, this.imagePreloader.preloadImage(entry.url));
+            });
+
+            const rows = [];
+            let currentRow = [];
+            let currentRowIndex = deferredEntries[0].rowIndex;
+
+            deferredEntries.forEach((entry) => {
+                if (entry.rowIndex !== currentRowIndex) {
+                    rows.push(currentRow);
+                    currentRow = [];
+                    currentRowIndex = entry.rowIndex;
+                }
+
+                currentRow.push(entry);
+            });
+
+            if (currentRow.length > 0) {
+                rows.push(currentRow);
+            }
+
+            for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
                 if (this.activeVisibleRenderToken !== renderToken) {
                     return;
                 }
 
-                if (entry.immediate) {
-                    entry.img.src = entry.url;
-                    this.revealVisibleItem(entry, renderToken);
-                    continue;
-                }
-
-                const preloadedImage = await this.imagePreloader.preloadImage(entry.url);
+                const rowEntries = rows[rowIndex];
+                const results = await Promise.all(rowEntries.map((entry) => loadPromises.get(entry.url)));
                 if (this.activeVisibleRenderToken !== renderToken) {
                     return;
                 }
 
-                entry.img.src = preloadedImage ? entry.url : this.getImageFallbackSrc();
-                this.revealVisibleItem(entry, renderToken);
+                rowEntries.forEach((entry, index) => {
+                    entry.img.src = results[index] ? entry.url : this.getImageFallbackSrc();
+                });
+
+                await this.waitForNextPaint();
+                rowEntries.forEach((entry) => {
+                    this.revealVisibleItem(entry, renderToken, false);
+                });
+
+                if (rowIndex < rows.length - 1) {
+                    await this.wait(this.rowRevealDelayMs);
+                }
             }
         })().catch((error) => {
             console.error('Visible image queue failed:', error);
         });
     }
 
-    revealVisibleItem(entry, renderToken) {
+    revealVisibleItem(entry, renderToken, instant = false) {
         if (this.activeVisibleRenderToken !== renderToken || !entry.item.isConnected) {
             return;
         }
 
+        entry.item.classList.toggle('instant', instant);
         entry.item.classList.add('loaded');
         if (entry.skeleton.isConnected) {
             entry.skeleton.remove();
@@ -503,6 +546,20 @@ class Gallery {
 
     getImageFallbackSrc() {
         return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgdmlld0JveD0iMCAwIDQwMCAzMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0xNzUgMTI1SDE4NVYxMzVIMTc1VjEyNVoiIGZpbGw9IiM5Q0EzQUYiLz4KPHA+SW1hZ2UgTm90IEZvdW5kPC9wPgo8L3N2Zz4K';
+    }
+
+    waitForNextPaint() {
+        return new Promise((resolve) => {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(resolve);
+            });
+        });
+    }
+
+    wait(ms) {
+        return new Promise((resolve) => {
+            window.setTimeout(resolve, ms);
+        });
     }
 
     openImageModal(imageId) {

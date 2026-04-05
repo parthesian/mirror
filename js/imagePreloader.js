@@ -29,7 +29,15 @@ class ImagePreloader {
             const image = new Image();
             image.decoding = 'async';
 
-            image.onload = () => {
+            image.onload = async () => {
+                try {
+                    if (typeof image.decode === 'function') {
+                        await image.decode();
+                    }
+                } catch {
+                    // The image is still usable after load even if decode rejects.
+                }
+
                 this.loadedImages.set(url, image);
                 this.loadingPromises.delete(url);
                 resolve(image);
