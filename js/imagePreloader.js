@@ -1,45 +1,46 @@
 /**
- * ImagePreloader - Handles preloading images in the background for smooth gallery rendering
+ * ImagePreloader - lightweight prefetch helper for nearby thumbnails/full images.
  */
 class ImagePreloader {
     constructor() {
-        this.loadedImages = new Map(); // Cache for loaded images
-        this.loadingPromises = new Map(); // Track ongoing loads
+        this.loadedImages = new Map();
+        this.loadingPromises = new Map();
     }
 
     /**
-     * Preload a single image
-     * @param {string} url - Image URL to preload
-     * @returns {Promise<HTMLImageElement>} Promise that resolves when image is loaded
+     * Preload a single image URL.
+     * @param {string} url - Image URL
+     * @returns {Promise<HTMLImageElement|null>} Loaded image or null on failure
      */
     preloadImage(url) {
-        // Return cached image if already loaded
+        if (!url) {
+            return Promise.resolve(null);
+        }
+
         if (this.loadedImages.has(url)) {
             return Promise.resolve(this.loadedImages.get(url));
         }
 
-        // Return existing promise if already loading
         if (this.loadingPromises.has(url)) {
             return this.loadingPromises.get(url);
         }
 
-        // Create new loading promise
-        const loadPromise = new Promise((resolve, reject) => {
-            const img = new Image();
-            
-            img.onload = () => {
-                this.loadedImages.set(url, img);
+        const loadPromise = new Promise((resolve) => {
+            const image = new Image();
+            image.decoding = 'async';
+
+            image.onload = () => {
+                this.loadedImages.set(url, image);
                 this.loadingPromises.delete(url);
-                resolve(img);
+                resolve(image);
             };
 
-            img.onerror = () => {
+            image.onerror = () => {
                 this.loadingPromises.delete(url);
-                reject(new Error(`Failed to load image: ${url}`));
+                resolve(null);
             };
 
-            // Start loading
-            img.src = url;
+            image.src = url;
         });
 
         this.loadingPromises.set(url, loadPromise);
@@ -47,187 +48,78 @@ class ImagePreloader {
     }
 
     /**
-     * Preload multiple images in parallel
-     * @param {Array<string>} urls - Array of image URLs to preload
-     * @param {Function} onProgress - Optional progress callback (loaded, total)
-     * @returns {Promise<Array<HTMLImageElement>>} Promise that resolves when all images are loaded
+     * Preload a batch of URLs with light concurrency control.
+     * @param {Array<string>} urls - URLs to preload
+     * @param {Object} options - Preload options
+     * @returns {Promise<Array<HTMLImageElement>>} Loaded images
      */
-    async preloadBatch(urls, onProgress = null) {
-        if (!urls || urls.length === 0) {
-            return [];
-        }
+    async preloadBatch(urls, options = {}) {
+        const {
+            concurrency = 4
+        } = options;
+        const uniqueUrls = Array.from(new Set((urls || []).filter(Boolean)));
 
-        let loadedCount = 0;
-        const total = urls.length;
-
-        // Create promises for all images
-        const loadPromises = urls.map(async (url) => {
-            try {
-                const img = await this.preloadImage(url);
-                loadedCount++;
-                if (onProgress) {
-                    onProgress(loadedCount, total);
-                }
-                return img;
-            } catch (error) {
-                console.warn(`Failed to preload image: ${url}`, error);
-                loadedCount++;
-                if (onProgress) {
-                    onProgress(loadedCount, total);
-                }
-                return null; // Return null for failed images
-            }
-        });
-
-        // Wait for all images to complete (success or failure)
-        const results = await Promise.all(loadPromises);
-        
-        // Filter out failed images
-        return results.filter(img => img !== null);
-    }
-
-    /**
-     * Preload images with priority batching
-     * @param {Array<string>} urls - Array of image URLs to preload
-     * @param {number} batchSize - Number of images to load simultaneously (default: 6)
-     * @param {Function} onProgress - Optional progress callback (loaded, total)
-     * @param {Function} onBatchComplete - Optional callback when each batch completes
-     * @returns {Promise<Array<HTMLImageElement>>} Promise that resolves when all images are loaded
-     */
-    async preloadWithBatching(urls, batchSize = 6, onProgress = null, onBatchComplete = null) {
-        if (!urls || urls.length === 0) {
+        if (uniqueUrls.length === 0) {
             return [];
         }
 
         const results = [];
-        let loadedCount = 0;
-        const total = urls.length;
+        let index = 0;
 
-        // Process URLs in batches
-        for (let i = 0; i < urls.length; i += batchSize) {
-            const batch = urls.slice(i, i + batchSize);
-            
-            const batchResults = await this.preloadBatch(batch, (batchLoaded, batchTotal) => {
-                const totalLoaded = loadedCount + batchLoaded;
-                if (onProgress) {
-                    onProgress(totalLoaded, total);
+        const worker = async () => {
+            while (index < uniqueUrls.length) {
+                const nextUrl = uniqueUrls[index++];
+                const image = await this.preloadImage(nextUrl);
+                if (image) {
+                    results.push(image);
                 }
-            });
-
-            results.push(...batchResults);
-            loadedCount += batch.length;
-
-            if (onBatchComplete) {
-                onBatchComplete(batchResults, i / batchSize + 1, Math.ceil(urls.length / batchSize));
             }
-        }
+        };
 
+        const workers = Array.from({
+            length: Math.min(concurrency, uniqueUrls.length)
+        }, () => worker());
+
+        await Promise.all(workers);
         return results;
     }
 
     /**
-     * Check if an image is already loaded
-     * @param {string} url - Image URL to check
-     * @returns {boolean} True if image is loaded
+     * Fire-and-forget prefetch for nearby assets.
+     * @param {Array<string>} urls - URLs to prefetch
+     * @param {Object} options - Prefetch options
+     */
+    prefetch(urls, options = {}) {
+        this.preloadBatch(urls, options).catch((error) => {
+            console.warn('Image prefetch failed:', error);
+        });
+    }
+
+    /**
+     * Check if an image is already cached.
+     * @param {string} url - URL to check
+     * @returns {boolean} Cache presence
      */
     isImageLoaded(url) {
         return this.loadedImages.has(url);
     }
 
     /**
-     * Get a loaded image from cache
+     * Get a loaded image from cache.
      * @param {string} url - Image URL
-     * @returns {HTMLImageElement|null} Loaded image or null if not found
+     * @returns {HTMLImageElement|null} Cached image
      */
     getLoadedImage(url) {
         return this.loadedImages.get(url) || null;
     }
 
     /**
-     * Clear the image cache
+     * Clear the image cache.
      */
     clearCache() {
         this.loadedImages.clear();
         this.loadingPromises.clear();
     }
-
-    /**
-     * Get cache statistics
-     * @returns {Object} Cache statistics
-     */
-    getCacheStats() {
-        return {
-            loadedImages: this.loadedImages.size,
-            loadingImages: this.loadingPromises.size,
-            totalMemoryEstimate: this.estimateMemoryUsage()
-        };
-    }
-
-    /**
-     * Estimate memory usage of cached images (rough calculation)
-     * @returns {string} Memory usage estimate
-     */
-    estimateMemoryUsage() {
-        let totalPixels = 0;
-        
-        this.loadedImages.forEach(img => {
-            totalPixels += (img.naturalWidth || 0) * (img.naturalHeight || 0);
-        });
-
-        // Rough estimate: 4 bytes per pixel (RGBA)
-        const bytes = totalPixels * 4;
-        
-        if (bytes < 1024 * 1024) {
-            return `${Math.round(bytes / 1024)}KB`;
-        } else {
-            return `${Math.round(bytes / (1024 * 1024))}MB`;
-        }
-    }
-
-    /**
-     * Preload images for a specific gallery configuration
-     * @param {Array<Object>} images - Array of image objects with thumbnailUrl
-     * @param {number} priority - Number of priority images to load first
-     * @param {Function} onProgress - Progress callback
-     * @returns {Promise<Array<HTMLImageElement>>} Promise that resolves when images are loaded
-     */
-    async preloadGalleryImages(images, priority = 12, onProgress = null) {
-        if (!images || images.length === 0) {
-            return [];
-        }
-
-        // Extract thumbnail URLs
-        const urls = images.map(img => img.thumbnailUrl).filter(url => url);
-        
-        if (urls.length === 0) {
-            return [];
-        }
-
-        // Split into priority and remaining images
-        const priorityUrls = urls.slice(0, priority);
-        const remainingUrls = urls.slice(priority);
-
-        let allResults = [];
-
-        // Load priority images first (visible on screen)
-        if (priorityUrls.length > 0) {
-            const priorityResults = await this.preloadBatch(priorityUrls, onProgress);
-            allResults.push(...priorityResults);
-        }
-
-        // Load remaining images in background with smaller batches
-        if (remainingUrls.length > 0) {
-            const remainingResults = await this.preloadWithBatching(
-                remainingUrls, 
-                4, // Smaller batch size for background loading
-                onProgress
-            );
-            allResults.push(...remainingResults);
-        }
-
-        return allResults;
-    }
 }
 
-// Export for use in other modules
 window.ImagePreloader = ImagePreloader;

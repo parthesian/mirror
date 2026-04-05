@@ -771,41 +771,18 @@ body.exposure-3 .scroll-loading p {
 
 /* Gallery container - Clean grid layout */
 .gallery-container {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 20px;
+    display: block;
     padding: 2rem 0;
 }
 
-/* Zoom level classes */
-.gallery-container.zoom-1 {
-    grid-template-columns: 1fr;
-    gap: 30px;
+.gallery-window {
+    display: grid;
+    align-items: stretch;
 }
 
-.gallery-container.zoom-2 {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 25px;
-}
-
-.gallery-container.zoom-3 {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 22px;
-}
-
-.gallery-container.zoom-4 {
-    grid-template-columns: repeat(4, 1fr);
-    gap: 20px;
-}
-
-.gallery-container.zoom-5 {
-    grid-template-columns: repeat(5, 1fr);
-    gap: 18px;
-}
-
-.gallery-container.zoom-6 {
-    grid-template-columns: repeat(6, 1fr);
-    gap: 15px;
+.gallery-spacer {
+    width: 100%;
+    pointer-events: none;
 }
 
 /* Gallery item - Minimal styling with animation support */
@@ -814,14 +791,15 @@ body.exposure-3 .scroll-loading p {
     position: relative;
     overflow: hidden;
     aspect-ratio: 4 / 3;
+    background: rgba(255, 255, 255, 0.08);
     opacity: 0;
-    transform: translateY(16px) scale(0.97);
+    transform: translateY(10px) scale(0.985);
 }
 
 .gallery-item.loaded {
     opacity: 1;
     transform: translateY(0) scale(1);
-    transition: transform 0.24s ease;
+    transition: opacity 0.18s ease, transform 0.18s ease;
 }
 
 .gallery-item.is-entering {
@@ -837,10 +815,15 @@ body.exposure-3 .scroll-loading p {
     width: 100%;
     height: 100%;
     display: block;
-    transition: filter 0.28s ease;
+    opacity: 0;
+    transition: opacity 0.18s ease, filter 0.28s ease;
     filter: grayscale(0.1);
     object-fit: cover;
     object-position: center center;
+}
+
+.gallery-item.loaded .gallery-item-image {
+    opacity: 1;
 }
 
 .gallery-item:hover .gallery-item-image {
@@ -849,8 +832,8 @@ body.exposure-3 .scroll-loading p {
 
 /* Skeleton placeholder for loading state */
 .gallery-item-skeleton {
-    width: 100%;
-    height: 100%;
+    position: absolute;
+    inset: 0;
     background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;

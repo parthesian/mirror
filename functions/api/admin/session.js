@@ -6,7 +6,7 @@ export async function onRequest(context) {
         switch (context.request.method) {
             case 'GET': {
                 const url = new URL(context.request.url);
-                const auth = requireAdmin(context.request, context.env);
+                const auth = await requireAdmin(context.request, context.env);
                 if (!auth.ok) {
                     return auth.response;
                 }

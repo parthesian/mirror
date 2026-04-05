@@ -1,9 +1,12 @@
 import { errorResponse } from '../../../_lib/http.js';
+import { buildThumbnailStorageKey } from '../../../_lib/photos.js';
 
 export async function onRequestGet(context) {
     try {
-        const { params, env } = context;
+        const { params, env, request } = context;
         const photoId = params.id;
+        const url = new URL(request.url);
+        const variant = url.searchParams.get('variant') === 'thumb' ? 'thumb' : 'full';
 
         const result = await env.PHOTO_DB.prepare(`
             SELECT storage_key
@@ -16,7 +19,11 @@ export async function onRequestGet(context) {
             return errorResponse('Photo not found.', 404);
         }
 
-        const object = await env.PHOTO_BUCKET.get(result.storage_key);
+        const preferredStorageKey = variant === 'thumb'
+            ? buildThumbnailStorageKey(result.storage_key)
+            : result.storage_key;
+        const object = await env.PHOTO_BUCKET.get(preferredStorageKey)
+            || (variant === 'thumb' ? await env.PHOTO_BUCKET.get(result.storage_key) : null);
         if (!object) {
             return errorResponse('Photo asset not found.', 404);
         }

@@ -10,6 +10,7 @@
     "node": ">=14"
   },
   "dependencies": {
+    "jose": "^6.2.2",
     "three": "^0.160.0"
   }
 }

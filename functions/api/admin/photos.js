@@ -1,10 +1,10 @@
 import { requireAdmin } from '../../_lib/access.js';
 import { errorResponse, handleOptions, json } from '../../_lib/http.js';
-import { getExtensionFromType, mapPhotoRecord } from '../../_lib/photos.js';
+import { buildThumbnailStorageKey, getExtensionFromType, mapPhotoRecord } from '../../_lib/photos.js';
 
 async function createPhoto(context) {
     const { request, env } = context;
-    const auth = requireAdmin(request, env);
+    const auth = await requireAdmin(request, env);
 
     if (!auth.ok) {
         return auth.response;
@@ -12,9 +12,12 @@ async function createPhoto(context) {
 
     const formData = await request.formData();
     const photo = formData.get('photo');
+    const thumbnail = formData.get('thumbnail');
     const location = (formData.get('location') || '').toString().trim();
     const description = (formData.get('description') || '').toString().trim();
     const takenAt = (formData.get('takenAt') || '').toString().trim();
+    const width = Number.parseInt((formData.get('width') || '').toString().trim(), 10);
+    const height = Number.parseInt((formData.get('height') || '').toString().trim(), 10);
 
     if (!(photo instanceof File)) {
         return errorResponse('A photo file is required.', 400);
@@ -28,6 +31,7 @@ async function createPhoto(context) {
     const contentType = photo.type || 'image/jpeg';
     const extension = getExtensionFromType(contentType);
     const storageKey = `photos/${photoId}.${extension}`;
+    const thumbnailStorageKey = buildThumbnailStorageKey(storageKey);
     const uploadedAt = new Date().toISOString();
     const normalizedTakenAt = takenAt || uploadedAt;
 
@@ -36,6 +40,14 @@ async function createPhoto(context) {
             contentType
         }
     });
+
+    if (thumbnail instanceof File) {
+        await env.PHOTO_BUCKET.put(thumbnailStorageKey, await thumbnail.arrayBuffer(), {
+            httpMetadata: {
+                contentType: thumbnail.type || contentType
+            }
+        });
+    }
 
     await env.PHOTO_DB.prepare(`
         INSERT INTO photos (
@@ -55,8 +67,8 @@ async function createPhoto(context) {
         description,
         normalizedTakenAt,
         uploadedAt,
-        null,
-        null
+        Number.isFinite(width) ? width : null,
+        Number.isFinite(height) ? height : null
     ).run();
 
     return json({
@@ -70,8 +82,8 @@ async function createPhoto(context) {
             description,
             taken_at: normalizedTakenAt,
             uploaded_at: uploadedAt,
-            width: null,
-            height: null
+            width: Number.isFinite(width) ? width : null,
+            height: Number.isFinite(height) ? height : null
         })
     }, { status: 201 });
 }

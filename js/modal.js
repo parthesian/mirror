@@ -44,9 +44,11 @@ class Modal {
         this.currentImageId = null;
         this.isOpen = false;
         this.isUploadModalOpen = false;
+        this.isNavigating = false;
         
         // Globe integration
         this.globeService = new GlobeService();
+        this.imagePreloader = new ImagePreloader();
         
         this.init();
     }
@@ -209,6 +211,7 @@ class Modal {
     close() {
         this.isOpen = false;
         this.currentImageId = null;
+        this.isNavigating = false;
 
         // Tear down globe
         if (this.globeService && this.globeContainer) {
@@ -248,6 +251,7 @@ class Modal {
 
         // Update animated globe under description
         this.updateGlobe(image.location);
+        this.prefetchAdjacentImages(image.id);
     }
 
     /**
@@ -279,13 +283,21 @@ class Modal {
     /**
      * Show previous image
      */
-    showPreviousImage() {
-        if (!this.currentImageId) return;
-        
-        const prevImage = this.imageService.getPreviousImage(this.currentImageId);
-        if (prevImage) {
-            this.currentImageId = prevImage.id;
-            this.loadImageContent(prevImage);
+    async showPreviousImage() {
+        if (!this.currentImageId || this.isNavigating) return;
+
+        this.isNavigating = true;
+        try {
+            const prevImage = await this.imageService.getAdjacentImage(this.currentImageId, 'previous');
+            if (prevImage) {
+                this.currentImageId = prevImage.id;
+                this.loadImageContent(prevImage);
+                if (window.gallery && typeof window.gallery.refreshWindow === 'function') {
+                    window.gallery.refreshWindow(true);
+                }
+            }
+        } finally {
+            this.isNavigating = false;
             this.updateNavigationButtons();
         }
     }
@@ -293,13 +305,21 @@ class Modal {
     /**
      * Show next image
      */
-    showNextImage() {
-        if (!this.currentImageId) return;
-        
-        const nextImage = this.imageService.getNextImage(this.currentImageId);
-        if (nextImage) {
-            this.currentImageId = nextImage.id;
-            this.loadImageContent(nextImage);
+    async showNextImage() {
+        if (!this.currentImageId || this.isNavigating) return;
+
+        this.isNavigating = true;
+        try {
+            const nextImage = await this.imageService.getAdjacentImage(this.currentImageId, 'next');
+            if (nextImage) {
+                this.currentImageId = nextImage.id;
+                this.loadImageContent(nextImage);
+                if (window.gallery && typeof window.gallery.refreshWindow === 'function') {
+                    window.gallery.refreshWindow(true);
+                }
+            }
+        } finally {
+            this.isNavigating = false;
             this.updateNavigationButtons();
         }
     }
@@ -308,29 +328,40 @@ class Modal {
      * Update navigation button states
      */
     updateNavigationButtons() {
-        const images = this.imageService.images;
-        const currentIndex = this.imageService.getImageIndex(this.currentImageId);
-        
-        // Show/hide navigation buttons based on availability
-        if (images.length <= 1) {
+        if (!this.imageService.hasNavigableImages()) {
             this.prevBtn.style.display = 'none';
             this.nextBtn.style.display = 'none';
         } else {
             this.prevBtn.style.display = 'block';
             this.nextBtn.style.display = 'block';
         }
+
+        this.prevBtn.disabled = this.isNavigating;
+        this.nextBtn.disabled = this.isNavigating;
         
         // Update button accessibility labels
         const currentImage = this.imageService.getImageById(this.currentImageId);
         if (currentImage) {
-            const prevImage = this.imageService.getPreviousImage(this.currentImageId);
-            const nextImage = this.imageService.getNextImage(this.currentImageId);
+            const prevImage = this.imageService.peekAdjacentImage(this.currentImageId, 'previous');
+            const nextImage = this.imageService.peekAdjacentImage(this.currentImageId, 'next');
             
             this.prevBtn.setAttribute('aria-label', 
                 prevImage ? `Previous image: ${prevImage.description || 'Previous image'}` : 'Previous image');
             this.nextBtn.setAttribute('aria-label', 
                 nextImage ? `Next image: ${nextImage.description || 'Next image'}` : 'Next image');
         }
+    }
+
+    /**
+     * Prefetch adjacent full-size images for instant modal navigation.
+     * @param {string} imageId - Current image ID
+     */
+    prefetchAdjacentImages(imageId) {
+        const adjacentUrls = ['previous', 'next']
+            .map((direction) => this.imageService.peekAdjacentImage(imageId, direction)?.url)
+            .filter(Boolean);
+
+        this.imagePreloader.prefetch(adjacentUrls, { concurrency: 2 });
     }
 
     /**

@@ -41,6 +41,19 @@ export function buildImageUrl(id, variant = 'full') {
     return `${url.pathname}${url.search}`;
 }
 
+export function buildThumbnailStorageKey(storageKey = '') {
+    if (!storageKey) {
+        return '';
+    }
+
+    const extensionIndex = storageKey.lastIndexOf('.');
+    if (extensionIndex === -1) {
+        return `${storageKey}.thumb`;
+    }
+
+    return `${storageKey.slice(0, extensionIndex)}.thumb${storageKey.slice(extensionIndex)}`;
+}
+
 export function mapPhotoRecord(record) {
     return {
         id: record.id,
