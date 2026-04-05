@@ -22,14 +22,15 @@ while keeping the existing repo connected to `Cloudflare Pages` auto deploys.
 1. Create the D1 database and apply `migrations/0001_create_photos.sql`.
 2. Create the R2 bucket and bind it as `PHOTO_BUCKET`.
 3. Set `ADMIN_EMAIL_ALLOWLIST` in the Cloudflare project.
-4. Protect `/admin/*` and `/api/admin/*` with Cloudflare Access.
-5. Deploy the repo so `functions/` becomes active in Pages.
-6. Validate public reads at `/api/photos`.
-7. Validate admin auth at `/api/admin/session`.
-8. Validate uploads from `/admin/`.
-9. Import historical metadata into D1.
-10. Copy historical image assets from S3 to R2.
-11. Re-verify the gallery once imported data is live.
+4. Leave dashboard-managed secrets and vars out of `wrangler.toml` so the deployed Pages environment remains the source of truth.
+5. Protect `/admin/*` and `/api/admin/*` with Cloudflare Access.
+6. Deploy the repo so `functions/` becomes active in Pages.
+7. Validate public reads at `/api/photos`.
+8. Validate admin auth at `/api/admin/session`.
+9. Validate uploads from `/admin/`.
+10. Import historical metadata into D1.
+11. Copy historical image assets from S3 to R2.
+12. Re-verify the gallery once imported data is live.
 
 ## Historical Data Migration
 
