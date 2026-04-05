@@ -255,6 +255,55 @@ class Modal {
     }
 
     /**
+     * Resolve whether navigation is available even if an older cached ImageService is loaded.
+     * @returns {boolean} Whether navigation controls should be shown
+     */
+    hasNavigableImages() {
+        if (typeof this.imageService.hasNavigableImages === 'function') {
+            return this.imageService.hasNavigableImages();
+        }
+
+        const images = Array.isArray(this.imageService.images) ? this.imageService.images : [];
+        return images.length > 1 || Boolean(this.imageService.hasMore);
+    }
+
+    /**
+     * Peek at an adjacent image with compatibility fallback for older ImageService instances.
+     * @param {string} imageId - Current image ID
+     * @param {'previous'|'next'} direction - Navigation direction
+     * @returns {Object|null} Adjacent image if already known
+     */
+    peekAdjacentImage(imageId, direction) {
+        if (typeof this.imageService.peekAdjacentImage === 'function') {
+            return this.imageService.peekAdjacentImage(imageId, direction);
+        }
+
+        if (direction === 'previous' && typeof this.imageService.getPreviousImage === 'function') {
+            return this.imageService.getPreviousImage(imageId);
+        }
+
+        if (direction === 'next' && typeof this.imageService.getNextImage === 'function') {
+            return this.imageService.getNextImage(imageId);
+        }
+
+        return null;
+    }
+
+    /**
+     * Navigate with compatibility fallback for older ImageService instances.
+     * @param {string} imageId - Current image ID
+     * @param {'previous'|'next'} direction - Navigation direction
+     * @returns {Promise<Object|null>} Resolved adjacent image
+     */
+    async getAdjacentImage(imageId, direction) {
+        if (typeof this.imageService.getAdjacentImage === 'function') {
+            return this.imageService.getAdjacentImage(imageId, direction);
+        }
+
+        return this.peekAdjacentImage(imageId, direction);
+    }
+
+    /**
      * Update globe display under modal description
      */
     async updateGlobe(location) {
@@ -288,7 +337,7 @@ class Modal {
 
         this.isNavigating = true;
         try {
-            const prevImage = await this.imageService.getAdjacentImage(this.currentImageId, 'previous');
+            const prevImage = await this.getAdjacentImage(this.currentImageId, 'previous');
             if (prevImage) {
                 this.currentImageId = prevImage.id;
                 this.loadImageContent(prevImage);
@@ -310,7 +359,7 @@ class Modal {
 
         this.isNavigating = true;
         try {
-            const nextImage = await this.imageService.getAdjacentImage(this.currentImageId, 'next');
+            const nextImage = await this.getAdjacentImage(this.currentImageId, 'next');
             if (nextImage) {
                 this.currentImageId = nextImage.id;
                 this.loadImageContent(nextImage);
@@ -328,7 +377,7 @@ class Modal {
      * Update navigation button states
      */
     updateNavigationButtons() {
-        if (!this.imageService.hasNavigableImages()) {
+        if (!this.hasNavigableImages()) {
             this.prevBtn.style.display = 'none';
             this.nextBtn.style.display = 'none';
         } else {
@@ -342,8 +391,8 @@ class Modal {
         // Update button accessibility labels
         const currentImage = this.imageService.getImageById(this.currentImageId);
         if (currentImage) {
-            const prevImage = this.imageService.peekAdjacentImage(this.currentImageId, 'previous');
-            const nextImage = this.imageService.peekAdjacentImage(this.currentImageId, 'next');
+            const prevImage = this.peekAdjacentImage(this.currentImageId, 'previous');
+            const nextImage = this.peekAdjacentImage(this.currentImageId, 'next');
             
             this.prevBtn.setAttribute('aria-label', 
                 prevImage ? `Previous image: ${prevImage.description || 'Previous image'}` : 'Previous image');
@@ -358,7 +407,7 @@ class Modal {
      */
     prefetchAdjacentImages(imageId) {
         const adjacentUrls = ['previous', 'next']
-            .map((direction) => this.imageService.peekAdjacentImage(imageId, direction)?.url)
+            .map((direction) => this.peekAdjacentImage(imageId, direction)?.url)
             .filter(Boolean);
 
         this.imagePreloader.prefetch(adjacentUrls, { concurrency: 2 });

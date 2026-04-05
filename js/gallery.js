@@ -34,6 +34,9 @@ class Gallery {
         this.isLoadingMore = false;
         this.renderQueued = false;
         this.forceRenderQueued = false;
+        this.renderToken = 0;
+        this.activeVisibleRenderToken = 0;
+        this.nearbyPrefetchTimer = null;
 
         this.topSpacer = null;
         this.windowGrid = null;
@@ -294,14 +297,21 @@ class Gallery {
         this.bottomSpacer.style.height = `${bottomHeight}px`;
 
         const fragment = document.createDocumentFragment();
+        const renderToken = ++this.renderToken;
         const eagerLimit = Math.min(images.length, ((visibleEndRow + 2) * layout.columns));
+        const orderedLoads = [];
 
         for (let index = startIndex; index < endIndex; index++) {
             const image = images[index];
-            const item = this.createGalleryItem(image, {
-                eager: index < eagerLimit
+            const { item, loadDescriptor } = this.createGalleryItem(image, {
+                eager: index < eagerLimit,
+                absoluteIndex: index,
+                renderToken
             });
             fragment.appendChild(item);
+            if (loadDescriptor) {
+                orderedLoads.push(loadDescriptor);
+            }
         }
 
         this.windowGrid.innerHTML = '';
@@ -315,7 +325,13 @@ class Gallery {
             gap: layout.gap
         };
 
-        this.prefetchNearbyImages(endIndex, layout.columns * 2);
+        this.startVisibleLoadQueue(orderedLoads, renderToken);
+        window.clearTimeout(this.nearbyPrefetchTimer);
+        this.nearbyPrefetchTimer = window.setTimeout(() => {
+            if (this.activeVisibleRenderToken === renderToken) {
+                this.prefetchNearbyImages(endIndex, layout.columns);
+            }
+        }, 180);
     }
 
     getLayoutMetrics() {
@@ -404,19 +420,6 @@ class Gallery {
         const skeleton = document.createElement('div');
         skeleton.className = 'gallery-item-skeleton';
 
-        const revealImage = () => {
-            item.classList.add('loaded');
-            skeleton.remove();
-        };
-
-        img.addEventListener('load', revealImage, { once: true });
-        img.addEventListener('error', () => {
-            img.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgdmlld0JveD0iMCAwIDQwMCAzMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0xNzUgMTI1SDE4NVYxMzVIMTc1VjEyNVoiIGZpbGw9IiM5Q0EzQUYiLz4KPHA+SW1hZ2UgTm90IEZvdW5kPC9wPgo8L3N2Zz4K';
-            revealImage();
-        }, { once: true });
-
-        img.src = image.thumbnailUrl;
-
         item.appendChild(img);
         item.appendChild(skeleton);
 
@@ -435,7 +438,71 @@ class Gallery {
             }
         });
 
-        return item;
+        const loadDescriptor = {
+            absoluteIndex: options.absoluteIndex,
+            renderToken: options.renderToken,
+            url: image.thumbnailUrl,
+            img,
+            item,
+            skeleton,
+            immediate: this.imagePreloader.isImageLoaded(image.thumbnailUrl)
+        };
+
+        return {
+            item,
+            loadDescriptor
+        };
+    }
+
+    startVisibleLoadQueue(entries, renderToken) {
+        this.activeVisibleRenderToken = renderToken;
+
+        const orderedEntries = entries
+            .filter((entry) => entry && entry.url)
+            .sort((left, right) => left.absoluteIndex - right.absoluteIndex);
+
+        if (orderedEntries.length === 0) {
+            return;
+        }
+
+        (async () => {
+            for (const entry of orderedEntries) {
+                if (this.activeVisibleRenderToken !== renderToken) {
+                    return;
+                }
+
+                if (entry.immediate) {
+                    entry.img.src = entry.url;
+                    this.revealVisibleItem(entry, renderToken);
+                    continue;
+                }
+
+                const preloadedImage = await this.imagePreloader.preloadImage(entry.url);
+                if (this.activeVisibleRenderToken !== renderToken) {
+                    return;
+                }
+
+                entry.img.src = preloadedImage ? entry.url : this.getImageFallbackSrc();
+                this.revealVisibleItem(entry, renderToken);
+            }
+        })().catch((error) => {
+            console.error('Visible image queue failed:', error);
+        });
+    }
+
+    revealVisibleItem(entry, renderToken) {
+        if (this.activeVisibleRenderToken !== renderToken || !entry.item.isConnected) {
+            return;
+        }
+
+        entry.item.classList.add('loaded');
+        if (entry.skeleton.isConnected) {
+            entry.skeleton.remove();
+        }
+    }
+
+    getImageFallbackSrc() {
+        return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgdmlld0JveD0iMCAwIDQwMCAzMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0xNzUgMTI1SDE4NVYxMzVIMTc1VjEyNVoiIGZpbGw9IiM5Q0EzQUYiLz4KPHA+SW1hZ2UgTm90IEZvdW5kPC9wPgo8L3N2Zz4K';
     }
 
     openImageModal(imageId) {
