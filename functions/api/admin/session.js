@@ -5,9 +5,20 @@ export async function onRequest(context) {
     try {
         switch (context.request.method) {
             case 'GET': {
+                const url = new URL(context.request.url);
                 const auth = requireAdmin(context.request, context.env);
                 if (!auth.ok) {
                     return auth.response;
+                }
+
+                const redirectTo = url.searchParams.get('redirectTo');
+                if (redirectTo) {
+                    const redirectUrl = new URL(redirectTo, url.origin);
+                    if (redirectUrl.origin !== url.origin) {
+                        return errorResponse('Invalid redirect target.', 400);
+                    }
+
+                    return Response.redirect(redirectUrl.toString(), 302);
                 }
 
                 return json({

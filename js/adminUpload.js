@@ -48,6 +48,12 @@ class AdminUploadPage {
             const session = await this.imageService.getAdminSession();
             this.sessionStatus.textContent = `Signed in as ${session.email}`;
         } catch (error) {
+            if (error.status === 401) {
+                this.sessionStatus.textContent = 'Redirecting to complete admin login...';
+                this.imageService.beginAdminSessionAuth('/admin/');
+                return;
+            }
+
             this.sessionStatus.textContent = error.message;
             this.showUploadError(error.message);
             this.submitUploadBtn.disabled = true;

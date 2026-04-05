@@ -125,19 +125,28 @@ class ImageService {
     async getAdminSession() {
         const response = await fetch(this.buildApiUrl('/api/admin/session'), {
             method: 'GET',
-            headers: {
-                'Content-Type': 'application/json'
-            },
             credentials: 'same-origin'
         });
 
         const payload = await this.parseJsonResponse(response);
 
         if (!response.ok) {
-            throw new Error(payload.error || 'Unable to verify admin session.');
+            const error = new Error(payload.error || 'Unable to verify admin session.');
+            error.status = response.status;
+            throw error;
         }
 
         return payload;
+    }
+
+    /**
+     * Complete Cloudflare Access auth for the admin API in a top-level navigation.
+     * @param {string} returnTo - Path to return to after auth succeeds
+     */
+    beginAdminSessionAuth(returnTo = '/admin/') {
+        const targetUrl = new URL(this.buildApiUrl('/api/admin/session'), window.location.origin);
+        targetUrl.searchParams.set('redirectTo', returnTo);
+        window.location.assign(targetUrl.toString());
     }
 
     /**
