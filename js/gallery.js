@@ -21,7 +21,9 @@ class Gallery {
         
         // Animation state
         this.isAnimating = false;
-        this.animationQueue = [];
+        this.enterBatchCounter = 0;
+        this.batchAnimationDurationMs = 420;
+        this.batchAnimationStaggerMs = 45;
         
         // Globe preloading
         this.globeService = new GlobeService();
@@ -44,14 +46,6 @@ class Gallery {
      * Bind event listeners
      */
     bindEvents() {
-        // Upload button
-        const uploadBtn = document.getElementById('upload-btn');
-        if (uploadBtn) {
-            uploadBtn.addEventListener('click', () => {
-                document.dispatchEvent(new CustomEvent('openUploadModal'));
-            });
-        }
-
         // Zoom buttons
         if (this.zoomInBtn) {
             this.zoomInBtn.addEventListener('click', () => {
@@ -141,7 +135,7 @@ class Gallery {
         const threshold = 1000;
         const nearBottom = scrollTop + windowHeight >= documentHeight - threshold;
         
-        if (nearBottom && !this.imageService.isLoading && this.imageService.hasMore) {
+        if (nearBottom && !this.imageService.isLoading && !this.isAnimating && this.imageService.hasMore) {
             this.loadMoreImages();
         }
     }
@@ -193,6 +187,7 @@ class Gallery {
      */
     async loadImages() {
         try {
+            this.isAnimating = false;
             this.showLoading();
             this.hideError();
             this.clearGallery();
@@ -261,7 +256,8 @@ class Gallery {
                 console.log(`Preloaded ${loaded}/${total} additional images`);
             });
 
-            // Use the same cascading animation system as initial load
+            // Replace the placeholders as a coordinated batch so follow-up loads
+            // wait for the full enter sequence to settle.
             await this.renderMoreImagesWithCascade(images, startIndex);
 
         } catch (error) {
@@ -311,55 +307,10 @@ class Gallery {
             const index = parseInt(item.dataset.skeletonIndex);
             return index >= startIndex;
         });
-        
-        // Check if user prefers reduced motion
-        const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        
-        if (prefersReducedMotion) {
-            // No animation - replace all at once
-            images.forEach((image, index) => {
-                if (newSkeletonItems[index]) {
-                    this.replaceSkeletonWithImage(newSkeletonItems[index], image);
-                }
-            });
-            return;
-        }
 
-        // Set animation state to prevent multiple loads
-        this.isAnimating = true;
-
-        // Calculate grid dimensions for cascading animation
-        const gridInfo = this.calculateGridDimensions();
-        
-        // Group images by rows for wave animation
-        const imageRows = this.groupImagesByRows(images, gridInfo.columns);
-        
-        // Calculate total animation duration
-        const totalRows = imageRows.length;
-        const totalAnimationTime = (totalRows * 100) + (gridInfo.columns * 30) + 600; // Row delays + item delays + animation duration
-        
-        // Animate each row with staggered timing (shorter delays for infinite scroll)
-        for (let rowIndex = 0; rowIndex < imageRows.length; rowIndex++) {
-            const row = imageRows[rowIndex];
-            const rowDelay = rowIndex * 100; // Faster animation for infinite scroll (100ms vs 150ms)
-            
-            // Animate items in this row with internal stagger
-            row.forEach((image, colIndex) => {
-                const globalIndex = rowIndex * gridInfo.columns + colIndex;
-                const itemDelay = rowDelay + (colIndex * 30); // Faster stagger (30ms vs 50ms)
-                
-                setTimeout(() => {
-                    if (newSkeletonItems[globalIndex]) {
-                        this.replaceSkeletonWithImage(newSkeletonItems[globalIndex], image, true);
-                    }
-                }, itemDelay);
-            });
-        }
-
-        // Clear animation state after all animations complete
-        setTimeout(() => {
-            this.isAnimating = false;
-        }, totalAnimationTime);
+        await this.renderBatchIntoSkeletons(images, newSkeletonItems, {
+            eagerCount: this.calculatePriorityImages()
+        });
     }
 
     /**
@@ -437,110 +388,108 @@ class Gallery {
      */
     async renderImagesWithCascade(images) {
         const skeletonItems = this.galleryContainer.querySelectorAll('[data-skeleton-index]');
-        
-        // Check if user prefers reduced motion
+
+        await this.renderBatchIntoSkeletons(images, Array.from(skeletonItems), {
+            eagerCount: this.calculatePriorityImages()
+        });
+    }
+
+    /**
+     * Replace a set of skeletons with one coordinated image batch.
+     * @param {Array} images - Batch image objects
+     * @param {Array<HTMLElement>} skeletonItems - Skeleton nodes to replace
+     * @param {Object} options - Batch rendering options
+     */
+    async renderBatchIntoSkeletons(images, skeletonItems, options = {}) {
+        if (!images || images.length === 0 || !skeletonItems || skeletonItems.length === 0) {
+            return;
+        }
+
+        const batchId = `batch-${++this.enterBatchCounter}`;
         const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        
+        const eagerCount = Math.max(0, options.eagerCount || 0);
+        const renderedItems = [];
+
+        images.forEach((image, index) => {
+            const skeletonItem = skeletonItems[index];
+            if (!skeletonItem || !skeletonItem.parentNode) {
+                return;
+            }
+
+            const galleryItem = this.createGalleryItem(image, {
+                eager: index < eagerCount
+            });
+
+            galleryItem.dataset.enterBatch = batchId;
+            galleryItem.style.setProperty('--enter-index', index.toString());
+            skeletonItem.parentNode.replaceChild(galleryItem, skeletonItem);
+            renderedItems.push(galleryItem);
+        });
+
+        if (renderedItems.length === 0) {
+            return;
+        }
+
         if (prefersReducedMotion) {
-            // No animation - replace all at once
-            images.forEach((image, index) => {
-                if (skeletonItems[index]) {
-                    this.replaceSkeletonWithImage(skeletonItems[index], image);
-                }
+            renderedItems.forEach(item => {
+                item.classList.add('loaded');
+                item.style.removeProperty('--enter-index');
             });
             return;
         }
 
-        // Calculate grid dimensions for cascading animation
-        const gridInfo = this.calculateGridDimensions();
-        
-        // Group images by rows for wave animation
-        const imageRows = this.groupImagesByRows(images, gridInfo.columns);
-        
-        // Animate each row with staggered timing
-        for (let rowIndex = 0; rowIndex < imageRows.length; rowIndex++) {
-            const row = imageRows[rowIndex];
-            const rowDelay = rowIndex * 150; // 150ms between rows
-            
-            // Animate items in this row with internal stagger
-            row.forEach((image, colIndex) => {
-                const globalIndex = rowIndex * gridInfo.columns + colIndex;
-                const itemDelay = rowDelay + (colIndex * 50); // 50ms between items in row
-                
-                setTimeout(() => {
-                    if (skeletonItems[globalIndex]) {
-                        this.replaceSkeletonWithImage(skeletonItems[globalIndex], image, true);
-                    }
-                }, itemDelay);
+        this.isAnimating = true;
+        await this.waitForNextPaint();
+
+        renderedItems.forEach(item => {
+            item.classList.add('is-entering');
+        });
+
+        await this.wait(this.getBatchSettleTime(renderedItems.length));
+
+        renderedItems.forEach(item => {
+            item.classList.remove('is-entering');
+            item.classList.add('loaded');
+            item.style.removeProperty('--enter-index');
+        });
+
+        this.isAnimating = false;
+    }
+
+    /**
+     * Wait until the browser has painted pending DOM work.
+     * @returns {Promise<void>}
+     */
+    waitForNextPaint() {
+        return new Promise(resolve => {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(resolve);
             });
-        }
+        });
     }
 
     /**
-     * Replace skeleton with actual image
-     * @param {HTMLElement} skeletonItem - Skeleton element to replace
-     * @param {Object} image - Image object
-     * @param {boolean} animate - Whether to animate the replacement
+     * Wait for a specific duration.
+     * @param {number} ms - Milliseconds to wait
+     * @returns {Promise<void>}
      */
-    replaceSkeletonWithImage(skeletonItem, image, animate = false) {
-        // Create the real gallery item
-        const galleryItem = this.createGalleryItem(image);
-        
-        if (animate) {
-            // Add animation class
-            galleryItem.classList.add('animate-in');
-            
-            // Remove animation class after animation completes
-            setTimeout(() => {
-                galleryItem.classList.remove('animate-in');
-                galleryItem.classList.add('loaded');
-            }, 600); // Match CSS animation duration
-        } else {
-            galleryItem.classList.add('loaded');
-        }
-        
-        // Replace skeleton with real item
-        skeletonItem.parentNode.replaceChild(galleryItem, skeletonItem);
+    wait(ms) {
+        return new Promise(resolve => {
+            window.setTimeout(resolve, ms);
+        });
     }
 
     /**
-     * Calculate current grid dimensions
-     * @returns {Object} Grid information
+     * Calculate how long a batch needs to finish entering.
+     * @param {number} count - Number of items in the batch
+     * @returns {number} Total settle time in ms
      */
-    calculateGridDimensions() {
-        const containerWidth = this.galleryContainer.offsetWidth;
-        const gap = 20; // Default gap from CSS
-        
-        // Estimate columns based on zoom level and container width
-        let columns = this.currentZoom;
-        
-        // Adjust for mobile
-        if (window.innerWidth <= 768) {
-            const minItemWidth = 150; // From mobile CSS
-            columns = Math.floor(containerWidth / (minItemWidth + gap));
+    getBatchSettleTime(count) {
+        if (count <= 0) {
+            return 0;
         }
-        
-        return {
-            columns: Math.max(1, columns),
-            gap: gap
-        };
-    }
 
-    /**
-     * Group images into rows for animation
-     * @param {Array} images - Array of image objects
-     * @param {number} columns - Number of columns in grid
-     * @returns {Array<Array>} Array of rows, each containing image objects
-     */
-    groupImagesByRows(images, columns) {
-        const rows = [];
-        
-        for (let i = 0; i < images.length; i += columns) {
-            const row = images.slice(i, i + columns);
-            rows.push(row);
-        }
-        
-        return rows;
+        return this.batchAnimationDurationMs + ((count - 1) * this.batchAnimationStaggerMs) + 60;
     }
 
     /**
@@ -567,7 +516,7 @@ class Gallery {
      * @param {Object} image - Image object
      * @returns {HTMLElement} Gallery item element
      */
-    createGalleryItem(image) {
+    createGalleryItem(image, options = {}) {
         const item = document.createElement('div');
         item.className = 'gallery-item';
         item.dataset.imageId = image.id;
@@ -577,7 +526,9 @@ class Gallery {
         img.className = 'gallery-item-image';
         img.src = image.thumbnailUrl;
         img.alt = image.description || 'Photo';
-        img.loading = 'lazy'; // Lazy loading for performance
+        img.loading = options.eager ? 'eager' : 'lazy';
+        img.decoding = 'async';
+        img.fetchPriority = options.eager ? 'high' : 'low';
 
         // Handle image load errors
         img.onerror = () => {

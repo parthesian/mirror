@@ -29,7 +29,7 @@
             </div>
         </div>
         <div class="gallery-controls">
-            <button id="upload-btn" class="upload-btn"></button>
+            <a href="/admin/" id="upload-btn" class="upload-btn" aria-label="Open admin uploader">+</a>
             <div class="zoom-controls">
                 <button id="zoom-in-btn" class="zoom-btn">+</button>
                 <button id="zoom-out-btn" class="zoom-btn">−</button>
@@ -79,64 +79,6 @@
                     <button id="next-btn" class="nav-btn">&gt;</button>
                 </div>
             </div>
-        </div>
-    </div>
-
-    <!-- Upload Modal -->
-    <div id="upload-modal" class="modal hidden">
-        <div class="modal-content upload-modal-content">
-            <button id="close-upload-modal" class="close-btn">&times;</button>
-            <form id="upload-form" class="upload-form">
-                <div class="form-group">
-                    <label for="photo-file">photo</label>
-                    <div class="file-input-wrapper">
-                        <input type="file" id="photo-file" accept="image/*" required>
-                        <div class="file-input-box">
-                            <span class="file-status-icon" id="file-status-icon">✕</span>
-                        </div>
-                    </div>
-                    <div id="file-preview" class="file-preview">
-                        <div class="preview-placeholder">
-                            <img id="preview-image" src="" alt="Preview">
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="form-group">
-                    <label for="photo-timestamp">date</label>
-                    <input type="date" id="photo-timestamp">
-                </div>
-                
-                <div class="form-group">
-                    <label for="photo-location">location</label>
-                    <input type="text" id="photo-location" required>
-                </div>
-                
-                <div class="form-group">
-                    <label for="photo-description">description</label>
-                    <textarea id="photo-description" rows="3"></textarea>
-                </div>
-                
-                <div class="form-group">
-                    <label for="upload-password">password</label>
-                    <input type="password" id="upload-password" required>
-                </div>
-                
-                <div class="form-actions">
-                    <button type="button" id="cancel-upload" class="btn btn-secondary">cancel</button>
-                    <button type="submit" id="submit-upload" class="btn btn-primary">upload</button>
-                </div>
-                
-                <div id="upload-progress" class="upload-progress">
-                    <div class="progress-bar">
-                        <div class="progress-fill"></div>
-                    </div>
-                </div>
-                
-                <div id="upload-error" class="upload-error hidden">
-                    <p></p>
-                </div>
-            </form>
         </div>
     </div>
 

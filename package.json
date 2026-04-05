@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "Photo gallery application",
   "scripts": {
-    "build": "node build.js"
+    "build": "node build.js",
+    "generate:d1-import": "node scripts/generate-d1-import.mjs"
   },
   "engines": {
     "node": ">=14"

@@ -1,185 +1,150 @@
 # Photo Gallery API Documentation
 
-## Base Configuration
+## Architecture
 
-### API Gateway URL
-Your API base URL: `https://[YOUR_API_ID].execute-api.[YOUR_REGION].amazonaws.com/prod`
+The gallery now targets a Cloudflare-native backend:
 
-Replace `[YOUR_API_ID]` and `[YOUR_REGION]` with your actual values from the API Gateway console.
+- Static site: `Cloudflare Pages`
+- Public photo API: `Pages Functions`
+- Admin upload API: `Pages Functions` protected by `Cloudflare Access`
+- Image storage: `R2`
+- Metadata storage: `D1`
 
-### S3 Bucket
-Your photos are stored in: `[YOUR_BUCKET_NAME].s3.amazonaws.com`
-
----
+Use relative API paths in production so the frontend and API deploy together on the same Pages project.
 
 ## API Endpoints
 
-### 1. Get All Photos
-**Endpoint:** `GET /photos`
+### 1. List Photos
 
-**Description:** Retrieves all photos with their metadata and S3 URLs.
+**Endpoint:** `GET /api/photos`
 
-**Request:**
-```javascript
-fetch('https://[YOUR_API_ID].execute-api.[YOUR_REGION].amazonaws.com/prod/photos')
-  .then(response => response.json())
-  .then(data => console.log(data));
-```
+**Description:** Returns the public gallery feed ordered by `takenAt` descending with cursor pagination.
+
+**Query params:**
+
+- `limit` optional, defaults to `24`
+- `cursor` optional opaque pagination cursor from the previous response
 
 **Response:**
+
 ```json
 {
   "photos": [
     {
-      "photoId": "550e8400-e29b-41d4-a716-446655440000",
-      "s3Key": "photos/550e8400-e29b-41d4-a716-446655440000.jpg",
-      "description": "Sunset at the beach",
+      "id": "550e8400-e29b-41d4-a716-446655440000",
       "location": "California",
-      "timestamp": "2025-08-29T15:30:00.000Z",
-      "uploadedAt": "2025-08-29T15:30:00.000Z",
-      "imageUrl": "https://[YOUR_BUCKET_NAME].s3.amazonaws.com/photos/550e8400-e29b-41d4-a716-446655440000.jpg"
+      "description": "Sunset at the beach",
+      "takenAt": "2025-08-29T12:00:00.000Z",
+      "uploadedAt": "2026-04-05T16:30:00.000Z",
+      "storageKey": "photos/550e8400-e29b-41d4-a716-446655440000.jpg",
+      "image": {
+        "url": "/api/photos/550e8400-e29b-41d4-a716-446655440000/image?variant=full"
+      },
+      "thumbnail": {
+        "url": "/api/photos/550e8400-e29b-41d4-a716-446655440000/image?variant=thumb"
+      }
     }
-  ]
+  ],
+  "hasMore": true,
+  "nextCursor": "opaque-cursor"
 }
 ```
 
----
+### 2. Resolve Admin Session
 
-### 2. Upload Photo
-**Endpoint:** `POST /photos`
+**Endpoint:** `GET /api/admin/session`
 
-**Description:** Uploads a new photo with metadata.
+**Description:** Returns the authenticated Cloudflare Access identity for the admin page.
 
-**Request Headers:**
-```
-Content-Type: application/json
-```
-
-**Request Body:**
-```json
-{
-  "imageData": "data:image/jpeg;base64,[BASE64_ENCODED_IMAGE]",
-  "description": "Optional description of the photo",
-  "location": "Required location (country/state/coordinates)"
-}
-```
-
-**JavaScript Example:**
-```javascript
-// Convert file to base64
-function fileToBase64(file) {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.readAsDataURL(file);
-  });
-}
-
-// Upload photo
-async function uploadPhoto(fileInput, description, location) {
-  const file = fileInput.files[0];
-  const base64 = await fileToBase64(file);
-  
-  const response = await fetch('https://[YOUR_API_ID].execute-api.[YOUR_REGION].amazonaws.com/prod/photos', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      imageData: base64,
-      description: description,
-      location: location
-    })
-  });
-  
-  return response.json();
-}
-```
+**Auth:** Cloudflare Access policy should protect both `/admin/*` and `/api/admin/*`.
 
 **Response:**
+
+```json
+{
+  "authenticated": true,
+  "email": "you@example.com"
+}
+```
+
+### 3. Upload Photo
+
+**Endpoint:** `POST /api/admin/photos`
+
+**Description:** Uploads a new image to `R2` and inserts metadata into `D1`.
+
+**Auth:** Cloudflare Access required.
+
+**Request body:** `multipart/form-data`
+
+- `photo`: required file
+- `location`: required string
+- `description`: optional string
+- `takenAt`: optional ISO timestamp
+
+**Response:**
+
 ```json
 {
   "success": true,
   "photoId": "550e8400-e29b-41d4-a716-446655440000",
-  "message": "Photo uploaded successfully"
+  "message": "Photo uploaded successfully.",
+  "photo": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "location": "California",
+    "description": "Sunset at the beach",
+    "takenAt": "2025-08-29T12:00:00.000Z",
+    "uploadedAt": "2026-04-05T16:30:00.000Z",
+    "image": {
+      "url": "/api/photos/550e8400-e29b-41d4-a716-446655440000/image?variant=full"
+    },
+    "thumbnail": {
+      "url": "/api/photos/550e8400-e29b-41d4-a716-446655440000/image?variant=thumb"
+    }
+  }
 }
 ```
 
----
+## D1 Schema
 
-## Data Schema
+The canonical metadata schema lives in `migrations/0001_create_photos.sql`.
 
-### DynamoDB PhotoMetadata Table Structure
-```json
-{
-  "photoId": "string (UUID)",           // Primary key
-  "s3Key": "string",                    // S3 object key
-  "description": "string (optional)",   // User-provided description
-  "location": "string (required)",      // Country/state/coordinates
-  "timestamp": "string (ISO 8601)",     // When photo was taken (auto-generated)
-  "uploadedAt": "string (ISO 8601)"     // When uploaded to system
-}
+```sql
+CREATE TABLE IF NOT EXISTS photos (
+    id TEXT PRIMARY KEY,
+    storage_key TEXT NOT NULL UNIQUE,
+    location TEXT NOT NULL,
+    description TEXT DEFAULT '',
+    taken_at TEXT NOT NULL,
+    uploaded_at TEXT NOT NULL,
+    width INTEGER,
+    height INTEGER
+);
 ```
 
----
+## Deployment Configuration
 
-## Frontend Integration Requirements
+The repo is set up to keep `Cloudflare Pages` as the auto-deploy target.
 
-### Required Fields for Photo Upload
-- **imageData**: Base64-encoded image string with data URL prefix
-- **location**: Required string (can be country, state, city, or coordinates)
-- **description**: Optional string
+- `build.js` generates `js/config.js`
+- `wrangler.toml` defines the `Pages Functions`, `D1`, and `R2` bindings
+- `functions/` contains the server-side API
 
-### Photo Display
-- Use the `imageUrl` field from the GET response to display photos
-- All photos are publicly accessible via their S3 URLs
-- Photos are stored as JPEGs regardless of upload format
+Required Cloudflare configuration:
 
-### Error Handling
-Both endpoints return standard HTTP status codes:
-- `200`: Success
-- `500`: Server error
-- CORS is enabled for all origins (`*`)
+1. Bind `PHOTO_DB` to your D1 database.
+2. Bind `PHOTO_BUCKET` to your R2 bucket.
+3. Set `ADMIN_EMAIL_ALLOWLIST` to your email or comma-separated email allowlist.
+4. Protect `/admin/*` and `/api/admin/*` with Cloudflare Access.
 
----
+## Migration Notes
 
-## Configuration Values Needed
+To migrate existing AWS metadata exports into D1:
 
-Replace these placeholders in your frontend code:
+1. Export your photo metadata records from DynamoDB into JSON.
+2. Run `npm run generate:d1-import -- <metadata.json>`.
+3. Apply `migrations/0001_create_photos.sql`.
+4. Import the generated SQL into D1.
+5. Copy the matching image objects from S3 to R2 using the generated manifest.
 
-1. **API_BASE_URL**: `https://[YOUR_API_ID].execute-api.[YOUR_REGION].amazonaws.com/prod`
-2. **S3_BUCKET_NAME**: `[YOUR_BUCKET_NAME]` (for reference, though URLs are provided in responses)
-
-You can find these values in:
-- API Gateway console → Your API → Stages → prod (for the invoke URL)
-- S3 console → Your bucket name
-
----
-
-## Testing Commands
-
-### Test GET endpoint:
-```bash
-curl https://[YOUR_API_ID].execute-api.[YOUR_REGION].amazonaws.com/prod/photos
-```
-
-### Test POST endpoint:
-```bash
-curl -X POST https://[YOUR_API_ID].execute-api.[YOUR_REGION].amazonaws.com/prod/photos \
-  -H "Content-Type: application/json" \
-  -d '{
-    "imageData": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD...",
-    "description": "Test photo",
-    "location": "Test Location"
-  }'
-```
-
----
-
-## Next Steps
-
-1. Update both Lambda functions with your actual bucket name
-2. Test the endpoints using the examples above
-3. Build your frontend using the documented API structure
-4. Consider adding authentication (AWS Cognito) for production use
-5. Implement photo deletion endpoint if needed
+This repository does not force a single S3-to-R2 copy mechanism because teams often prefer AWS CLI, `rclone`, or bespoke scripts depending on account access and object counts.

@@ -1,5 +1,5 @@
 /**
- * Modal - Handles the fullscreen image modal with navigation and upload functionality
+ * Modal - Handles the fullscreen image modal and navigation
  */
 class Modal {
     constructor(imageService) {
@@ -19,7 +19,6 @@ class Modal {
         // Upload modal elements
         this.uploadModal = document.getElementById('upload-modal');
         this.uploadForm = document.getElementById('upload-form');
-        this.uploadPasswordInput = document.getElementById('upload-password');
         this.photoFileInput = document.getElementById('photo-file');
         this.photoLocationInput = document.getElementById('photo-location');
         this.photoDescriptionInput = document.getElementById('photo-description');
@@ -34,6 +33,13 @@ class Modal {
         
         // File input elements for custom styling
         this.fileStatusIcon = document.getElementById('file-status-icon');
+        this.hasUploadUi = Boolean(
+            this.uploadModal &&
+            this.uploadForm &&
+            this.photoFileInput &&
+            this.photoLocationInput &&
+            this.submitUploadBtn
+        );
         
         this.currentImageId = null;
         this.isOpen = false;
@@ -83,39 +89,36 @@ class Modal {
         });
 
         // Upload modal events
-        this.closeUploadBtn.addEventListener('click', () => {
-            this.closeUploadModal();
-        });
-
-        this.cancelUploadBtn.addEventListener('click', () => {
-            this.closeUploadModal();
-        });
-
-        this.uploadModal.addEventListener('click', (e) => {
-            if (e.target === this.uploadModal) {
+        if (this.hasUploadUi) {
+            this.closeUploadBtn.addEventListener('click', () => {
                 this.closeUploadModal();
-            }
-        });
+            });
 
-        this.uploadModal.querySelector('.modal-content').addEventListener('click', (e) => {
-            e.stopPropagation();
-        });
+            this.cancelUploadBtn.addEventListener('click', () => {
+                this.closeUploadModal();
+            });
 
-        // Password input change event for validation
-        this.uploadPasswordInput.addEventListener('input', async () => {
-            await this.validatePassword();
-        });
+            this.uploadModal.addEventListener('click', (e) => {
+                if (e.target === this.uploadModal) {
+                    this.closeUploadModal();
+                }
+            });
 
-        // File input change event
-        this.photoFileInput.addEventListener('change', (e) => {
-            this.handleFileSelect(e);
-        });
+            this.uploadModal.querySelector('.modal-content').addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
 
-        // Form submission
-        this.uploadForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.handleUploadSubmit();
-        });
+            // File input change event
+            this.photoFileInput.addEventListener('change', (e) => {
+                this.handleFileSelect(e);
+            });
+
+            // Form submission
+            this.uploadForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.handleUploadSubmit();
+            });
+        }
 
         // Keyboard navigation
         document.addEventListener('keydown', (e) => {
@@ -152,10 +155,6 @@ class Modal {
         document.addEventListener('openModal', (e) => {
             console.log('Modal: Received openModal event for image:', e.detail.imageId);
             this.open(e.detail.imageId);
-        });
-
-        document.addEventListener('openUploadModal', () => {
-            this.openUploadModal();
         });
 
         // Handle image load events
@@ -401,6 +400,10 @@ class Modal {
      * Open upload modal
      */
     openUploadModal() {
+        if (!this.hasUploadUi) {
+            return;
+        }
+
         this.isUploadModalOpen = true;
         this.uploadModal.classList.remove('hidden');
         this.uploadModal.classList.add('active');
@@ -424,6 +427,10 @@ class Modal {
      * Close upload modal
      */
     closeUploadModal() {
+        if (!this.hasUploadUi) {
+            return;
+        }
+
         this.isUploadModalOpen = false;
         this.uploadModal.classList.remove('active');
         this.uploadModal.classList.add('hidden');
@@ -437,6 +444,10 @@ class Modal {
      * Reset upload form
      */
     resetUploadForm() {
+        if (!this.hasUploadUi) {
+            return;
+        }
+
         this.uploadForm.reset();
         this.uploadProgress.classList.remove('active');
         this.uploadError.classList.add('hidden');
@@ -452,49 +463,11 @@ class Modal {
         this.submitUploadBtn.disabled = true;
     }
 
-    /**
-     * Validate password using secure client-side hashing
-     * @returns {boolean} Whether password is valid
-     */
-    async validatePassword() {
-        const password = this.uploadPasswordInput.value;
-        
-        if (!password) {
-            this.submitUploadBtn.disabled = true;
-            return false;
-        }
-
-        try {
-            // Hash the password using SHA-256
-            const encoder = new TextEncoder();
-            const data = encoder.encode(password);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-            
-            // Compare with stored hash
-            const isValid = hashHex === window.CONFIG?.UPLOAD_PASSWORD_HASH;
-            
-            // Enable/disable upload button based on password validity
-            this.submitUploadBtn.disabled = !isValid;
-            
-            if (isValid) {
-                this.hideUploadError();
-            }
-            
-            return isValid;
-        } catch (error) {
-            console.error('Password validation error:', error);
-            this.submitUploadBtn.disabled = true;
-            return false;
-        }
-    }
-
-    /**
-     * Handle file selection
-     * @param {Event} event - File input change event
-     */
     handleFileSelect(event) {
+        if (!this.hasUploadUi) {
+            return;
+        }
+
         const file = event.target.files[0];
         
         if (!file) {
@@ -540,18 +513,14 @@ class Modal {
      * Handle upload form submission
      */
     async handleUploadSubmit() {
-        const password = this.uploadPasswordInput.value;
+        if (!this.hasUploadUi) {
+            return;
+        }
+
         const file = this.photoFileInput.files[0];
         const location = this.photoLocationInput.value.trim();
         const description = this.photoDescriptionInput.value.trim();
         const timestampValue = this.photoTimestampInput.value;
-
-        // Validate password first
-        const isPasswordValid = await this.validatePassword();
-        if (!isPasswordValid) {
-            this.showUploadError('Invalid upload password. Please enter the correct password.');
-            return;
-        }
 
         // Validate required fields
         if (!file) {
@@ -603,6 +572,10 @@ class Modal {
      * Show upload progress
      */
     showUploadProgress() {
+        if (!this.hasUploadUi) {
+            return;
+        }
+
         this.uploadProgress.classList.add('active');
         this.submitUploadBtn.disabled = true;
         this.submitUploadBtn.textContent = 'uploading';
@@ -612,6 +585,10 @@ class Modal {
      * Hide upload progress
      */
     hideUploadProgress() {
+        if (!this.hasUploadUi) {
+            return;
+        }
+
         this.uploadProgress.classList.remove('active');
         this.submitUploadBtn.disabled = false;
         this.submitUploadBtn.textContent = 'upload';
@@ -622,6 +599,10 @@ class Modal {
      * @param {string} message - Error message
      */
     showUploadError(message) {
+        if (!this.hasUploadUi) {
+            return;
+        }
+
         this.uploadError.querySelector('p').textContent = message;
         this.uploadError.classList.remove('hidden');
     }
@@ -630,6 +611,10 @@ class Modal {
      * Hide upload error
      */
     hideUploadError() {
+        if (!this.hasUploadUi) {
+            return;
+        }
+
         this.uploadError.classList.add('hidden');
     }
 
