@@ -785,33 +785,16 @@ body.exposure-3 .scroll-loading p {
     pointer-events: none;
 }
 
-/* Gallery item - Minimal styling with animation support */
+/* Gallery item */
 .gallery-item {
     cursor: pointer;
     position: relative;
     overflow: hidden;
     aspect-ratio: 4 / 3;
     background: rgba(255, 255, 255, 0.08);
-    opacity: 0;
-    transform: none;
 }
 
-.gallery-item.loaded {
-    opacity: 1;
-    transition: opacity 0.14s ease;
-}
-
-.gallery-item.instant,
-.gallery-item.instant .gallery-item-image {
-    transition: none !important;
-}
-
-.gallery-item.is-entering {
-    animation: galleryBatchEnter 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
-    animation-delay: calc(var(--enter-index, 0) * 45ms);
-}
-
-.gallery-item.loaded:hover {
+.gallery-item:hover {
     transform: scale(1.02);
 }
 
@@ -820,7 +803,8 @@ body.exposure-3 .scroll-loading p {
     height: 100%;
     display: block;
     opacity: 0;
-    transition: opacity 0.14s ease, filter 0.2s ease;
+    will-change: opacity;
+    transition: opacity 0.18s ease-out;
     filter: grayscale(0.1);
     object-fit: cover;
     object-position: center center;
@@ -828,6 +812,10 @@ body.exposure-3 .scroll-loading p {
 
 .gallery-item.loaded .gallery-item-image {
     opacity: 1;
+}
+
+.gallery-item.instant .gallery-item-image {
+    transition: none;
 }
 
 .gallery-item:hover .gallery-item-image {
@@ -854,38 +842,15 @@ body.exposure-3 .scroll-loading p {
     }
 }
 
-@keyframes galleryBatchEnter {
-    from {
-        opacity: 0;
-        transform: translateY(16px) scale(0.97);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-}
-
 /* Respect reduced motion preferences */
 @media (prefers-reduced-motion: reduce) {
-    .gallery-item {
+    .gallery-item-image {
         transition: none;
-        animation: none;
     }
-    
-    .gallery-item.loaded {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-    
+
     .gallery-item-skeleton {
         animation: none;
         background: #f0f0f0;
-    }
-    
-    .gallery-item.is-entering {
-        animation: none;
-        opacity: 1;
-        transform: translateY(0) scale(1);
     }
 }
 

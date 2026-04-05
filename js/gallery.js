@@ -24,20 +24,16 @@ class Gallery {
             scrollDirection: 0,
             lastScrollTime: 0
         };
+
         this.renderState = {
             startIndex: -1,
-            endIndex: -1,
-            columns: 0,
-            rowHeight: 0,
-            gap: 0
+            endIndex: -1
         };
+        this.mountedItems = new Map();
         this.isLoadingMore = false;
         this.renderQueued = false;
         this.forceRenderQueued = false;
-        this.renderToken = 0;
-        this.activeVisibleRenderToken = 0;
-        this.nearbyPrefetchTimer = null;
-        this.rowRevealDelayMs = 42;
+        this.cachedLayout = null;
 
         this.topSpacer = null;
         this.windowGrid = null;
@@ -55,32 +51,23 @@ class Gallery {
 
     bindEvents() {
         if (this.zoomInBtn) {
-            this.zoomInBtn.addEventListener('click', () => {
-                this.zoomIn();
-            });
+            this.zoomInBtn.addEventListener('click', () => this.zoomIn());
         }
-
         if (this.zoomOutBtn) {
-            this.zoomOutBtn.addEventListener('click', () => {
-                this.zoomOut();
-            });
+            this.zoomOutBtn.addEventListener('click', () => this.zoomOut());
         }
 
         document.addEventListener('keydown', (event) => {
             if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') {
                 return;
             }
-
             if (window.app && window.app.modal && window.app.modal.isModalOpen()) {
                 return;
             }
-
             switch (event.key) {
                 case '-':
                     event.preventDefault();
-                    if (!event.shiftKey) {
-                        this.zoomOut();
-                    }
+                    if (!event.shiftKey) this.zoomOut();
                     break;
                 case '=':
                 case '+':
@@ -106,18 +93,15 @@ class Gallery {
             }
         });
 
-        document.addEventListener('photoUploaded', () => {
-            this.loadImages();
-        });
+        document.addEventListener('photoUploaded', () => this.loadImages());
 
-        window.addEventListener('scroll', this.throttle(() => {
-            this.handleScroll();
-        }, 60), { passive: true });
+        window.addEventListener('scroll', () => this.scheduleRefresh(), { passive: true });
 
         window.addEventListener('resize', this.throttle(() => {
-            this.refreshWindow(true);
+            this.cachedLayout = null;
+            this.scheduleRefresh(true);
             this.checkIfNeedsMoreContent();
-        }, 100));
+        }, 120));
 
         this.updateZoomState(false);
     }
@@ -145,16 +129,28 @@ class Gallery {
         this.galleryContainer.appendChild(this.bottomSpacer);
     }
 
-    handleScroll() {
-        this.refreshWindow();
+    scheduleRefresh(force = false) {
+        this.forceRenderQueued = this.forceRenderQueued || force;
+        if (this.renderQueued) {
+            return;
+        }
+        this.renderQueued = true;
+        requestAnimationFrame(() => {
+            const shouldForce = this.forceRenderQueued;
+            this.renderQueued = false;
+            this.forceRenderQueued = false;
+            this.renderVisibleWindow(shouldForce);
+            this.checkInfiniteScroll();
+        });
+    }
 
+    checkInfiniteScroll() {
         const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
         const windowHeight = window.innerHeight;
         const documentHeight = document.documentElement.scrollHeight;
-        const threshold = Math.max(1000, windowHeight * 1.5);
-        const nearBottom = scrollTop + windowHeight >= documentHeight - threshold;
+        const threshold = Math.max(1200, windowHeight * 2);
 
-        if (nearBottom && this.imageService.hasMore && !this.isLoadingMore) {
+        if (scrollTop + windowHeight >= documentHeight - threshold && this.imageService.hasMore && !this.isLoadingMore) {
             this.loadMoreImages();
         }
     }
@@ -163,28 +159,17 @@ class Gallery {
         if (this.imageService.isLoading || this.isLoadingMore) {
             return;
         }
-
-        const windowHeight = window.innerHeight;
-        const documentHeight = document.documentElement.scrollHeight;
-        const needsMoreContent = documentHeight <= windowHeight + 50;
-
-        if (needsMoreContent && this.imageService.hasMore) {
+        if (document.documentElement.scrollHeight <= window.innerHeight + 50 && this.imageService.hasMore) {
             this.loadMoreImages();
         }
     }
 
     throttle(func, limit) {
-        let inThrottle = false;
+        let timer = null;
         return (...args) => {
-            if (inThrottle) {
-                return;
-            }
-
+            if (timer) return;
             func.apply(this, args);
-            inThrottle = true;
-            window.setTimeout(() => {
-                inThrottle = false;
-            }, limit);
+            timer = window.setTimeout(() => { timer = null; }, limit);
         };
     }
 
@@ -202,12 +187,11 @@ class Gallery {
                 return;
             }
 
-            this.refreshWindow(true);
+            this.cachedLayout = null;
+            this.scheduleRefresh(true);
             this.triggerGlobePreloading(images);
 
-            window.setTimeout(() => {
-                this.checkIfNeedsMoreContent();
-            }, 100);
+            window.setTimeout(() => this.checkIfNeedsMoreContent(), 60);
         } catch (error) {
             console.error('Error loading images:', error);
             this.hideLoading();
@@ -225,14 +209,10 @@ class Gallery {
 
         try {
             const newImages = await this.imageService.loadMorePhotos();
-
             if (newImages.length > 0) {
-                this.refreshWindow(true);
-                this.prefetchNearbyImages(this.renderState.endIndex + 1, this.renderState.columns * 2);
-
-                window.setTimeout(() => {
-                    this.checkIfNeedsMoreContent();
-                }, 100);
+                this.cachedLayout = null;
+                this.scheduleRefresh(true);
+                window.setTimeout(() => this.checkIfNeedsMoreContent(), 60);
             }
         } catch (error) {
             console.error('Error loading more images:', error);
@@ -242,115 +222,16 @@ class Gallery {
         }
     }
 
-    refreshWindow(force = false) {
-        this.forceRenderQueued = this.forceRenderQueued || force;
-        if (this.renderQueued) {
-            return;
+    // ── layout metrics (cached between scroll ticks) ──
+
+    getLayout() {
+        if (this.cachedLayout) {
+            return this.cachedLayout;
         }
 
-        this.renderQueued = true;
-        requestAnimationFrame(() => {
-            const shouldForce = this.forceRenderQueued;
-            this.renderQueued = false;
-            this.forceRenderQueued = false;
-            this.renderVisibleWindow(shouldForce);
-        });
-    }
-
-    renderVisibleWindow(force = false) {
-        const images = this.imageService.images;
-        this.ensureWindowStructure();
-
-        if (!images || images.length === 0) {
-            this.showEmptyState();
-            return;
-        }
-
-        const layout = this.getLayoutMetrics();
-        const totalRows = Math.ceil(images.length / layout.columns);
-        const rowSpan = layout.rowHeight + layout.gap;
-        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-        const viewportTop = scrollTop;
-        const viewportBottom = viewportTop + window.innerHeight;
-        const contentTop = this.getGalleryContentTop(layout.paddingTop);
-        const visibleStartRow = Math.max(0, Math.floor(Math.max(0, viewportTop - contentTop) / rowSpan));
-        const visibleEndRow = Math.max(visibleStartRow, Math.floor(Math.max(0, viewportBottom - contentTop) / rowSpan));
-        const startRow = Math.max(0, visibleStartRow - layout.overscanRows);
-        const endRow = Math.min(totalRows - 1, visibleEndRow + layout.overscanRows);
-        const startIndex = startRow * layout.columns;
-        const endIndex = Math.min(images.length, (endRow + 1) * layout.columns);
-
-        if (!force &&
-            startIndex === this.renderState.startIndex &&
-            endIndex === this.renderState.endIndex &&
-            layout.columns === this.renderState.columns &&
-            Math.abs(layout.rowHeight - this.renderState.rowHeight) < 0.5 &&
-            layout.gap === this.renderState.gap) {
-            return;
-        }
-
-        this.applyWindowLayout(layout);
-
-        const topHeight = startRow * rowSpan;
-        const bottomRows = Math.max(0, totalRows - endRow - 1);
-        const bottomHeight = bottomRows * rowSpan;
-        this.topSpacer.style.height = `${topHeight}px`;
-        this.bottomSpacer.style.height = `${bottomHeight}px`;
-
-        const fragment = document.createDocumentFragment();
-        const renderToken = ++this.renderToken;
-        const eagerLimit = Math.min(images.length, ((visibleEndRow + 2) * layout.columns));
-        const orderedLoads = [];
-
-        for (let index = startIndex; index < endIndex; index++) {
-            const image = images[index];
-            const { item, loadDescriptor } = this.createGalleryItem(image, {
-                eager: index < eagerLimit,
-                absoluteIndex: index,
-                renderToken,
-                rowIndex: Math.floor((index - startIndex) / layout.columns)
-            });
-            fragment.appendChild(item);
-            if (loadDescriptor) {
-                orderedLoads.push(loadDescriptor);
-            }
-        }
-
-        this.windowGrid.innerHTML = '';
-        this.windowGrid.appendChild(fragment);
-
-        this.renderState = {
-            startIndex,
-            endIndex,
-            columns: layout.columns,
-            rowHeight: layout.rowHeight,
-            gap: layout.gap
-        };
-
-        this.startVisibleLoadQueue(orderedLoads, renderToken);
-        window.clearTimeout(this.nearbyPrefetchTimer);
-        this.nearbyPrefetchTimer = window.setTimeout(() => {
-            if (this.activeVisibleRenderToken === renderToken) {
-                this.prefetchNearbyImages(endIndex, layout.columns * 2);
-            }
-        }, 180);
-    }
-
-    getLayoutMetrics() {
-        const containerStyles = window.getComputedStyle(this.galleryContainer);
-        const paddingTop = parseFloat(containerStyles.paddingTop) || 0;
-        const containerWidth = this.galleryContainer.clientWidth || this.galleryContainer.getBoundingClientRect().width || window.innerWidth;
-        const desktopGaps = {
-            1: 30,
-            2: 25,
-            3: 22,
-            4: 20,
-            5: 18,
-            6: 15
-        };
-
-        let columns;
-        let gap;
+        const containerWidth = this.galleryContainer.clientWidth || window.innerWidth;
+        const desktopGaps = { 1: 30, 2: 25, 3: 22, 4: 20, 5: 18, 6: 15 };
+        let columns, gap;
 
         if (window.innerWidth <= 480) {
             gap = 10;
@@ -363,43 +244,126 @@ class Gallery {
             gap = desktopGaps[this.currentZoom] || 15;
         }
 
-        const itemWidth = Math.max(1, (containerWidth - (gap * Math.max(columns - 1, 0))) / columns);
+        const itemWidth = Math.max(1, (containerWidth - gap * Math.max(columns - 1, 0)) / columns);
         const rowHeight = itemWidth * 0.75;
-        const overscanRows = Math.max(3, Math.ceil((window.innerHeight * 1.5) / Math.max(rowHeight, 1)));
+        const rowSpan = rowHeight + gap;
+        const overscanRows = Math.max(6, Math.ceil((window.innerHeight * 3) / Math.max(rowHeight, 1)));
 
-        return {
-            columns,
-            gap,
-            rowHeight,
-            overscanRows,
-            paddingTop
-        };
+        const containerRect = this.galleryContainer.getBoundingClientRect();
+        const paddingTop = parseFloat(getComputedStyle(this.galleryContainer).paddingTop) || 0;
+        const contentTop = containerRect.top + (window.pageYOffset || document.documentElement.scrollTop) + paddingTop;
+
+        this.cachedLayout = { columns, gap, rowHeight, rowSpan, overscanRows, contentTop };
+        return this.cachedLayout;
     }
 
-    getGalleryContentTop(paddingTop) {
-        const rect = this.galleryContainer.getBoundingClientRect();
-        return rect.top + (window.pageYOffset || document.documentElement.scrollTop) + paddingTop;
-    }
+    // ── core renderer: incremental DOM diff ──
 
-    applyWindowLayout(layout) {
-        this.windowGrid.style.gridTemplateColumns = `repeat(${layout.columns}, minmax(0, 1fr))`;
-        this.windowGrid.style.gap = `${layout.gap}px`;
-    }
+    renderVisibleWindow(force = false) {
+        const images = this.imageService.images;
+        this.ensureWindowStructure();
 
-    prefetchNearbyImages(startIndex, count) {
-        if (!Number.isFinite(startIndex) || count <= 0) {
+        if (!images || images.length === 0) {
+            this.showEmptyState();
             return;
         }
 
-        const urls = this.imageService.images
-            .slice(Math.max(0, startIndex), Math.max(0, startIndex) + count)
-            .map((image) => image.thumbnailUrl)
-            .filter(Boolean);
+        const layout = this.getLayout();
+        const totalRows = Math.ceil(images.length / layout.columns);
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const viewportTop = scrollTop;
+        const viewportBottom = viewportTop + window.innerHeight;
 
-        this.imagePreloader.prefetch(urls, { concurrency: 3 });
+        const visibleStartRow = Math.max(0, Math.floor(Math.max(0, viewportTop - layout.contentTop) / layout.rowSpan));
+        const visibleEndRow = Math.max(visibleStartRow, Math.floor(Math.max(0, viewportBottom - layout.contentTop) / layout.rowSpan));
+        const startRow = Math.max(0, visibleStartRow - layout.overscanRows);
+        const endRow = Math.min(totalRows - 1, visibleEndRow + layout.overscanRows);
+        const startIndex = startRow * layout.columns;
+        const endIndex = Math.min(images.length, (endRow + 1) * layout.columns);
+
+        if (!force &&
+            startIndex === this.renderState.startIndex &&
+            endIndex === this.renderState.endIndex) {
+            return;
+        }
+
+        const prevStart = this.renderState.startIndex;
+        const prevEnd = this.renderState.endIndex;
+
+        this.applyWindowLayout(layout);
+
+        this.topSpacer.style.height = `${startRow * layout.rowSpan}px`;
+        const bottomRows = Math.max(0, totalRows - endRow - 1);
+        this.bottomSpacer.style.height = `${bottomRows * layout.rowSpan}px`;
+
+        if (force || prevStart === -1 || layout.columns !== (this.renderState.columns || 0)) {
+            this.fullRebuild(images, startIndex, endIndex, layout);
+        } else {
+            this.incrementalUpdate(images, prevStart, prevEnd, startIndex, endIndex, layout);
+        }
+
+        this.renderState = { startIndex, endIndex, columns: layout.columns };
+        this.prefetchNearby(images, endIndex, layout.columns);
     }
 
-    createGalleryItem(image, options = {}) {
+    fullRebuild(images, startIndex, endIndex, layout) {
+        this.mountedItems.clear();
+        const fragment = document.createDocumentFragment();
+
+        for (let i = startIndex; i < endIndex; i++) {
+            const node = this.getOrCreateItem(images[i], i, layout);
+            fragment.appendChild(node);
+        }
+
+        this.windowGrid.innerHTML = '';
+        this.windowGrid.appendChild(fragment);
+    }
+
+    incrementalUpdate(images, prevStart, prevEnd, nextStart, nextEnd, layout) {
+        if (nextStart < prevStart) {
+            const fragment = document.createDocumentFragment();
+            for (let i = nextStart; i < Math.min(prevStart, nextEnd); i++) {
+                fragment.appendChild(this.getOrCreateItem(images[i], i, layout));
+            }
+            this.windowGrid.insertBefore(fragment, this.windowGrid.firstChild);
+        }
+
+        if (nextEnd > prevEnd) {
+            const fragment = document.createDocumentFragment();
+            for (let i = Math.max(prevEnd, nextStart); i < nextEnd; i++) {
+                fragment.appendChild(this.getOrCreateItem(images[i], i, layout));
+            }
+            this.windowGrid.appendChild(fragment);
+        }
+
+        while (this.windowGrid.firstChild && prevStart < nextStart) {
+            const child = this.windowGrid.firstChild;
+            const id = child.dataset && child.dataset.imageId;
+            if (id) this.mountedItems.delete(id);
+            this.windowGrid.removeChild(child);
+            prevStart++;
+        }
+
+        while (this.windowGrid.lastChild && prevEnd > nextEnd) {
+            const child = this.windowGrid.lastChild;
+            const id = child.dataset && child.dataset.imageId;
+            if (id) this.mountedItems.delete(id);
+            this.windowGrid.removeChild(child);
+            prevEnd--;
+        }
+    }
+
+    // ── item creation ──
+
+    getOrCreateItem(image, absoluteIndex, layout) {
+        const existing = this.mountedItems.get(image.id);
+        if (existing) {
+            return existing;
+        }
+        return this.createGalleryItem(image, absoluteIndex, layout);
+    }
+
+    createGalleryItem(image, absoluteIndex, layout) {
         const item = document.createElement('div');
         item.className = 'gallery-item';
         item.dataset.imageId = image.id;
@@ -407,17 +371,7 @@ class Gallery {
         const img = document.createElement('img');
         img.className = 'gallery-item-image';
         img.alt = image.description || 'Photo';
-        img.loading = options.eager ? 'eager' : 'lazy';
         img.decoding = 'async';
-        img.fetchPriority = options.eager ? 'high' : 'low';
-
-        if (image.width) {
-            img.width = image.width;
-        }
-
-        if (image.height) {
-            img.height = image.height;
-        }
 
         const skeleton = document.createElement('div');
         skeleton.className = 'gallery-item-skeleton';
@@ -425,14 +379,34 @@ class Gallery {
         item.appendChild(img);
         item.appendChild(skeleton);
 
-        item.addEventListener('click', () => {
-            this.openImageModal(image.id);
-        });
+        const cached = this.imagePreloader.isImageLoaded(image.thumbnailUrl);
 
+        if (cached) {
+            img.src = image.thumbnailUrl;
+            item.classList.add('loaded', 'instant');
+            skeleton.remove();
+        } else {
+            this.imagePreloader.preloadImage(image.thumbnailUrl).then(() => {
+                if (!item.isConnected) return;
+                img.src = image.thumbnailUrl;
+            });
+
+            img.addEventListener('load', () => {
+                item.classList.add('loaded');
+                if (skeleton.isConnected) skeleton.remove();
+            }, { once: true });
+
+            img.addEventListener('error', () => {
+                img.src = this.getImageFallbackSrc();
+                item.classList.add('loaded');
+                if (skeleton.isConnected) skeleton.remove();
+            }, { once: true });
+        }
+
+        item.addEventListener('click', () => this.openImageModal(image.id));
         item.setAttribute('tabindex', '0');
         item.setAttribute('role', 'button');
         item.setAttribute('aria-label', `View ${image.description || 'photo'} in fullscreen`);
-
         item.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
@@ -440,133 +414,41 @@ class Gallery {
             }
         });
 
-        const loadDescriptor = {
-            absoluteIndex: options.absoluteIndex,
-            rowIndex: options.rowIndex || 0,
-            renderToken: options.renderToken,
-            url: image.thumbnailUrl,
-            img,
-            item,
-            skeleton,
-            immediate: this.imagePreloader.isImageLoaded(image.thumbnailUrl)
-        };
-
-        return {
-            item,
-            loadDescriptor
-        };
-    }
-
-    startVisibleLoadQueue(entries, renderToken) {
-        this.activeVisibleRenderToken = renderToken;
-
-        const orderedEntries = entries
-            .filter((entry) => entry && entry.url)
-            .sort((left, right) => left.absoluteIndex - right.absoluteIndex);
-
-        if (orderedEntries.length === 0) {
-            return;
-        }
-
-        const immediateEntries = orderedEntries.filter((entry) => entry.immediate);
-        immediateEntries.forEach((entry) => {
-            entry.img.src = entry.url;
-            this.revealVisibleItem(entry, renderToken, true);
-        });
-
-        const deferredEntries = orderedEntries.filter((entry) => !entry.immediate);
-        if (deferredEntries.length === 0) {
-            return;
-        }
-
-        (async () => {
-            const loadPromises = new Map();
-            deferredEntries.forEach((entry) => {
-                loadPromises.set(entry.url, this.imagePreloader.preloadImage(entry.url));
-            });
-
-            const rows = [];
-            let currentRow = [];
-            let currentRowIndex = deferredEntries[0].rowIndex;
-
-            deferredEntries.forEach((entry) => {
-                if (entry.rowIndex !== currentRowIndex) {
-                    rows.push(currentRow);
-                    currentRow = [];
-                    currentRowIndex = entry.rowIndex;
-                }
-
-                currentRow.push(entry);
-            });
-
-            if (currentRow.length > 0) {
-                rows.push(currentRow);
-            }
-
-            for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
-                if (this.activeVisibleRenderToken !== renderToken) {
-                    return;
-                }
-
-                const rowEntries = rows[rowIndex];
-                const results = await Promise.all(rowEntries.map((entry) => loadPromises.get(entry.url)));
-                if (this.activeVisibleRenderToken !== renderToken) {
-                    return;
-                }
-
-                rowEntries.forEach((entry, index) => {
-                    entry.img.src = results[index] ? entry.url : this.getImageFallbackSrc();
-                });
-
-                await this.waitForNextPaint();
-                rowEntries.forEach((entry) => {
-                    this.revealVisibleItem(entry, renderToken, false);
-                });
-
-                if (rowIndex < rows.length - 1) {
-                    await this.wait(this.rowRevealDelayMs);
-                }
-            }
-        })().catch((error) => {
-            console.error('Visible image queue failed:', error);
-        });
-    }
-
-    revealVisibleItem(entry, renderToken, instant = false) {
-        if (this.activeVisibleRenderToken !== renderToken || !entry.item.isConnected) {
-            return;
-        }
-
-        entry.item.classList.toggle('instant', instant);
-        entry.item.classList.add('loaded');
-        if (entry.skeleton.isConnected) {
-            entry.skeleton.remove();
-        }
+        this.mountedItems.set(image.id, item);
+        return item;
     }
 
     getImageFallbackSrc() {
         return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgdmlld0JveD0iMCAwIDQwMCAzMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0xNzUgMTI1SDE4NVYxMzVIMTc1VjEyNVoiIGZpbGw9IiM5Q0EzQUYiLz4KPHA+SW1hZ2UgTm90IEZvdW5kPC9wPgo8L3N2Zz4K';
     }
 
-    waitForNextPaint() {
-        return new Promise((resolve) => {
-            requestAnimationFrame(() => {
-                requestAnimationFrame(resolve);
-            });
-        });
+    // ── prefetch ──
+
+    prefetchNearby(images, endIndex, columns) {
+        const count = columns * 3;
+        const urls = images
+            .slice(Math.max(0, endIndex), Math.max(0, endIndex) + count)
+            .map((img) => img.thumbnailUrl)
+            .filter(Boolean);
+        if (urls.length > 0) {
+            this.imagePreloader.prefetch(urls, { concurrency: 4 });
+        }
     }
 
-    wait(ms) {
-        return new Promise((resolve) => {
-            window.setTimeout(resolve, ms);
-        });
+    // ── layout helpers ──
+
+    applyWindowLayout(layout) {
+        this.windowGrid.style.gridTemplateColumns = `repeat(${layout.columns}, minmax(0, 1fr))`;
+        this.windowGrid.style.gap = `${layout.gap}px`;
     }
+
+    // ── modal ──
 
     openImageModal(imageId) {
-        document.dispatchEvent(new CustomEvent('openModal', {
-            detail: { imageId }
-        }));
+        document.dispatchEvent(new CustomEvent('openModal', { detail: { imageId } }));
     }
+
+    // ── UI state ──
 
     showLoading() {
         this.loadingElement.classList.remove('hidden');
@@ -588,29 +470,20 @@ class Gallery {
     }
 
     showScrollLoading() {
-        if (this.scrollLoadingElement) {
-            this.scrollLoadingElement.classList.remove('hidden');
-        }
+        if (this.scrollLoadingElement) this.scrollLoadingElement.classList.remove('hidden');
     }
 
     hideScrollLoading() {
-        if (this.scrollLoadingElement) {
-            this.scrollLoadingElement.classList.add('hidden');
-        }
+        if (this.scrollLoadingElement) this.scrollLoadingElement.classList.add('hidden');
     }
 
     clearGallery() {
         this.ensureWindowStructure();
         this.windowGrid.innerHTML = '';
+        this.mountedItems.clear();
         this.topSpacer.style.height = '0px';
         this.bottomSpacer.style.height = '0px';
-        this.renderState = {
-            startIndex: -1,
-            endIndex: -1,
-            columns: 0,
-            rowHeight: 0,
-            gap: 0
-        };
+        this.renderState = { startIndex: -1, endIndex: -1 };
     }
 
     showEmptyState() {
@@ -629,21 +502,16 @@ class Gallery {
     }
 
     highlightItem(imageId) {
-        this.getGalleryItems().forEach((item) => {
-            item.classList.remove('highlighted');
-        });
-
-        const targetItem = this.galleryContainer.querySelector(`[data-image-id="${imageId}"]`);
-        if (targetItem) {
-            targetItem.classList.add('highlighted');
-        }
+        this.getGalleryItems().forEach((item) => item.classList.remove('highlighted'));
+        const target = this.galleryContainer.querySelector(`[data-image-id="${imageId}"]`);
+        if (target) target.classList.add('highlighted');
     }
 
     removeHighlights() {
-        this.getGalleryItems().forEach((item) => {
-            item.classList.remove('highlighted');
-        });
+        this.getGalleryItems().forEach((item) => item.classList.remove('highlighted'));
     }
+
+    // ── zoom ──
 
     zoomIn() {
         if (this.currentZoom > this.minZoom) {
@@ -663,30 +531,21 @@ class Gallery {
         for (let i = 1; i <= 6; i++) {
             this.galleryContainer.classList.remove(`zoom-${i}`);
         }
-
         this.galleryContainer.classList.add(`zoom-${this.currentZoom}`);
 
-        if (this.zoomInBtn) {
-            this.zoomInBtn.disabled = this.currentZoom <= this.minZoom;
-        }
-
-        if (this.zoomOutBtn) {
-            this.zoomOutBtn.disabled = this.currentZoom >= this.maxZoom;
-        }
-
+        if (this.zoomInBtn) this.zoomInBtn.disabled = this.currentZoom <= this.minZoom;
+        if (this.zoomOutBtn) this.zoomOutBtn.disabled = this.currentZoom >= this.maxZoom;
         this.storeZoomPreference(this.currentZoom);
 
         if (refresh) {
-            this.refreshWindow(true);
+            this.cachedLayout = null;
+            this.scheduleRefresh(true);
         }
     }
 
     storeZoomPreference(value) {
-        try {
-            localStorage.setItem('mirror-zoom', value.toString());
-        } catch (error) {
-            console.warn('Could not store zoom preference:', error);
-        }
+        try { localStorage.setItem('mirror-zoom', value.toString()); }
+        catch (e) { /* ignore */ }
     }
 
     loadZoomPreference() {
@@ -699,73 +558,45 @@ class Gallery {
                     return true;
                 }
             }
-        } catch (error) {
-            console.warn('Could not load zoom preference:', error);
-        }
-
+        } catch (e) { /* ignore */ }
         return false;
     }
 
+    // ── keyboard scroll ──
+
     handleScrollKey(distance, isRepeat) {
         const now = Date.now();
-
         if (!isRepeat) {
             this.scrollState.isScrolling = true;
             this.scrollState.scrollDirection = distance;
             this.scrollState.lastScrollTime = now;
-            this.scrollByDistance(distance);
+            window.scrollBy({ top: distance, behavior: 'smooth' });
             return;
         }
-
-        const timeSinceLastScroll = now - this.scrollState.lastScrollTime;
-        if (timeSinceLastScroll > 16) {
-            const currentScrollY = window.pageYOffset || document.documentElement.scrollTop;
-            const scrollIncrement = Math.sign(distance) * 50;
-            const targetScrollY = Math.max(0, currentScrollY + scrollIncrement);
-
-            window.scrollTo({
-                top: targetScrollY,
-                behavior: 'auto'
-            });
-
+        if (now - this.scrollState.lastScrollTime > 16) {
+            window.scrollBy({ top: Math.sign(distance) * 50, behavior: 'auto' });
             this.scrollState.lastScrollTime = now;
         }
     }
 
-    scrollByDistance(distance) {
-        const currentScrollY = window.pageYOffset || document.documentElement.scrollTop;
-        const targetScrollY = Math.max(0, currentScrollY + distance);
-
-        window.scrollTo({
-            top: targetScrollY,
-            behavior: 'smooth'
-        });
-    }
+    // ── globe preloading ──
 
     triggerGlobePreloading(images) {
-        if (this.globePreloaded || !images || images.length === 0) {
-            return;
-        }
-
+        if (this.globePreloaded || !images || images.length === 0) return;
         const firstImage = images[0];
-        if (!firstImage || !firstImage.location) {
-            return;
-        }
+        if (!firstImage || !firstImage.location) return;
 
         setTimeout(async () => {
             try {
-                const preloadContainer = document.getElementById('globe-preload-container');
-                if (!preloadContainer) {
-                    return;
-                }
-
-                await this.globeService.preloadGlobe(preloadContainer, firstImage.location);
+                const container = document.getElementById('globe-preload-container');
+                if (!container) return;
+                await this.globeService.preloadGlobe(container, firstImage.location);
                 this.globePreloaded = true;
             } catch (error) {
                 console.error('Gallery: Failed to preload globe:', error);
                 this.globePreloaded = false;
             }
-        }, 250);
+        }, 300);
     }
 }
 
