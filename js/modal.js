@@ -213,9 +213,8 @@ class Modal {
         this.currentImageId = null;
         this.isNavigating = false;
 
-        // Tear down globe
-        if (this.globeService && this.globeContainer) {
-            this.globeService.destroy(this.globeContainer);
+        // Keep globe instance alive for reuse across modal opens.
+        if (this.globeContainer) {
             this.globeContainer.classList.add('hidden');
         }
         
@@ -326,8 +325,12 @@ class Modal {
             if (!this.globeService || !this.globeContainer) return;
             
             this.globeContainer.classList.add('hidden');
-            
-            await this.globeService.transferOrCreate(this.globeContainer, locationOrOptions);
+
+            if (this.globeService.instances.has(this.globeContainer)) {
+                await this.globeService.createOrUpdate(this.globeContainer, locationOrOptions);
+            } else {
+                await this.globeService.transferOrCreate(this.globeContainer, locationOrOptions);
+            }
             
             // If unsupported or failed, container will likely be empty; keep hidden
             if (!this.globeContainer.firstChild) {

@@ -277,6 +277,12 @@ class GlobeService {
    */
   async transferOrCreate(targetContainer, locationOrOptions) {
     try {
+      if (this.instances.has(targetContainer)) {
+        console.log('GlobeService: Reusing existing modal globe instance');
+        await this.createOrUpdate(targetContainer, locationOrOptions);
+        return;
+      }
+
       if (this.isGlobePreloaded()) {
         console.log('GlobeService: Transferring preloaded globe to modal');
         
@@ -319,8 +325,8 @@ class GlobeService {
           return;
         }
       }
-      
-      console.log('GlobeService: No preloaded globe available, creating new instance');
+
+      console.log('GlobeService: Creating globe instance (no reusable/preloaded instance available)');
       await this.createOrUpdate(targetContainer, locationOrOptions);
     } catch (error) {
       console.error('GlobeService: Failed to transfer globe, falling back to new instance:', error);
