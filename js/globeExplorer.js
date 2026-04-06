@@ -92,6 +92,40 @@ class GlobeExplorer {
         this._applyDotHighlight();
     }
 
+    _setPendingFilterSelection(type, value) {
+        this.selectedFilterType = type;
+        this.selectedFilterValue = value || '';
+        this._renderFilterMenu();
+    }
+
+    _pickPrecisePointIndex(hits, pointerPx, camera, renderer, group, THREE, maxPixelDistance = 14) {
+        if (!Array.isArray(hits) || !hits.length) return null;
+        const width = renderer.domElement.clientWidth || 1;
+        const height = renderer.domElement.clientHeight || 1;
+        const worldQuat = group.getWorldQuaternion(new THREE.Quaternion());
+        let bestIdx = null;
+        let bestDistSq = Infinity;
+        const maxSq = maxPixelDistance * maxPixelDistance;
+
+        for (const hit of hits) {
+            const idx = hit.index;
+            if (idx == null || idx >= this.locationUnitVectors.length) continue;
+            const worldPos = this.locationUnitVectors[idx].clone().multiplyScalar(1.01).applyQuaternion(worldQuat);
+            const ndc = worldPos.clone().project(camera);
+            if (ndc.z < -1 || ndc.z > 1) continue;
+            const sx = (ndc.x * 0.5 + 0.5) * width;
+            const sy = (-ndc.y * 0.5 + 0.5) * height;
+            const dx = sx - pointerPx.x;
+            const dy = sy - pointerPx.y;
+            const d2 = dx * dx + dy * dy;
+            if (d2 <= maxSq && d2 < bestDistSq) {
+                bestDistSq = d2;
+                bestIdx = idx;
+            }
+        }
+        return bestIdx;
+    }
+
     _applyDotHighlight() {
         const s = this.threeState;
         if (!s?.dotColors || !s?.dotsMesh?.geometry) return;
@@ -422,20 +456,20 @@ class GlobeExplorer {
             outlineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
             const outlineMat = new THREE.PointsMaterial({
                 color: 0x000000,
-                size: 0.12,
+                size: 0.095,
                 sizeAttenuation: true,
                 transparent: true,
-                opacity: 0.95,
+                opacity: 0.32,
                 depthWrite: false,
-                depthTest: false
+                depthTest: true
             });
             highlightOutlineMesh = new THREE.Points(outlineGeo, outlineMat);
-            highlightOutlineMesh.renderOrder = 10;
+            highlightOutlineMesh.renderOrder = 0;
             group.add(highlightOutlineMesh);
         }
         this._buildArcs(THREE, group);
         const raycaster = new THREE.Raycaster();
-        raycaster.params.Points = { threshold: 0.06 };
+        raycaster.params.Points = { threshold: 0.034 };
         const mouse = new THREE.Vector2();
 
         // Fallback drag-rotate (works even when OrbitControls fails to load).
@@ -477,13 +511,19 @@ class GlobeExplorer {
             raycaster.setFromCamera(hoverMouse, camera);
             if (dotsMesh) {
                 const hits = raycaster.intersectObject(dotsMesh);
-                if (hits.length > 0) {
-                    const idx = hits[0].index;
-                    if (idx != null && idx < this.locations.length) {
-                        const key = this._locationKeyFor(this.locations[idx]);
-                        this._setHoverHighlight('location', key);
-                        return;
-                    }
+                const preciseIdx = this._pickPrecisePointIndex(
+                    hits,
+                    { x: e.clientX - rect.left, y: e.clientY - rect.top },
+                    camera,
+                    renderer,
+                    group,
+                    THREE,
+                    13
+                );
+                if (preciseIdx != null && preciseIdx < this.locations.length) {
+                    const key = this._locationKeyFor(this.locations[preciseIdx]);
+                    this._setHoverHighlight('location', key);
+                    return;
                 }
             }
 
@@ -529,17 +569,28 @@ class GlobeExplorer {
             const clickDir = globeHits[0].point.clone().normalize();
             if (dotsMesh) {
                 const hits = raycaster.intersectObject(dotsMesh);
-                if (hits.length > 0) {
-                    const idx = hits[0].index;
-                    if (idx != null && idx < this.locations.length) {
-                        const selectedLocation = this.locations[idx];
-                        const preferredKey = this._locationKeyFor(selectedLocation);
-                        const picked = this._resolveClusterClick(THREE, clickDir, group, preferredKey);
-                        if (picked && picked.location?.country) {
-                            this._showPointPanel(picked.location, picked);
+                const preciseIdx = this._pickPrecisePointIndex(
+                    hits,
+                    { x: e.clientX - rect.left, y: e.clientY - rect.top },
+                    camera,
+                    renderer,
+                    group,
+                    THREE,
+                    15
+                );
+                if (preciseIdx != null && preciseIdx < this.locations.length) {
+                    const selectedLocation = this.locations[preciseIdx];
+                    const preferredKey = this._locationKeyFor(selectedLocation);
+                    const picked = this._resolveClusterClick(THREE, clickDir, group, preferredKey);
+                    if (picked && picked.location?.country) {
+                        if (picked.location.location) {
+                            this._setPendingFilterSelection('location', picked.location.location);
+                        } else {
+                            this._setPendingFilterSelection('country', picked.location.country);
                         }
-                        return;
+                        this._showPointPanel(picked.location, picked);
                     }
+                    return;
                 }
             }
 
@@ -572,6 +623,7 @@ class GlobeExplorer {
             }
             const picked = this._resolveClusterClick(THREE, inferenceDir, group, nearest.key);
             if (!picked || !picked.location?.country) return;
+            this._setPendingFilterSelection('country', picked.location.country);
             this._showInferredCountryPanel(picked.location.country, picked.location, picked.angleDeg, picked);
         });
 
