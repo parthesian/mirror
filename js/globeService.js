@@ -102,25 +102,33 @@ class GlobeService {
     };
   }
 
-  async createOrUpdate(containerEl, locationString) {
+  _resolveCoords(locationOrOptions) {
+    if (locationOrOptions && typeof locationOrOptions === 'object' && !Array.isArray(locationOrOptions)) {
+      const { latitude, longitude, country, location } = locationOrOptions;
+      if (latitude != null && longitude != null && Number.isFinite(latitude) && Number.isFinite(longitude)) {
+        return { lat: latitude, lon: longitude };
+      }
+      const countryKey = this._parseCountry(country || location || '');
+      if (countryKey) return this._countryLatLng(countryKey);
+      return null;
+    }
+
+    const countryKey = this._parseCountry(locationOrOptions);
+    if (countryKey) return this._countryLatLng(countryKey);
+    return null;
+  }
+
+  async createOrUpdate(containerEl, locationOrOptions) {
     try {
       const THREE = await this._loadThree();
       if (!containerEl) return;
 
-      const countryKey = this._parseCountry(locationString);
-      if (!countryKey) {
-        // No supported country -> hide or clear
-        this.destroy(containerEl);
-        return;
-      }
-
-      const coords = this._countryLatLng(countryKey);
+      const coords = this._resolveCoords(locationOrOptions);
       if (!coords) {
         this.destroy(containerEl);
         return;
       }
 
-      // Ensure container has a height (now circular 160px)
       if (!containerEl.style.height || containerEl.clientHeight === 0) {
         containerEl.style.height = '160px';
       }
@@ -131,11 +139,9 @@ class GlobeService {
         this.instances.set(containerEl, instance);
       }
 
-      // Set/update target rotation to center on country
       const target = this._rotationForLatLng(coords.lat, coords.lon, THREE);
       instance.targetRotation = target;
 
-      // Make sure visible
       containerEl.classList.remove('hidden');
     } catch (err) {
       console.error('GlobeService createOrUpdate error:', err);
@@ -239,15 +245,14 @@ class GlobeService {
    * @param {HTMLElement} preloadContainer - Hidden container for preloading
    * @param {string} locationString - Location to initialize globe with
    */
-  async preloadGlobe(preloadContainer, locationString) {
+  async preloadGlobe(preloadContainer, locationOrOptions) {
     try {
-      console.log('GlobeService: Starting globe preload for location:', locationString);
+      console.log('GlobeService: Starting globe preload for:', locationOrOptions);
       
       this.preloadContainer = preloadContainer;
-      this.preloadLocation = locationString;
+      this.preloadLocation = locationOrOptions;
       
-      // Initialize globe in the preload container
-      await this.createOrUpdate(preloadContainer, locationString);
+      await this.createOrUpdate(preloadContainer, locationOrOptions);
       
       this.isPreloaded = true;
       console.log('GlobeService: Globe preloaded successfully');
@@ -270,34 +275,26 @@ class GlobeService {
    * @param {HTMLElement} targetContainer - Target container for the globe
    * @param {string} locationString - Location to display
    */
-  async transferOrCreate(targetContainer, locationString) {
+  async transferOrCreate(targetContainer, locationOrOptions) {
     try {
-      // If we have a preloaded globe, try to transfer it
       if (this.isGlobePreloaded()) {
         console.log('GlobeService: Transferring preloaded globe to modal');
         
         const preloadedInstance = this.instances.get(this.preloadContainer);
         if (preloadedInstance && !preloadedInstance.disposed) {
-          // Move the renderer DOM element to the target container
           targetContainer.innerHTML = '';
           targetContainer.appendChild(preloadedInstance.renderer.domElement);
           
-          // Update the instance mapping
           this.instances.delete(this.preloadContainer);
           this.instances.set(targetContainer, preloadedInstance);
           
-          // Update target rotation for new location if different
-          const countryKey = this._parseCountry(locationString);
-          if (countryKey) {
-            const coords = this._countryLatLng(countryKey);
-            if (coords) {
-              const THREE = await this._loadThree();
-              const target = this._rotationForLatLng(coords.lat, coords.lon, THREE);
-              preloadedInstance.targetRotation = target;
-            }
+          const coords = this._resolveCoords(locationOrOptions);
+          if (coords) {
+            const THREE = await this._loadThree();
+            const target = this._rotationForLatLng(coords.lat, coords.lon, THREE);
+            preloadedInstance.targetRotation = target;
           }
           
-          // Update resize handler for new container
           if (preloadedInstance.onResize) {
             window.removeEventListener('resize', preloadedInstance.onResize);
           }
@@ -312,10 +309,8 @@ class GlobeService {
           };
           window.addEventListener('resize', preloadedInstance.onResize);
           
-          // Ensure target container is visible
           targetContainer.classList.remove('hidden');
           
-          // Clear preload state
           this.preloadContainer = null;
           this.isPreloaded = false;
           this.preloadLocation = null;
@@ -325,13 +320,11 @@ class GlobeService {
         }
       }
       
-      // Fallback to creating new globe instance
       console.log('GlobeService: No preloaded globe available, creating new instance');
-      await this.createOrUpdate(targetContainer, locationString);
+      await this.createOrUpdate(targetContainer, locationOrOptions);
     } catch (error) {
       console.error('GlobeService: Failed to transfer globe, falling back to new instance:', error);
-      // Final fallback
-      await this.createOrUpdate(targetContainer, locationString);
+      await this.createOrUpdate(targetContainer, locationOrOptions);
     }
   }
 

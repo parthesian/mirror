@@ -822,73 +822,13 @@ body.exposure-3 .scroll-loading p {
     filter: grayscale(0);
 }
 
-/* Skeleton placeholder for loading state */
-.gallery-item-skeleton {
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-    background-size: 200% 100%;
-    animation: shimmer 1.5s infinite;
-    border-radius: 4px;
-}
-
-/* Skeleton animation */
-@keyframes shimmer {
-    0% {
-        background-position: -200% 0;
-    }
-    100% {
-        background-position: 200% 0;
-    }
-}
-
 /* Respect reduced motion preferences */
 @media (prefers-reduced-motion: reduce) {
     .gallery-item-image {
         transition: none;
     }
-
-    .gallery-item-skeleton {
-        animation: none;
-        background: #f0f0f0;
-    }
 }
 
-/* Skeleton themes for different exposures */
-body.exposure--3 .gallery-item-skeleton {
-    background: linear-gradient(90deg, #333333 25%, #222222 50%, #333333 75%);
-    background-size: 200% 100%;
-}
-
-body.exposure--2 .gallery-item-skeleton {
-    background: linear-gradient(90deg, #555555 25%, #444444 50%, #555555 75%);
-    background-size: 200% 100%;
-}
-
-body.exposure--1 .gallery-item-skeleton {
-    background: linear-gradient(90deg, #888888 25%, #777777 50%, #888888 75%);
-    background-size: 200% 100%;
-}
-
-body.exposure-0 .gallery-item-skeleton {
-    background: linear-gradient(90deg, #c8c8c8 25%, #b8b8b8 50%, #c8c8c8 75%);
-    background-size: 200% 100%;
-}
-
-body.exposure-1 .gallery-item-skeleton {
-    background: linear-gradient(90deg, #dddddd 25%, #cccccc 50%, #dddddd 75%);
-    background-size: 200% 100%;
-}
-
-body.exposure-2 .gallery-item-skeleton {
-    background: linear-gradient(90deg, #f5f5f5 25%, #eeeeee 50%, #f5f5f5 75%);
-    background-size: 200% 100%;
-}
-
-body.exposure-3 .gallery-item-skeleton {
-    background: linear-gradient(90deg, #ffffff 25%, #f8f8f8 50%, #ffffff 75%);
-    background-size: 200% 100%;
-}
 
 .gallery-item-info {
     display: none; /* Hide all metadata in grid view */
@@ -1153,6 +1093,7 @@ body.exposure-3 .upload-modal-content h2 {
 .form-group input[type="text"],
 .form-group input[type="password"],
 .form-group input[type="date"],
+.form-group input[type="number"],
 .form-group textarea {
     width: 100%;
     padding: 0.8rem 1rem;
@@ -1171,6 +1112,7 @@ body.exposure-3 .upload-modal-content h2 {
 .form-group input[type="text"]:focus,
 .form-group input[type="password"]:focus,
 .form-group input[type="date"]:focus,
+.form-group input[type="number"]:focus,
 .form-group textarea:focus {
     outline: none;
     transform: translateY(-2px);
@@ -1182,6 +1124,7 @@ body.exposure-3 .upload-modal-content h2 {
 .form-group input[type="text"]:hover,
 .form-group input[type="password"]:hover,
 .form-group input[type="date"]:hover,
+.form-group input[type="number"]:hover,
 .form-group textarea:hover {
     transform: translateY(-1px);
     box-shadow: 
@@ -1333,6 +1276,7 @@ body.exposure--3 .form-group label {
 body.exposure--3 .form-group input[type="text"],
 body.exposure--3 .form-group input[type="password"],
 body.exposure--3 .form-group input[type="date"],
+body.exposure--3 .form-group input[type="number"],
 body.exposure--3 .form-group textarea {
     background: rgba(255, 255, 255, 0.05);
     color: #ffffff;
@@ -1350,6 +1294,7 @@ body.exposure--2 .form-group label {
 body.exposure--2 .form-group input[type="text"],
 body.exposure--2 .form-group input[type="password"],
 body.exposure--2 .form-group input[type="date"],
+body.exposure--2 .form-group input[type="number"],
 body.exposure--2 .form-group textarea {
     background: rgba(255, 255, 255, 0.08);
     color: #ffffff;
@@ -1367,6 +1312,7 @@ body.exposure--1 .form-group label {
 body.exposure--1 .form-group input[type="text"],
 body.exposure--1 .form-group input[type="password"],
 body.exposure--1 .form-group input[type="date"],
+body.exposure--1 .form-group input[type="number"],
 body.exposure--1 .form-group textarea {
     background: rgba(255, 255, 255, 0.12);
     color: #ffffff;
@@ -1384,6 +1330,7 @@ body.exposure-0 .form-group label {
 body.exposure-0 .form-group input[type="text"],
 body.exposure-0 .form-group input[type="password"],
 body.exposure-0 .form-group input[type="date"],
+body.exposure-0 .form-group input[type="number"],
 body.exposure-0 .form-group textarea {
     background: rgba(255, 255, 255, 0.15);
     color: #333333;
@@ -1397,6 +1344,7 @@ body.exposure-1 .form-group label {
 body.exposure-1 .form-group input[type="text"],
 body.exposure-1 .form-group input[type="password"],
 body.exposure-1 .form-group input[type="date"],
+body.exposure-1 .form-group input[type="number"],
 body.exposure-1 .form-group textarea {
     background: rgba(255, 255, 255, 0.2);
     color: #000000;
@@ -1410,6 +1358,7 @@ body.exposure-2 .form-group label {
 body.exposure-2 .form-group input[type="text"],
 body.exposure-2 .form-group input[type="password"],
 body.exposure-2 .form-group input[type="date"],
+body.exposure-2 .form-group input[type="number"],
 body.exposure-2 .form-group textarea {
     background: rgba(255, 255, 255, 0.25);
     color: #000000;
@@ -1423,6 +1372,7 @@ body.exposure-3 .form-group label {
 body.exposure-3 .form-group input[type="text"],
 body.exposure-3 .form-group input[type="password"],
 body.exposure-3 .form-group input[type="date"],
+body.exposure-3 .form-group input[type="number"],
 body.exposure-3 .form-group textarea {
     background: rgba(0, 0, 0, 0.05);
     color: #000000;
@@ -1663,6 +1613,21 @@ body.exposure-2 .preview-placeholder {
 body.exposure-3 .preview-placeholder {
     background: rgba(0, 0, 0, 0.05);
     border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.form-group-row {
+    display: flex;
+    gap: 1rem;
+}
+
+.form-group-half {
+    flex: 1;
+    min-width: 0;
+}
+
+.form-group-half label {
+    display: block;
+    margin-bottom: 0.5rem;
 }
 
 .form-actions {

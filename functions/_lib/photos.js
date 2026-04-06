@@ -63,6 +63,9 @@ export function mapPhotoRecord(record) {
         uploadedAt: record.uploaded_at,
         width: record.width,
         height: record.height,
+        latitude: record.latitude ?? null,
+        longitude: record.longitude ?? null,
+        country: record.country || '',
         storageKey: record.storage_key,
         image: {
             url: buildImageUrl(record.id, 'full'),

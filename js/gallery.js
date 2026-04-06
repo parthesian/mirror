@@ -373,18 +373,13 @@ class Gallery {
         img.alt = image.description || 'Photo';
         img.decoding = 'async';
 
-        const skeleton = document.createElement('div');
-        skeleton.className = 'gallery-item-skeleton';
-
         item.appendChild(img);
-        item.appendChild(skeleton);
 
         const cached = this.imagePreloader.isImageLoaded(image.thumbnailUrl);
 
         if (cached) {
             img.src = image.thumbnailUrl;
             item.classList.add('loaded', 'instant');
-            skeleton.remove();
         } else {
             this.imagePreloader.preloadImage(image.thumbnailUrl).then(() => {
                 if (!item.isConnected) return;
@@ -393,13 +388,11 @@ class Gallery {
 
             img.addEventListener('load', () => {
                 item.classList.add('loaded');
-                if (skeleton.isConnected) skeleton.remove();
             }, { once: true });
 
             img.addEventListener('error', () => {
                 img.src = this.getImageFallbackSrc();
                 item.classList.add('loaded');
-                if (skeleton.isConnected) skeleton.remove();
             }, { once: true });
         }
 
@@ -590,7 +583,12 @@ class Gallery {
             try {
                 const container = document.getElementById('globe-preload-container');
                 if (!container) return;
-                await this.globeService.preloadGlobe(container, firstImage.location);
+                await this.globeService.preloadGlobe(container, {
+                    latitude: firstImage.latitude,
+                    longitude: firstImage.longitude,
+                    country: firstImage.country,
+                    location: firstImage.location
+                });
                 this.globePreloaded = true;
             } catch (error) {
                 console.error('Gallery: Failed to preload globe:', error);

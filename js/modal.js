@@ -249,8 +249,12 @@ class Modal {
         this.modalLocation.textContent = image.location;
         this.modalTimestamp.textContent = this.imageService.formatTimestamp(image.timestamp);
 
-        // Update animated globe under description
-        this.updateGlobe(image.location);
+        this.updateGlobe({
+            latitude: image.latitude,
+            longitude: image.longitude,
+            country: image.country,
+            location: image.location
+        });
         this.prefetchAdjacentImages(image.id);
     }
 
@@ -306,15 +310,13 @@ class Modal {
     /**
      * Update globe display under modal description
      */
-    async updateGlobe(location) {
+    async updateGlobe(locationOrOptions) {
         try {
             if (!this.globeService || !this.globeContainer) return;
             
-            // Hide by default; GlobeService will unhide on success
             this.globeContainer.classList.add('hidden');
             
-            // Try to use preloaded globe or create new one
-            await this.globeService.transferOrCreate(this.globeContainer, location);
+            await this.globeService.transferOrCreate(this.globeContainer, locationOrOptions);
             
             // If unsupported or failed, container will likely be empty; keep hidden
             if (!this.globeContainer.firstChild) {

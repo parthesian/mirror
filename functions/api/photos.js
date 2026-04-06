@@ -12,13 +12,13 @@ async function listPhotos(context) {
     }
 
     let statement = env.PHOTO_DB.prepare(`
-        SELECT id, storage_key, location, description, taken_at, uploaded_at, width, height
+        SELECT id, storage_key, location, description, taken_at, uploaded_at, width, height, latitude, longitude, country
         FROM photos
     `);
 
     if (cursor) {
         statement = env.PHOTO_DB.prepare(`
-            SELECT id, storage_key, location, description, taken_at, uploaded_at, width, height
+            SELECT id, storage_key, location, description, taken_at, uploaded_at, width, height, latitude, longitude, country
             FROM photos
             WHERE taken_at < ? OR (taken_at = ? AND id < ?)
             ORDER BY taken_at DESC, id DESC
@@ -26,7 +26,7 @@ async function listPhotos(context) {
         `).bind(cursor.takenAt, cursor.takenAt, cursor.id, limit + 1);
     } else {
         statement = env.PHOTO_DB.prepare(`
-            SELECT id, storage_key, location, description, taken_at, uploaded_at, width, height
+            SELECT id, storage_key, location, description, taken_at, uploaded_at, width, height, latitude, longitude, country
             FROM photos
             ORDER BY taken_at DESC, id DESC
             LIMIT ?

@@ -19,6 +19,10 @@ function normalizeMetadata(record) {
         throw new Error(`Record is missing required migration fields: ${JSON.stringify(record)}`);
     }
 
+    const latitude = record.latitude ?? null;
+    const longitude = record.longitude ?? null;
+    const country = record.country || '';
+
     return {
         id,
         storageKey,
@@ -27,7 +31,10 @@ function normalizeMetadata(record) {
         takenAt,
         uploadedAt,
         width: record.width ?? null,
-        height: record.height ?? null
+        height: record.height ?? null,
+        latitude: typeof latitude === 'number' && Number.isFinite(latitude) ? latitude : null,
+        longitude: typeof longitude === 'number' && Number.isFinite(longitude) ? longitude : null,
+        country
     };
 }
 
@@ -57,8 +64,11 @@ async function main() {
     const sqlStatements = normalized.map(record => {
         const width = Number.isInteger(record.width) ? record.width : 'NULL';
         const height = Number.isInteger(record.height) ? record.height : 'NULL';
+        const latitude = record.latitude !== null ? record.latitude : 'NULL';
+        const longitude = record.longitude !== null ? record.longitude : 'NULL';
+        const country = escapeSql(record.country);
 
-        return `INSERT INTO photos (id, storage_key, location, description, taken_at, uploaded_at, width, height) VALUES ('${escapeSql(record.id)}', '${escapeSql(record.storageKey)}', '${escapeSql(record.location)}', '${escapeSql(record.description)}', '${escapeSql(record.takenAt)}', '${escapeSql(record.uploadedAt)}', ${width}, ${height});`;
+        return `INSERT INTO photos (id, storage_key, location, description, taken_at, uploaded_at, width, height, latitude, longitude, country) VALUES ('${escapeSql(record.id)}', '${escapeSql(record.storageKey)}', '${escapeSql(record.location)}', '${escapeSql(record.description)}', '${escapeSql(record.takenAt)}', '${escapeSql(record.uploadedAt)}', ${width}, ${height}, ${latitude}, ${longitude}, '${country}');`;
     });
 
     const copyManifest = normalized.map(record => ({

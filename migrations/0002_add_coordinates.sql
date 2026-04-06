@@ -1,0 +1,3 @@
+ALTER TABLE photos ADD COLUMN latitude REAL;
+ALTER TABLE photos ADD COLUMN longitude REAL;
+ALTER TABLE photos ADD COLUMN country TEXT DEFAULT '';

@@ -76,7 +76,10 @@ class ImageService {
             storageKey: photo.storageKey || photo.s3Key || photo.key || '',
             width,
             height,
-            aspectRatio: width && height ? width / height : (4 / 3)
+            aspectRatio: width && height ? width / height : (4 / 3),
+            latitude: photo.latitude ?? null,
+            longitude: photo.longitude ?? null,
+            country: photo.country || ''
         };
     }
 
@@ -448,7 +451,7 @@ class ImageService {
      * @param {Object} timestamp - Optional timestamp object with day, month, year
      * @returns {Promise<Object>} Upload response
      */
-    async uploadPhoto(file, location, description = '', timestamp = null) {
+    async uploadPhoto(file, location, description = '', timestamp = null, coords = null) {
         try {
             if (!this.apiBaseUrl && window.location.protocol === 'file:') {
                 throw new Error('API base URL not configured. Cannot upload photos.');
@@ -476,6 +479,18 @@ class ImageService {
                 formData.append('takenAt', normalizedTimestamp);
             }
 
+            if (coords) {
+                if (coords.latitude != null && Number.isFinite(Number(coords.latitude))) {
+                    formData.append('latitude', coords.latitude.toString());
+                }
+                if (coords.longitude != null && Number.isFinite(Number(coords.longitude))) {
+                    formData.append('longitude', coords.longitude.toString());
+                }
+                if (coords.country) {
+                    formData.append('country', coords.country);
+                }
+            }
+
             console.log('Uploading photo with multipart payload:', {
                 location,
                 description,
@@ -484,7 +499,10 @@ class ImageService {
                 fileSize: preparedAssets.photoFile.size,
                 thumbnailSize: preparedAssets.thumbnailFile?.size || 0,
                 width: preparedAssets.width,
-                height: preparedAssets.height
+                height: preparedAssets.height,
+                latitude: coords?.latitude ?? 'not provided',
+                longitude: coords?.longitude ?? 'not provided',
+                country: coords?.country || 'not provided'
             });
 
             const response = await fetch(this.buildApiUrl('/api/admin/photos'), {

@@ -10,6 +10,9 @@ class AdminUploadPage {
         this.photoLocationInput = document.getElementById('photo-location');
         this.photoDescriptionInput = document.getElementById('photo-description');
         this.photoTimestampInput = document.getElementById('photo-timestamp');
+        this.photoLatitudeInput = document.getElementById('photo-latitude');
+        this.photoLongitudeInput = document.getElementById('photo-longitude');
+        this.photoCountryInput = document.getElementById('photo-country');
         this.previewImage = document.getElementById('preview-image');
         this.fileStatusIcon = document.getElementById('file-status-icon');
         this.submitUploadBtn = document.getElementById('submit-upload');
@@ -109,6 +112,9 @@ class AdminUploadPage {
         const location = this.photoLocationInput.value.trim();
         const description = this.photoDescriptionInput.value.trim();
         const timestampValue = this.photoTimestampInput.value;
+        const latitudeValue = this.photoLatitudeInput.value.trim();
+        const longitudeValue = this.photoLongitudeInput.value.trim();
+        const countryValue = this.photoCountryInput.value.trim();
 
         if (!file) {
             this.showUploadError('Please select a photo to upload.');
@@ -130,11 +136,24 @@ class AdminUploadPage {
             };
         }
 
+        const coords = {};
+        if (latitudeValue !== '' && longitudeValue !== '') {
+            const lat = Number.parseFloat(latitudeValue);
+            const lon = Number.parseFloat(longitudeValue);
+            if (Number.isFinite(lat) && Number.isFinite(lon)) {
+                coords.latitude = lat;
+                coords.longitude = lon;
+            }
+        }
+        if (countryValue) {
+            coords.country = countryValue;
+        }
+
         try {
             this.showUploadProgress();
             this.hideUploadError();
 
-            const result = await this.imageService.uploadPhoto(file, location, description, timestamp);
+            const result = await this.imageService.uploadPhoto(file, location, description, timestamp, coords);
             this.hideUploadProgress();
             this.resetForm();
             this.showUploadSuccess(result.message || 'Photo uploaded successfully.');

@@ -18,6 +18,9 @@ async function createPhoto(context) {
     const takenAt = (formData.get('takenAt') || '').toString().trim();
     const width = Number.parseInt((formData.get('width') || '').toString().trim(), 10);
     const height = Number.parseInt((formData.get('height') || '').toString().trim(), 10);
+    const latitude = Number.parseFloat((formData.get('latitude') || '').toString().trim());
+    const longitude = Number.parseFloat((formData.get('longitude') || '').toString().trim());
+    const country = (formData.get('country') || '').toString().trim();
 
     if (!(photo instanceof File)) {
         return errorResponse('A photo file is required.', 400);
@@ -49,6 +52,9 @@ async function createPhoto(context) {
         });
     }
 
+    const normalizedLatitude = Number.isFinite(latitude) ? latitude : null;
+    const normalizedLongitude = Number.isFinite(longitude) ? longitude : null;
+
     await env.PHOTO_DB.prepare(`
         INSERT INTO photos (
             id,
@@ -58,8 +64,11 @@ async function createPhoto(context) {
             taken_at,
             uploaded_at,
             width,
-            height
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            height,
+            latitude,
+            longitude,
+            country
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
         photoId,
         storageKey,
@@ -68,7 +77,10 @@ async function createPhoto(context) {
         normalizedTakenAt,
         uploadedAt,
         Number.isFinite(width) ? width : null,
-        Number.isFinite(height) ? height : null
+        Number.isFinite(height) ? height : null,
+        normalizedLatitude,
+        normalizedLongitude,
+        country
     ).run();
 
     return json({
@@ -83,7 +95,10 @@ async function createPhoto(context) {
             taken_at: normalizedTakenAt,
             uploaded_at: uploadedAt,
             width: Number.isFinite(width) ? width : null,
-            height: Number.isFinite(height) ? height : null
+            height: Number.isFinite(height) ? height : null,
+            latitude: normalizedLatitude,
+            longitude: normalizedLongitude,
+            country
         })
     }, { status: 201 });
 }
