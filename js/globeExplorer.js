@@ -45,6 +45,11 @@ class GlobeExplorer {
         this.locationGroupByKey = new Map();
         this.hoverHighlight = { type: null, key: null };
         this.isFilterPanelExpanded = false;
+        this._countryBoundaryPromise = null;
+        this.countryBoundaryFeatures = [];
+        this.countryBoundaryAliasMap = new Map();
+        this.countryFilterAliasMap = new Map();
+        this.countryBoundaryBorder = null;
 
         this._bindEvents();
         this._setFilterPanelExpanded(false);
@@ -94,6 +99,310 @@ class GlobeExplorer {
         this.selectedFilterType = type;
         this.selectedFilterValue = value || '';
         this._renderFilterMenu();
+    }
+
+    _normalizeCountryName(value) {
+        return String(value || '')
+            .normalize('NFKD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim()
+            .replace(/\s+/g, ' ');
+    }
+
+    _seedCountryAliasesFromLocations() {
+        this.countryFilterAliasMap = new Map();
+        const addAlias = (alias, canonical) => {
+            const key = this._normalizeCountryName(alias);
+            if (!key || !canonical) return;
+            if (!this.countryFilterAliasMap.has(key)) {
+                this.countryFilterAliasMap.set(key, canonical);
+            }
+        };
+        const explicitAliases = {
+            usa: 'USA',
+            us: 'USA',
+            'u s a': 'USA',
+            'u s': 'USA',
+            'united states': 'USA',
+            'united states of america': 'USA',
+            uk: 'United Kingdom',
+            'united kingdom': 'United Kingdom',
+            britain: 'United Kingdom',
+            'great britain': 'United Kingdom',
+            uae: 'United Arab Emirates',
+            'united arab emirates': 'United Arab Emirates',
+            russia: 'Russia',
+            'russian federation': 'Russia',
+            korea: 'South Korea',
+            'south korea': 'South Korea',
+            'republic of korea': 'South Korea',
+            'north korea': 'North Korea',
+            'dprk': 'North Korea'
+        };
+        for (const [alias, canonical] of Object.entries(explicitAliases)) {
+            addAlias(alias, canonical);
+        }
+
+        for (const country of Object.keys(this.locationsByCountry || {})) {
+            if (!country || country === 'Unknown') continue;
+            addAlias(country, country);
+        }
+    }
+
+    _resolveCountryFilterValue(countryName, aliases = []) {
+        const candidates = [countryName, ...(Array.isArray(aliases) ? aliases : [])];
+        for (const candidate of candidates) {
+            const key = this._normalizeCountryName(candidate);
+            const mapped = this.countryFilterAliasMap.get(key);
+            if (mapped && this.locationsByCountry[mapped]?.length >= 0) return mapped;
+            if (candidate && this.locationsByCountry[candidate]?.length >= 0) return candidate;
+        }
+        return countryName || '';
+    }
+
+    async _ensureCountryBoundariesLoaded() {
+        if (this.countryBoundaryFeatures.length) return;
+        if (this._countryBoundaryPromise) return this._countryBoundaryPromise;
+        this._countryBoundaryPromise = this._loadCountryBoundaries();
+        try {
+            await this._countryBoundaryPromise;
+        } finally {
+            this._countryBoundaryPromise = null;
+        }
+    }
+
+    async _loadCountryBoundaries() {
+        const dataSources = [
+            'public/data/ne_110m_admin_0_countries.geojson',
+            'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson'
+        ];
+        let featureCollection = null;
+        for (const src of dataSources) {
+            try {
+                const res = await fetch(src, { cache: 'force-cache' });
+                if (!res.ok) continue;
+                featureCollection = await res.json();
+                if (featureCollection?.features?.length) break;
+            } catch (_) {
+                // Continue to next source.
+            }
+        }
+        if (!featureCollection?.features?.length) {
+            console.warn('[GlobeExplorer] country boundaries unavailable');
+            this.countryBoundaryFeatures = [];
+            this.countryBoundaryAliasMap = new Map();
+            return;
+        }
+
+        const aliases = new Map();
+        const features = [];
+
+        const normalizeLon = (lon) => {
+            const out = ((Number(lon) + 540) % 360) - 180;
+            return Number.isFinite(out) ? out : lon;
+        };
+        const getBbox = (rings) => {
+            let minLon = Infinity;
+            let maxLon = -Infinity;
+            let minLat = Infinity;
+            let maxLat = -Infinity;
+            for (const ring of rings) {
+                for (const point of ring) {
+                    const lon = normalizeLon(point[0]);
+                    const lat = Number(point[1]);
+                    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+                    minLon = Math.min(minLon, lon);
+                    maxLon = Math.max(maxLon, lon);
+                    minLat = Math.min(minLat, lat);
+                    maxLat = Math.max(maxLat, lat);
+                }
+            }
+            if (!Number.isFinite(minLon) || !Number.isFinite(minLat)) return null;
+            return { minLon, maxLon, minLat, maxLat };
+        };
+        const normalizeAlias = (value) => this._normalizeCountryName(value);
+        const addAlias = (value, featureRef) => {
+            const key = normalizeAlias(value);
+            if (!key) return;
+            if (!aliases.has(key)) aliases.set(key, featureRef);
+        };
+        const cleanName = (value) => String(value || '').trim();
+        const namesForProps = (props) => ([
+            props?.NAME,
+            props?.NAME_LONG,
+            props?.BRK_NAME,
+            props?.FORMAL_EN,
+            props?.ADMIN,
+            props?.ABBREV,
+            props?.ISO_A2,
+            props?.ISO_A3
+        ].map(cleanName).filter(Boolean));
+
+        for (const feature of featureCollection.features) {
+            const geometry = feature?.geometry;
+            if (!geometry) continue;
+            const type = geometry.type;
+            const polygons = [];
+            if (type === 'Polygon') {
+                if (Array.isArray(geometry.coordinates)) polygons.push(geometry.coordinates);
+            } else if (type === 'MultiPolygon') {
+                if (Array.isArray(geometry.coordinates)) polygons.push(...geometry.coordinates);
+            } else continue;
+
+            const ringsForBbox = [];
+            for (const polygon of polygons) {
+                if (!Array.isArray(polygon)) continue;
+                for (const ring of polygon) {
+                    if (Array.isArray(ring)) ringsForBbox.push(ring);
+                }
+            }
+            const bbox = getBbox(ringsForBbox);
+            if (!bbox) continue;
+
+            const props = feature.properties || {};
+            const names = namesForProps(props);
+            const primaryName = cleanName(props.ADMIN || props.NAME || props.BRK_NAME || props.NAME_LONG || '');
+            if (!primaryName) continue;
+
+            const featureRef = {
+                name: primaryName,
+                names,
+                iso2: cleanName(props.ISO_A2),
+                iso3: cleanName(props.ISO_A3),
+                polygons,
+                bbox
+            };
+            features.push(featureRef);
+            for (const n of names) addAlias(n, featureRef);
+        }
+
+        this.countryBoundaryFeatures = features;
+        this.countryBoundaryAliasMap = aliases;
+    }
+
+    _pointInRing(lon, lat, ring) {
+        let inside = false;
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+            const xi = Number(ring[i][0]);
+            const yi = Number(ring[i][1]);
+            const xj = Number(ring[j][0]);
+            const yj = Number(ring[j][1]);
+            if (!Number.isFinite(xi) || !Number.isFinite(yi) || !Number.isFinite(xj) || !Number.isFinite(yj)) continue;
+            const intersects = ((yi > lat) !== (yj > lat))
+                && (lon < ((xj - xi) * (lat - yi)) / ((yj - yi) || 1e-12) + xi);
+            if (intersects) inside = !inside;
+        }
+        return inside;
+    }
+
+    _pointInPolygon(lon, lat, polygon) {
+        if (!Array.isArray(polygon) || !polygon.length) return false;
+        const [outer, ...holes] = polygon;
+        if (!Array.isArray(outer) || !outer.length) return false;
+        if (!this._pointInRing(lon, lat, outer)) return false;
+        for (const hole of holes) {
+            if (Array.isArray(hole) && hole.length && this._pointInRing(lon, lat, hole)) return false;
+        }
+        return true;
+    }
+
+    _dirToLatLon(THREE, direction) {
+        const d = direction.clone().normalize();
+        const lat = THREE.MathUtils.radToDeg(Math.asin(THREE.MathUtils.clamp(d.y, -1, 1)));
+        let lon = THREE.MathUtils.radToDeg(Math.atan2(d.z, -d.x)) - 180;
+        lon = ((lon + 540) % 360) - 180;
+        return { lat, lon };
+    }
+
+    _isWithinBbox(lon, lat, bbox) {
+        if (!bbox) return true;
+        const latOk = lat >= bbox.minLat && lat <= bbox.maxLat;
+        if (!latOk) return false;
+        // Dateline-spanning ranges get very large width. In that case skip strict lon clipping.
+        if ((bbox.maxLon - bbox.minLon) > 300) return true;
+        return lon >= bbox.minLon && lon <= bbox.maxLon;
+    }
+
+    _findCountryFromDirection(THREE, direction) {
+        if (!this.countryBoundaryFeatures.length) return null;
+        const { lat, lon } = this._dirToLatLon(THREE, direction);
+        for (const feature of this.countryBoundaryFeatures) {
+            if (!this._isWithinBbox(lon, lat, feature.bbox)) continue;
+            for (const polygon of feature.polygons) {
+                if (this._pointInPolygon(lon, lat, polygon)) {
+                    return {
+                        feature,
+                        lat,
+                        lon
+                    };
+                }
+            }
+        }
+        return null;
+    }
+
+    _clearCountryBorderHighlight() {
+        const s = this.threeState;
+        if (!s?.group || !this.countryBoundaryBorder) return;
+        s.group.remove(this.countryBoundaryBorder);
+        this.countryBoundaryBorder.traverse?.((obj) => {
+            if (obj.geometry?.dispose) obj.geometry.dispose();
+            if (obj.material?.dispose) obj.material.dispose();
+        });
+        this.countryBoundaryBorder = null;
+    }
+
+    _setCountryBorderHighlight(THREE, featureRef, group) {
+        if (!featureRef || !group) {
+            this._clearCountryBorderHighlight();
+            return;
+        }
+        this._clearCountryBorderHighlight();
+        const borderGroup = new THREE.Group();
+        const radius = 1.012;
+        const lineMaterial = new THREE.LineBasicMaterial({
+            color: 0x9ed8ff,
+            transparent: true,
+            opacity: 0.95
+        });
+        for (const polygon of featureRef.polygons) {
+            if (!Array.isArray(polygon) || !polygon.length) continue;
+            const outer = polygon[0];
+            if (!Array.isArray(outer) || outer.length < 2) continue;
+            const points = [];
+            for (const coord of outer) {
+                const lon = Number(coord[0]);
+                const lat = Number(coord[1]);
+                if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+                points.push(this._latLonToVec3(lat, lon, radius, THREE));
+            }
+            if (points.length < 2) continue;
+            const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+            const line = new THREE.Line(lineGeo, lineMaterial.clone());
+            borderGroup.add(line);
+        }
+        group.add(borderGroup);
+        this.countryBoundaryBorder = borderGroup;
+    }
+
+    _showCountryPanel(country, aliases = []) {
+        const resolvedCountry = this._resolveCountryFilterValue(country, aliases);
+        const photos = this.locationsByCountry[resolvedCountry] || [];
+        let html = `<h3 class="globe-panel-country">${this._escapeHtml(country || 'Unknown')}</h3>`;
+        html += `<p class="globe-panel-count">${photos.length} photo${photos.length !== 1 ? 's' : ''}</p>`;
+        if (!photos.length) {
+            html += '<p class="globe-panel-count">no photos in this country yet</p>';
+        }
+        html += '<div class="globe-panel-actions">';
+        html += `<button class="globe-panel-filter-btn" id="globe-filter-country-boundary" ${photos.length ? '' : 'disabled'}>show country photos</button>`;
+        html += '</div>';
+        this.panelContent.innerHTML = html;
+        document.getElementById('globe-filter-country-boundary')?.addEventListener('click', () => {
+            if (!photos.length) return;
+            this._applyFilter('country', resolvedCountry);
+        });
     }
 
     _hideIntersectPicker() {
@@ -342,6 +651,7 @@ class GlobeExplorer {
         if (!this.isOpen) return;
         this.isOpen = false;
         this._setHoverHighlight(null, null);
+        this._clearCountryBorderHighlight();
         this._hideIntersectPicker();
         this.overlay.classList.remove('active');
         this.overlay.classList.add('hidden');
@@ -424,6 +734,7 @@ class GlobeExplorer {
         for (const bucket of placeBuckets.values()) {
             this.locationsByPlace[bucket.label] = bucket.items;
         }
+        this._seedCountryAliasesFromLocations();
         this._renderFilterMenu();
     }
 
@@ -518,6 +829,7 @@ class GlobeExplorer {
         }
         const globe = new THREE.Mesh(geo, mat);
         group.add(globe);
+        await this._ensureCountryBoundariesLoaded();
 
         const dotsMesh = this._buildDots(THREE, group);
         this._buildArcs(THREE, group);
@@ -583,6 +895,7 @@ class GlobeExplorer {
                 if (preciseIdx != null && preciseIdx < this.locations.length) {
                     const key = this._locationKeyFor(this.locations[preciseIdx]);
                     this._setHoverHighlight('location', key);
+                    this._clearCountryBorderHighlight();
                     return;
                 }
             }
@@ -590,9 +903,17 @@ class GlobeExplorer {
             const globeHits = raycaster.intersectObject(globe);
             if (!globeHits.length) {
                 this._setHoverHighlight(null, null);
+                this._clearCountryBorderHighlight();
                 return;
             }
             this._setHoverHighlight(null, null);
+            const hitDir = globeHits[0].point.clone().normalize();
+            const countryHit = this._findCountryFromDirection(THREE, hitDir);
+            if (countryHit?.feature) {
+                this._setCountryBorderHighlight(THREE, countryHit.feature, group);
+            } else {
+                this._clearCountryBorderHighlight();
+            }
         });
         renderer.domElement.addEventListener('wheel', () => {
             if (this.pointerGesture) {
@@ -698,8 +1019,16 @@ class GlobeExplorer {
                 }
             }
 
-            // No country inference on miss; keep selection only for direct point hits.
+            // If no point is selected, fallback to country polygons.
+            const countryHit = this._findCountryFromDirection(THREE, clickDir);
             this._hideIntersectPicker();
+            if (countryHit?.feature) {
+                const aliases = countryHit.feature.names || [];
+                const canonicalCountry = this._resolveCountryFilterValue(countryHit.feature.name, aliases);
+                this._setPendingFilterSelection('country', canonicalCountry);
+                this._showCountryPanel(countryHit.feature.name, aliases);
+                this._setCountryBorderHighlight(THREE, countryHit.feature, group);
+            }
             return;
         });
 
@@ -737,6 +1066,7 @@ class GlobeExplorer {
         const s = this.threeState;
         if (!s) return;
         s.disposed = true;
+        this._clearCountryBorderHighlight();
         if (s.rafId) cancelAnimationFrame(s.rafId);
         if (s.onResize) window.removeEventListener('resize', s.onResize);
         if (s.controls) s.controls.dispose();
