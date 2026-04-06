@@ -34,7 +34,7 @@ class GlobeExplorer {
         this._orbitPromise = null;
         this._geoPromise = null;
         this._geoFetchedOnce = false;
-        this.autoRotateEnabled = true;
+        this.autoRotateEnabled = false;
         this.locationUnitVectors = [];
         this.locationGroups = [];
         this.pointerGesture = null;
