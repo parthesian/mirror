@@ -237,13 +237,24 @@ class Modal {
      * @param {Object} image - Image object
      */
     loadImageContent(image) {
-        // Show loading state
-        this.showImageLoading();
-        
-        // Set image
-        this.modalImage.src = image.url;
         this.modalImage.alt = image.description || 'Photo';
-        
+
+        if (image.thumbnailUrl && image.thumbnailUrl !== image.url) {
+            this.modalImage.style.opacity = '1';
+            this.modalImage.src = image.thumbnailUrl;
+
+            const full = new Image();
+            full.src = image.url;
+            full.onload = () => {
+                if (this.currentImageId === image.id) {
+                    this.modalImage.src = image.url;
+                }
+            };
+        } else {
+            this.showImageLoading();
+            this.modalImage.src = image.url;
+        }
+
         // Set text content
         this.modalDescription.textContent = image.description;
         this.modalLocation.textContent = image.location;

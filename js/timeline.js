@@ -106,17 +106,25 @@ class Timeline {
         return names[month] || '';
     }
 
+    imageYearMonth(img) {
+        const d = new Date(img.timestamp);
+        return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 };
+    }
+
     scrollToDate(year, month) {
+        year = Number(year);
+        month = Number(month);
         const images = this.imageService.images;
         if (!images || images.length === 0) return;
 
         const targetIndex = images.findIndex(img => {
-            const d = new Date(img.timestamp);
-            return d.getFullYear() === year && (d.getMonth() + 1) === month;
+            const ym = this.imageYearMonth(img);
+            return ym.year === year && ym.month === month;
         });
 
         if (targetIndex === -1) return;
 
+        this.gallery.cachedLayout = null;
         const layout = this.gallery.getLayout();
         const row = Math.floor(targetIndex / layout.columns);
         const targetY = layout.contentTop + (row * layout.rowSpan);
@@ -137,8 +145,8 @@ class Timeline {
         const img = images[approxIndex];
         if (!img) return;
 
-        const d = new Date(img.timestamp);
-        const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+        const ym = this.imageYearMonth(img);
+        const key = `${ym.year}-${ym.month}`;
 
         if (key === this.activeKey) return;
         this.activeKey = key;
