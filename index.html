@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>आईना</title>
     <link rel="icon" type="image/svg+xml" href="mirror.svg">
-    <link rel="stylesheet" href="styles.css?v=20260406d">
+    <link rel="stylesheet" href="styles.css?v=20260406f">
 </head>
 <body class="exposure-0">
     <header class="header">
@@ -46,10 +46,16 @@
 
     <aside id="timeline" class="timeline-sidebar"></aside>
 
-    <!-- Country filter chip -->
-    <div id="country-filter-chip" class="country-filter-chip hidden">
-        <span id="filter-chip-label"></span>
-        <button id="filter-chip-clear" aria-label="Clear filter">&times;</button>
+    <div id="country-filter-panel" class="country-filter-panel">
+        <div class="country-filter-title">filter</div>
+        <div id="country-filter-active" class="country-filter-active">ALL</div>
+        <select id="country-filter-select" class="country-filter-select" aria-label="Choose country filter">
+            <option value="">all countries</option>
+        </select>
+        <div class="country-filter-actions">
+            <button id="country-filter-apply" class="country-filter-btn">apply</button>
+            <button id="country-filter-clear" class="country-filter-btn">clear</button>
+        </div>
     </div>
 
     <main class="main-content">
@@ -121,7 +127,7 @@
     <script src="js/timeline.js?v=20260405c"></script>
     <script src="js/modal.js?v=20260405c"></script>
     <script src="js/filmEffects.js?v=20260406d"></script>
-    <script src="js/globeExplorer.js?v=20260406c"></script>
+    <script src="js/globeExplorer.js?v=20260406e"></script>
     <script src="js/app.js?v=20260406c"></script>
 </body>
 </html>

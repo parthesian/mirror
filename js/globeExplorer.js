@@ -11,9 +11,11 @@ class GlobeExplorer {
         this.hint = this.overlay?.querySelector('.globe-explorer-hint');
         this.openBtn = document.getElementById('globe-btn');
         this.closeBtn = document.getElementById('globe-explorer-close');
-        this.filterChip = document.getElementById('country-filter-chip');
-        this.filterChipLabel = document.getElementById('filter-chip-label');
-        this.filterChipClear = document.getElementById('filter-chip-clear');
+        this.filterPanel = document.getElementById('country-filter-panel');
+        this.filterActive = document.getElementById('country-filter-active');
+        this.filterSelect = document.getElementById('country-filter-select');
+        this.filterApplyBtn = document.getElementById('country-filter-apply');
+        this.filterClearBtn = document.getElementById('country-filter-clear');
 
         this.isOpen = false;
         this.threeState = null;
@@ -37,7 +39,17 @@ class GlobeExplorer {
         this.overlay?.addEventListener('click', (e) => {
             if (e.target === this.overlay) this.close();
         });
-        this.filterChipClear?.addEventListener('click', () => this._clearFilter());
+        this.filterApplyBtn?.addEventListener('click', () => {
+            const value = this.filterSelect?.value || '';
+            if (value) this._applyFilter(value);
+        });
+        this.filterClearBtn?.addEventListener('click', () => this._clearFilter());
+        this.filterSelect?.addEventListener('change', () => {
+            const value = this.filterSelect.value;
+            if (value && this.filterActive) {
+                this.filterActive.textContent = value.toUpperCase();
+            }
+        });
 
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && this.isOpen) this.close();
@@ -115,6 +127,7 @@ class GlobeExplorer {
             if (!this.locationsByCountry[c]) this.locationsByCountry[c] = [];
             this.locationsByCountry[c].push(loc);
         }
+        this._renderFilterMenu();
     }
 
     // ── Three.js loading ──
@@ -200,6 +213,7 @@ class GlobeExplorer {
         }
 
         const group = new THREE.Group();
+        group.rotation.y = -Math.PI / 2; // align globe texture and data points
         scene.add(group);
 
         const geo = new THREE.SphereGeometry(1, 48, 48);
@@ -215,7 +229,6 @@ class GlobeExplorer {
             mat = new THREE.MeshPhongMaterial({ color: 0xbdbdbd, shininess: 1 });
         }
         const globe = new THREE.Mesh(geo, mat);
-        globe.rotation.y = -Math.PI / 2;
         group.add(globe);
         console.log('[GlobeExplorer] globe mesh added');
 
@@ -448,10 +461,31 @@ class GlobeExplorer {
 
     // ── filtering ──
 
+    _renderFilterMenu() {
+        if (!this.filterSelect) return;
+        const countries = Object.keys(this.locationsByCountry)
+            .filter((c) => c && c !== 'Unknown')
+            .sort((a, b) => a.localeCompare(b));
+
+        const current = this.imageService.countryFilter || '';
+        this.filterSelect.innerHTML = '<option value="">all countries</option>';
+        for (const c of countries) {
+            const count = this.locationsByCountry[c]?.length || 0;
+            const option = document.createElement('option');
+            option.value = c;
+            option.textContent = `${c} (${count})`;
+            this.filterSelect.appendChild(option);
+        }
+        this.filterSelect.value = current;
+        if (this.filterActive) {
+            this.filterActive.textContent = current ? current.toUpperCase() : 'ALL';
+        }
+    }
+
     async _applyFilter(country) {
         this.close();
-        this.filterChip?.classList.remove('hidden');
-        if (this.filterChipLabel) this.filterChipLabel.textContent = country;
+        if (this.filterActive) this.filterActive.textContent = country.toUpperCase();
+        if (this.filterSelect) this.filterSelect.value = country;
 
         this.imageService.countryFilter = country;
         if (window.gallery) {
@@ -460,7 +494,8 @@ class GlobeExplorer {
     }
 
     async _clearFilter() {
-        this.filterChip?.classList.add('hidden');
+        if (this.filterActive) this.filterActive.textContent = 'ALL';
+        if (this.filterSelect) this.filterSelect.value = '';
         this.imageService.countryFilter = null;
         if (window.gallery) {
             await window.gallery.loadImages();

@@ -37,7 +37,7 @@ body {
 
 /* Header styles */
 .header {
-    background-color: #a8a8a8;
+    background-color: transparent;
     color: #333;
     padding: 2rem 0 1rem 0;
     text-align: center;
@@ -343,7 +343,7 @@ body.exposure--3 {
 }
 
 body.exposure--3 .header {
-    background-color: #000000;
+    background-color: transparent;
     color: #ffffff;
 }
 
@@ -366,7 +366,7 @@ body.exposure--2 {
 }
 
 body.exposure--2 .header {
-    background-color: #333333;
+    background-color: transparent;
     color: #ffffff;
 }
 
@@ -389,7 +389,7 @@ body.exposure--1 {
 }
 
 body.exposure--1 .header {
-    background-color: #666666;
+    background-color: transparent;
     color: #000000;
 }
 
@@ -412,7 +412,7 @@ body.exposure-0 {
 }
 
 body.exposure-0 .header {
-    background-color: #a8a8a8;
+    background-color: transparent;
     color: #333333;
 }
 
@@ -435,7 +435,7 @@ body.exposure-1 {
 }
 
 body.exposure-1 .header {
-    background-color: #cccccc;
+    background-color: transparent;
     color: #000000;
 }
 
@@ -458,7 +458,7 @@ body.exposure-2 {
 }
 
 body.exposure-2 .header {
-    background-color: #e8e8e8;
+    background-color: transparent;
     color: #000000;
 }
 
@@ -481,7 +481,7 @@ body.exposure-3 {
 }
 
 body.exposure-3 .header {
-    background-color: #ffffff;
+    background-color: transparent;
     color: #000000;
 }
 
@@ -2942,32 +2942,7 @@ body.exposure-1  { --leak-opacity: 0.55; }
 body.exposure-2  { --leak-opacity: 0.45; }
 body.exposure-3  { --leak-opacity: 0.35; }
 
-/* Light leak also visible in title/header section */
-.header::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    z-index: 0;
-    mix-blend-mode: screen;
-    opacity: calc(var(--leak-opacity, 0.65) * 0.95);
-    background:
-        radial-gradient(
-            ellipse at calc(var(--leak-x1, 12%) + var(--scroll-ratio, 0) * var(--leak-dx1, 72%)) var(--leak-y1, 42%),
-            rgba(var(--leak-c1, 255, 170, 110), 0.22),
-            transparent 70%
-        ),
-        radial-gradient(
-            ellipse at calc(var(--leak-x3, 52%) + var(--scroll-ratio, 0) * var(--leak-dx3, 18%)) var(--leak-y3, 24%),
-            rgba(var(--leak-c4, 120, 160, 255), 0.10),
-            transparent 58%
-        );
-}
-
-.header > * {
-    position: relative;
-    z-index: 1;
-}
+/* Header inherits body leak backdrop for a seamless top section. */
 
 /* Light leak inside fullscreen photo modal background */
 .modal {
@@ -3161,48 +3136,96 @@ body.exposure-2  .globe-explorer { background: rgba(232, 232, 232, 0.98); color:
 body.exposure-3  .globe-explorer { background: rgba(255, 255, 255, 0.98); color: #000000; }
 
 /* ============================================
-   Country Filter Chip
+   Country Filter Panel (bottom-right)
    ============================================ */
 
-.country-filter-chip {
+.country-filter-panel {
     position: fixed;
-    top: 7.25rem;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 3;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.35rem 0.75rem;
-    font-family: 'Helvetica Neue', Arial, sans-serif;
-    font-size: 0.75rem;
-    font-weight: 300;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
+    right: 1.4rem;
+    bottom: 1.3rem;
+    z-index: 6;
+    width: 190px;
     border: 1px solid currentColor;
-    opacity: 0.7;
-    background: transparent;
+    padding: 0.65rem;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    background: rgba(0, 0, 0, 0.12);
+    backdrop-filter: blur(2px);
+    opacity: 0.82;
     transition: opacity 0.3s ease;
 }
 
-.country-filter-chip:hover {
+.country-filter-panel:hover {
     opacity: 1;
 }
 
-.country-filter-chip button {
-    background: none;
-    border: none;
-    color: inherit;
-    font-size: 1rem;
-    cursor: pointer;
-    line-height: 1;
-    padding: 0;
+.country-filter-title {
+    font-size: 0.62rem;
     opacity: 0.6;
+    margin-bottom: 0.35rem;
+}
+
+.country-filter-active {
+    font-size: 0.86rem;
+    margin-bottom: 0.5rem;
+    letter-spacing: 0.12em;
+}
+
+.country-filter-select {
+    width: 100%;
+    background: transparent;
+    color: inherit;
+    border: 1px solid currentColor;
+    padding: 0.32rem 0.35rem;
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    margin-bottom: 0.55rem;
+    outline: none;
+}
+
+.country-filter-select option {
+    color: #111;
+}
+
+.country-filter-actions {
+    display: flex;
+    gap: 0.4rem;
+}
+
+.country-filter-btn {
+    flex: 1;
+    background: transparent;
+    color: inherit;
+    border: 1px solid currentColor;
+    padding: 0.3rem;
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    text-transform: lowercase;
+    cursor: pointer;
+    opacity: 0.75;
     transition: opacity 0.2s ease;
 }
 
-.country-filter-chip button:hover {
+.country-filter-btn:hover {
     opacity: 1;
+}
+
+body.exposure--3 .country-filter-panel,
+body.exposure--2 .country-filter-panel {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+body.exposure--1 .country-filter-panel,
+body.exposure-0 .country-filter-panel {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+body.exposure-1 .country-filter-panel,
+body.exposure-2 .country-filter-panel,
+body.exposure-3 .country-filter-panel {
+    background: rgba(0, 0, 0, 0.08);
 }
 
 /* Globe explorer responsive */
@@ -3230,9 +3253,11 @@ body.exposure-3  .globe-explorer { background: rgba(255, 255, 255, 0.98); color:
         justify-content: center;
     }
 
-    .country-filter-chip {
-        top: 5.4rem;
-        font-size: 0.68rem;
-        padding: 0.3rem 0.6rem;
+    .country-filter-panel {
+        right: 0.8rem;
+        bottom: 0.8rem;
+        width: 165px;
+        padding: 0.5rem;
+        font-size: 0.66rem;
     }
 }
