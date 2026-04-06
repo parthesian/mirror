@@ -7,58 +7,45 @@ async function listPhotos(context) {
     const limit = parseLimit(url.searchParams.get('limit'));
     const cursor = decodeCursor(url.searchParams.get('cursor'));
     const countryFilter = url.searchParams.get('country') || '';
+    const takenFrom = url.searchParams.get('takenFrom') || '';
+    const takenTo = url.searchParams.get('takenTo') || '';
 
     if (url.searchParams.get('cursor') && !cursor) {
         return errorResponse('Invalid cursor supplied.', 400);
     }
 
     const cols = 'id, storage_key, location, description, taken_at, uploaded_at, width, height, latitude, longitude, country';
-    let statement;
+    const clauses = [];
+    const bindings = [];
 
-    if (cursor && countryFilter) {
-        statement = env.PHOTO_DB.prepare(`
-            SELECT ${cols} FROM photos
-            WHERE country = ?
-              AND (taken_at < ?
-                   OR (taken_at = ? AND uploaded_at < ?)
-                   OR (taken_at = ? AND uploaded_at = ? AND id < ?))
-            ORDER BY taken_at DESC, uploaded_at DESC, id DESC
-            LIMIT ?
-        `).bind(
-            countryFilter,
-            cursor.takenAt,
-            cursor.takenAt, cursor.uploadedAt,
-            cursor.takenAt, cursor.uploadedAt, cursor.id,
-            limit + 1
-        );
-    } else if (cursor) {
-        statement = env.PHOTO_DB.prepare(`
-            SELECT ${cols} FROM photos
-            WHERE taken_at < ?
-               OR (taken_at = ? AND uploaded_at < ?)
-               OR (taken_at = ? AND uploaded_at = ? AND id < ?)
-            ORDER BY taken_at DESC, uploaded_at DESC, id DESC
-            LIMIT ?
-        `).bind(
-            cursor.takenAt,
-            cursor.takenAt, cursor.uploadedAt,
-            cursor.takenAt, cursor.uploadedAt, cursor.id,
-            limit + 1
-        );
-    } else if (countryFilter) {
-        statement = env.PHOTO_DB.prepare(`
-            SELECT ${cols} FROM photos
-            WHERE country = ?
-            ORDER BY taken_at DESC, uploaded_at DESC, id DESC
-            LIMIT ?
-        `).bind(countryFilter, limit + 1);
-    } else {
-        statement = env.PHOTO_DB.prepare(`
-            SELECT ${cols} FROM photos
-            ORDER BY taken_at DESC, uploaded_at DESC, id DESC
-            LIMIT ?
-        `).bind(limit + 1);
+    if (countryFilter) {
+        clauses.push('country = ?');
+        bindings.push(countryFilter);
     }
+    if (takenFrom) {
+        clauses.push('taken_at >= ?');
+        bindings.push(takenFrom);
+    }
+    if (takenTo) {
+        clauses.push('taken_at <= ?');
+        bindings.push(takenTo);
+    }
+    if (cursor) {
+        clauses.push('(taken_at < ? OR (taken_at = ? AND uploaded_at < ?) OR (taken_at = ? AND uploaded_at = ? AND id < ?))');
+        bindings.push(
+            cursor.takenAt,
+            cursor.takenAt, cursor.uploadedAt,
+            cursor.takenAt, cursor.uploadedAt, cursor.id
+        );
+    }
+
+    const whereClause = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+    const statement = env.PHOTO_DB.prepare(`
+        SELECT ${cols} FROM photos
+        ${whereClause}
+        ORDER BY taken_at DESC, uploaded_at DESC, id DESC
+        LIMIT ?
+    `).bind(...bindings, limit + 1);
 
     const results = await statement.all();
     const rows = Array.isArray(results.results) ? results.results : [];

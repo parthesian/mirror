@@ -3001,6 +3001,33 @@ body.exposure-3  { --leak-opacity: 0.35; }
     background: rgba(168, 168, 168, 0.98);
 }
 
+.globe-explorer::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    mix-blend-mode: screen;
+    opacity: calc(var(--leak-opacity, 0.65) * 0.9);
+    background:
+        radial-gradient(
+            ellipse at calc(var(--leak-x1, 12%) + var(--scroll-ratio, 0) * var(--leak-dx1, 72%)) var(--leak-y1, 42%),
+            rgba(var(--leak-c1, 255, 170, 110), 0.24),
+            rgba(var(--leak-c2, 255, 120, 90), 0.10) 34%,
+            transparent 72%
+        ),
+        radial-gradient(
+            ellipse at calc(var(--leak-x2, 85%) + var(--scroll-ratio, 0) * var(--leak-dx2, -38%)) var(--leak-y2, 62%),
+            rgba(var(--leak-c3, 255, 205, 140), 0.14),
+            transparent 66%
+        ),
+        radial-gradient(
+            ellipse at calc(var(--leak-x3, 52%) + var(--scroll-ratio, 0) * var(--leak-dx3, 18%)) var(--leak-y3, 24%),
+            rgba(var(--leak-c4, 120, 160, 255), 0.10),
+            transparent 60%
+        );
+}
+
 .globe-explorer.active {
     opacity: 1;
     visibility: visible;
@@ -3013,6 +3040,41 @@ body.exposure-3  { --leak-opacity: 0.35; }
     flex-direction: row;
     align-items: stretch;
     position: relative;
+    z-index: 1;
+}
+
+.globe-rotate-btn {
+    position: absolute;
+    top: 2rem;
+    right: 5.2rem;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 1px solid currentColor;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    opacity: 0.72;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    z-index: 1001;
+}
+
+.globe-rotate-btn:hover {
+    opacity: 1;
+    transform: scale(1.04);
+}
+
+.globe-rotate-icon {
+    font-size: 0.92rem;
+    line-height: 1;
+}
+
+.globe-rotate-btn.paused .globe-rotate-icon {
+    transform: rotate(45deg);
+    display: inline-block;
 }
 
 .globe-explorer-scene {
@@ -3083,15 +3145,6 @@ body.exposure-3  { --leak-opacity: 0.35; }
     font-weight: 300;
 }
 
-.trip-dot {
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: currentColor;
-    opacity: 0.4;
-    flex-shrink: 0;
-}
-
 .trip-date {
     letter-spacing: 0.03em;
 }
@@ -3101,8 +3154,7 @@ body.exposure-3  { --leak-opacity: 0.35; }
     font-size: 0.75rem;
 }
 
-.globe-panel-filter-btn,
-.globe-panel-showall-btn {
+.globe-panel-filter-btn {
     display: block;
     width: 100%;
     padding: 0.6rem 1rem;
@@ -3121,9 +3173,31 @@ body.exposure-3  { --leak-opacity: 0.35; }
     opacity: 0.7;
 }
 
-.globe-panel-filter-btn:hover,
-.globe-panel-showall-btn:hover {
+.globe-panel-filter-btn:hover {
     opacity: 1;
+}
+
+.globe-panel-trip-link {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.55rem;
+    width: 100%;
+    border: none;
+    background: transparent;
+    color: inherit;
+    padding: 0;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 300;
+    opacity: 0.84;
+    text-align: right;
+}
+
+.globe-panel-trip-link:hover {
+    opacity: 1;
+    text-decoration: underline;
+    text-underline-offset: 3px;
 }
 
 /* Globe explorer exposure themes */
@@ -3237,6 +3311,13 @@ body.exposure-3 .country-filter-panel {
     .globe-explorer-scene {
         flex: 1;
         min-height: 50vh;
+    }
+
+    .globe-rotate-btn {
+        top: 0.9rem;
+        right: 3.7rem;
+        width: 30px;
+        height: 30px;
     }
 
     .globe-explorer-panel {

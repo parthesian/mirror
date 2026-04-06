@@ -11,6 +11,7 @@ class GlobeExplorer {
         this.hint = this.overlay?.querySelector('.globe-explorer-hint');
         this.openBtn = document.getElementById('globe-btn');
         this.closeBtn = document.getElementById('globe-explorer-close');
+        this.rotateToggleBtn = document.getElementById('globe-rotate-toggle');
         this.filterPanel = document.getElementById('country-filter-panel');
         this.filterActive = document.getElementById('country-filter-active');
         this.filterSelect = document.getElementById('country-filter-select');
@@ -26,6 +27,7 @@ class GlobeExplorer {
         this._orbitPromise = null;
         this._geoPromise = null;
         this._geoFetchedOnce = false;
+        this.autoRotateEnabled = true;
 
         this._bindEvents();
         this._warmup();
@@ -42,12 +44,14 @@ class GlobeExplorer {
         this.filterApplyBtn?.addEventListener('click', () => {
             const value = this.filterSelect?.value || '';
             if (value) this._applyFilter(value);
+            else this._clearFilter();
         });
         this.filterClearBtn?.addEventListener('click', () => this._clearFilter());
+        this.rotateToggleBtn?.addEventListener('click', () => this._toggleRotation());
         this.filterSelect?.addEventListener('change', () => {
             const value = this.filterSelect.value;
-            if (value && this.filterActive) {
-                this.filterActive.textContent = value.toUpperCase();
+            if (this.filterActive) {
+                this.filterActive.textContent = value ? value.toUpperCase() : 'ALL';
             }
         });
 
@@ -69,6 +73,7 @@ class GlobeExplorer {
         try {
             await this._fetchLocations();
             await this._initScene();
+            this._syncRotateToggleUI();
         } catch (err) {
             console.error('[GlobeExplorer] failed to initialize', err);
         }
@@ -91,6 +96,28 @@ class GlobeExplorer {
             .then((THREE) => this._loadOrbitControls(THREE))
             .catch(() => {});
         this._fetchLocations().catch(() => {});
+    }
+
+    _toggleRotation() {
+        this.autoRotateEnabled = !this.autoRotateEnabled;
+        const controls = this.threeState?.controls;
+        if (controls) {
+            controls.autoRotate = this.autoRotateEnabled;
+        }
+        this._syncRotateToggleUI();
+    }
+
+    _syncRotateToggleUI() {
+        if (!this.rotateToggleBtn) return;
+        this.rotateToggleBtn.classList.toggle('paused', !this.autoRotateEnabled);
+        this.rotateToggleBtn.setAttribute(
+            'aria-label',
+            this.autoRotateEnabled ? 'Pause globe rotation' : 'Resume globe rotation'
+        );
+        this.rotateToggleBtn.setAttribute(
+            'title',
+            this.autoRotateEnabled ? 'Pause rotation' : 'Resume rotation'
+        );
     }
 
     // ── data ──
@@ -210,6 +237,8 @@ class GlobeExplorer {
             if (window.innerWidth <= 768) {
                 controls.enableZoom = false;
             }
+            controls.autoRotate = this.autoRotateEnabled;
+            controls.autoRotateSpeed = 0.45;
         }
 
         const group = new THREE.Group();
@@ -300,7 +329,7 @@ class GlobeExplorer {
         const animate = () => {
             if (state.disposed) return;
             if (controls) controls.update();
-            else group.rotation.y += 0.001; // subtle autorotate so points become visible quickly
+            else if (this.autoRotateEnabled) group.rotation.y += 0.001;
             renderer.render(scene, camera);
             state.rafId = requestAnimationFrame(animate);
         };
@@ -333,11 +362,11 @@ class GlobeExplorer {
 
     _latLonToVec3(lat, lon, radius, THREE) {
         const phi = THREE.MathUtils.degToRad(90 - lat);
-        const theta = THREE.MathUtils.degToRad(lon + 180);
+        const theta = THREE.MathUtils.degToRad(lon);
         return new THREE.Vector3(
-            -radius * Math.sin(phi) * Math.cos(theta),
+            radius * Math.sin(phi) * Math.sin(theta),
             radius * Math.cos(phi),
-            radius * Math.sin(phi) * Math.sin(theta)
+            radius * Math.sin(phi) * Math.cos(theta)
         );
     }
 
@@ -421,24 +450,30 @@ class GlobeExplorer {
             const startDate = new Date(trip[0].takenAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
             const endDate = new Date(trip[trip.length - 1].takenAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
             const label = startDate === endDate ? startDate : `${startDate} — ${endDate}`;
-            html += `<div class="globe-panel-trip">
-                <span class="trip-dot"></span>
+            const fromIso = new Date(trip[0].takenAt).toISOString();
+            const toIso = new Date(trip[trip.length - 1].takenAt).toISOString();
+            html += `<button class="globe-panel-trip-link" data-country="${country}" data-from="${fromIso}" data-to="${toIso}">
                 <span class="trip-date">${label}</span>
                 <span class="trip-count">${trip.length}</span>
-            </div>`;
+            </button>`;
         }
 
         html += '</div>';
         html += `<button class="globe-panel-filter-btn" id="globe-filter-btn">show photos</button>`;
-        html += `<button class="globe-panel-showall-btn" id="globe-showall-btn">show all</button>`;
 
         this.panelContent.innerHTML = html;
 
         document.getElementById('globe-filter-btn')?.addEventListener('click', () => {
             this._applyFilter(country);
         });
-        document.getElementById('globe-showall-btn')?.addEventListener('click', () => {
-            this._clearFilter();
+        this.panelContent.querySelectorAll('.globe-panel-trip-link').forEach((el) => {
+            el.addEventListener('click', () => {
+                const countryValue = el.getAttribute('data-country') || country;
+                const from = el.getAttribute('data-from');
+                const to = el.getAttribute('data-to');
+                const label = el.querySelector('.trip-date')?.textContent || '';
+                this._applyFilter(countryValue, from, to, label);
+            });
         });
     }
 
@@ -482,12 +517,18 @@ class GlobeExplorer {
         }
     }
 
-    async _applyFilter(country) {
+    async _applyFilter(country, takenFrom = null, takenTo = null, label = '') {
         this.close();
-        if (this.filterActive) this.filterActive.textContent = country.toUpperCase();
+        if (this.filterActive) {
+            this.filterActive.textContent = label
+                ? `${country.toUpperCase()} · ${label.toUpperCase()}`
+                : country.toUpperCase();
+        }
         if (this.filterSelect) this.filterSelect.value = country;
 
         this.imageService.countryFilter = country;
+        this.imageService.takenFromFilter = takenFrom || null;
+        this.imageService.takenToFilter = takenTo || null;
         if (window.gallery) {
             await window.gallery.loadImages();
         }
@@ -497,6 +538,8 @@ class GlobeExplorer {
         if (this.filterActive) this.filterActive.textContent = 'ALL';
         if (this.filterSelect) this.filterSelect.value = '';
         this.imageService.countryFilter = null;
+        this.imageService.takenFromFilter = null;
+        this.imageService.takenToFilter = null;
         if (window.gallery) {
             await window.gallery.loadImages();
         }

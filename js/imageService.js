@@ -14,6 +14,8 @@ class ImageService {
         this.activeLoadPromise = null;
         this.activeLoadKind = null;
         this.countryFilter = null;
+        this.takenFromFilter = null;
+        this.takenToFilter = null;
     }
 
     /**
@@ -156,6 +158,12 @@ class ImageService {
         }
         if (this.countryFilter) {
             url.searchParams.set('country', this.countryFilter);
+        }
+        if (this.takenFromFilter) {
+            url.searchParams.set('takenFrom', this.takenFromFilter);
+        }
+        if (this.takenToFilter) {
+            url.searchParams.set('takenTo', this.takenToFilter);
         }
 
         const response = await fetch(url.toString(), {
@@ -728,8 +736,10 @@ class ImageService {
      * @param {string} country - Country name to filter by
      * @returns {Promise<Array>} Filtered photos
      */
-    async setCountryFilter(country) {
+    async setCountryFilter(country, takenFrom = null, takenTo = null) {
         this.countryFilter = country || null;
+        this.takenFromFilter = takenFrom || null;
+        this.takenToFilter = takenTo || null;
         return this.fetchImages();
     }
 
@@ -739,6 +749,8 @@ class ImageService {
      */
     async clearFilter() {
         this.countryFilter = null;
+        this.takenFromFilter = null;
+        this.takenToFilter = null;
         return this.fetchImages();
     }
 

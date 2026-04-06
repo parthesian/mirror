@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>आईना</title>
     <link rel="icon" type="image/svg+xml" href="mirror.svg">
-    <link rel="stylesheet" href="styles.css?v=20260406f">
+    <link rel="stylesheet" href="styles.css?v=20260406g">
 </head>
 <body class="exposure-0">
     <header class="header">
@@ -82,10 +82,12 @@
     <div id="globe-explorer" class="globe-explorer hidden">
         <div class="globe-explorer-content">
             <button id="globe-explorer-close" class="close-btn">&times;</button>
+            <button id="globe-rotate-toggle" class="globe-rotate-btn" aria-label="Pause globe rotation" title="Pause rotation">
+                <span class="globe-rotate-icon">⟳</span>
+            </button>
             <div class="globe-explorer-scene" id="globe-explorer-scene"></div>
             <div class="globe-explorer-panel" id="globe-explorer-panel">
                 <div class="globe-explorer-panel-inner">
-                    <p class="globe-explorer-hint">click a location on the globe</p>
                     <div id="globe-panel-content"></div>
                 </div>
             </div>
@@ -119,7 +121,7 @@
 
     <script src="js/config.js?v=20260405c"></script>
     <script src="js/exposureDial.js?v=20260405c"></script>
-    <script src="js/imageService.js?v=20260405c"></script>
+    <script src="js/imageService.js?v=20260406g"></script>
     <script src="js/imagePreloader.js?v=20260405c"></script>
     <script src="js/gallery.js?v=20260405c"></script>
     <script src="js/globeService.js?v=20260405c"></script>
@@ -127,7 +129,7 @@
     <script src="js/timeline.js?v=20260405c"></script>
     <script src="js/modal.js?v=20260405c"></script>
     <script src="js/filmEffects.js?v=20260406d"></script>
-    <script src="js/globeExplorer.js?v=20260406e"></script>
+    <script src="js/globeExplorer.js?v=20260406g"></script>
     <script src="js/app.js?v=20260406c"></script>
 </body>
 </html>
