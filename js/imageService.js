@@ -14,6 +14,7 @@ class ImageService {
         this.activeLoadPromise = null;
         this.activeLoadKind = null;
         this.countryFilter = null;
+        this.locationFilter = null;
         this.takenFromFilter = null;
         this.takenToFilter = null;
     }
@@ -158,6 +159,9 @@ class ImageService {
         }
         if (this.countryFilter) {
             url.searchParams.set('country', this.countryFilter);
+        }
+        if (this.locationFilter) {
+            url.searchParams.set('location', this.locationFilter);
         }
         if (this.takenFromFilter) {
             url.searchParams.set('takenFrom', this.takenFromFilter);
@@ -738,6 +742,20 @@ class ImageService {
      */
     async setCountryFilter(country, takenFrom = null, takenTo = null) {
         this.countryFilter = country || null;
+        this.locationFilter = null;
+        this.takenFromFilter = takenFrom || null;
+        this.takenToFilter = takenTo || null;
+        return this.fetchImages();
+    }
+
+    /**
+     * Filter gallery by exact location string. Re-fetches from page 1.
+     * @param {string} location - Location label to filter by
+     * @returns {Promise<Array>} Filtered photos
+     */
+    async setLocationFilter(location, takenFrom = null, takenTo = null) {
+        this.locationFilter = location || null;
+        this.countryFilter = null;
         this.takenFromFilter = takenFrom || null;
         this.takenToFilter = takenTo || null;
         return this.fetchImages();
@@ -749,6 +767,7 @@ class ImageService {
      */
     async clearFilter() {
         this.countryFilter = null;
+        this.locationFilter = null;
         this.takenFromFilter = null;
         this.takenToFilter = null;
         return this.fetchImages();

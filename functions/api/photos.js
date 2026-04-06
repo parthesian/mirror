@@ -7,6 +7,7 @@ async function listPhotos(context) {
     const limit = parseLimit(url.searchParams.get('limit'));
     const cursor = decodeCursor(url.searchParams.get('cursor'));
     const countryFilter = url.searchParams.get('country') || '';
+    const locationFilter = url.searchParams.get('location') || '';
     const takenFrom = url.searchParams.get('takenFrom') || '';
     const takenTo = url.searchParams.get('takenTo') || '';
 
@@ -21,6 +22,10 @@ async function listPhotos(context) {
     if (countryFilter) {
         clauses.push('country = ?');
         bindings.push(countryFilter);
+    }
+    if (locationFilter) {
+        clauses.push('LOWER(location) = LOWER(?)');
+        bindings.push(locationFilter);
     }
     if (takenFrom) {
         clauses.push('taken_at >= ?');

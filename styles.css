@@ -1051,6 +1051,19 @@ body.exposure-3 .scroll-loading p {
     font-weight: 500;
 }
 
+.timeline-month.disabled {
+    opacity: 0.28;
+    cursor: not-allowed;
+    pointer-events: none;
+    text-decoration: none;
+}
+
+.timeline-month.disabled:hover,
+.timeline-month.disabled.active {
+    color: inherit;
+    font-weight: 300;
+}
+
 /* Modal styles - Fullscreen experience */
 .modal {
     position: fixed;
@@ -3175,6 +3188,12 @@ body.exposure-3  { --leak-opacity: 0.35; }
 
 .globe-panel-filter-btn:hover {
     opacity: 1;
+}
+
+.globe-panel-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.45rem;
 }
 
 .globe-panel-trip-link {

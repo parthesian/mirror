@@ -4,7 +4,7 @@ async function getGeoLocations(context) {
     const { env } = context;
 
     const statement = env.PHOTO_DB.prepare(`
-        SELECT id, latitude, longitude, country, taken_at
+        SELECT id, latitude, longitude, country, location, taken_at
         FROM photos
         WHERE latitude IS NOT NULL
           AND longitude IS NOT NULL
@@ -19,6 +19,7 @@ async function getGeoLocations(context) {
         latitude: r.latitude,
         longitude: r.longitude,
         country: r.country || '',
+        location: r.location || '',
         takenAt: r.taken_at
     }));
 

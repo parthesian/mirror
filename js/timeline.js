@@ -11,6 +11,7 @@ class Timeline {
         this.groups = [];
         this.activeKey = null;
         this.monthElements = new Map();
+        this.enabledKeys = new Set();
         this.lockedKey = null;
 
         if (!this.container) return;
@@ -21,7 +22,10 @@ class Timeline {
 
     bindEvents() {
         window.addEventListener('scroll', () => this.scheduleSync(), { passive: true });
-        document.addEventListener('galleryUpdated', () => this.syncActiveFromScroll());
+        document.addEventListener('galleryUpdated', async () => {
+            await this.refreshEnabledMonths();
+            this.syncActiveFromScroll();
+        });
 
         const unlock = () => { this.lockedKey = null; };
         window.addEventListener('wheel', unlock, { passive: true });
@@ -60,6 +64,7 @@ class Timeline {
             const data = await this.imageService.parseJsonResponse(response);
             this.groups = Array.isArray(data.groups) ? data.groups : [];
             this.render();
+            await this.refreshEnabledMonths();
         } catch (error) {
             console.error('Timeline: failed to load timeline data:', error);
         }
@@ -96,6 +101,7 @@ class Timeline {
             monthEl.dataset.month = group.month;
 
             monthEl.addEventListener('click', () => {
+                if (monthEl.classList.contains('disabled')) return;
                 this.scrollToDate(group.year, group.month);
             });
 
@@ -106,6 +112,66 @@ class Timeline {
 
         this.container.appendChild(list);
         this.syncActiveFromScroll();
+    }
+
+    getActiveFilters() {
+        return {
+            country: this.imageService.countryFilter || '',
+            location: this.imageService.locationFilter || '',
+            takenFrom: this.imageService.takenFromFilter || '',
+            takenTo: this.imageService.takenToFilter || ''
+        };
+    }
+
+    hasActiveFilters() {
+        const f = this.getActiveFilters();
+        return Boolean(f.country || f.location || f.takenFrom || f.takenTo);
+    }
+
+    async fetchTimelineForFilters() {
+        const f = this.getActiveFilters();
+        const baseUrl = this.imageService.apiBaseUrl;
+        const url = new URL(baseUrl ? `${baseUrl}/api/photos/timeline` : '/api/photos/timeline', window.location.origin);
+        if (f.country) url.searchParams.set('country', f.country);
+        if (f.location) url.searchParams.set('location', f.location);
+        if (f.takenFrom) url.searchParams.set('takenFrom', f.takenFrom);
+        if (f.takenTo) url.searchParams.set('takenTo', f.takenTo);
+
+        const response = await fetch(url.toString(), {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' },
+            mode: 'cors'
+        });
+        if (!response.ok) return [];
+        const data = await this.imageService.parseJsonResponse(response);
+        return Array.isArray(data.groups) ? data.groups : [];
+    }
+
+    applyEnabledState(enabledKeys) {
+        this.enabledKeys = enabledKeys;
+        this.monthElements.forEach((el, key) => {
+            const enabled = enabledKeys.has(key);
+            el.classList.toggle('disabled', !enabled);
+            el.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+        });
+    }
+
+    async refreshEnabledMonths() {
+        if (!this.monthElements.size) return;
+
+        if (!this.hasActiveFilters()) {
+            const allKeys = new Set([...this.monthElements.keys()]);
+            this.applyEnabledState(allKeys);
+            return;
+        }
+
+        try {
+            const groups = await this.fetchTimelineForFilters();
+            const enabled = new Set(groups.map(g => `${g.year}-${g.month}`));
+            this.applyEnabledState(enabled);
+        } catch (error) {
+            console.error('Timeline: failed to refresh enabled months:', error);
+        }
     }
 
     monthAbbr(month) {
@@ -160,6 +226,7 @@ class Timeline {
 
     setActive(key) {
         if (key === this.activeKey) return;
+        if (this.enabledKeys.size && !this.enabledKeys.has(key)) return;
         this.activeKey = key;
 
         this.monthElements.forEach((el, k) => {
