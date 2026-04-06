@@ -428,7 +428,10 @@ class GlobeExplorer {
         for (const choice of choices) {
             const label = this._escapeHtml(choice.label || choice.key || 'unknown');
             const country = this._escapeHtml(choice.country || '');
-            html += `<button class="globe-intersect-picker-item" data-key="${this._escapeHtml(choice.key)}">
+            const classes = choice.kind === 'country'
+                ? 'globe-intersect-picker-item globe-intersect-picker-item-country'
+                : 'globe-intersect-picker-item';
+            html += `<button class="${classes}" data-key="${this._escapeHtml(choice.key)}">
                 <span class="globe-intersect-picker-label">${label}</span>
                 ${country ? `<span class="globe-intersect-picker-country">${country}</span>` : ''}
             </button>`;
@@ -948,6 +951,16 @@ class GlobeExplorer {
                 return;
             }
             const clickDir = globeHits[0].point.clone().normalize();
+            const countryHit = this._findCountryFromDirection(THREE, clickDir, group);
+            const applyCountryChoice = () => {
+                if (!countryHit?.feature) return;
+                const aliases = countryHit.feature.names || [];
+                const canonicalCountry = this._resolveCountryFilterValue(countryHit.feature.name, aliases);
+                this._setPendingFilterSelection('country', canonicalCountry);
+                this._showCountryPanel(countryHit.feature.name, aliases);
+                this._setCountryBorderHighlight(THREE, countryHit.feature, group);
+            };
+
             if (dotsMesh) {
                 const hits = raycaster.intersectObject(dotsMesh);
                 const pointerPx = { x: e.clientX - rect.left, y: e.clientY - rect.top };
@@ -1003,7 +1016,21 @@ class GlobeExplorer {
                     })
                     .filter(Boolean);
 
+                if (options.length > 1 && countryHit?.feature) {
+                    options.unshift({
+                        key: '__country__',
+                        kind: 'country',
+                        label: `country: ${countryHit.feature.name}`,
+                        country: '',
+                        feature: countryHit.feature
+                    });
+                }
+
                 const applyPickedOption = (option) => {
+                    if (option?.kind === 'country') {
+                        applyCountryChoice();
+                        return;
+                    }
                     const selectedForPanel = option.sample || selectedLocation;
                     if (!selectedForPanel?.country) return;
                     if (selectedForPanel.location) {
@@ -1026,15 +1053,8 @@ class GlobeExplorer {
             }
 
             // If no point is selected, fallback to country polygons.
-            const countryHit = this._findCountryFromDirection(THREE, clickDir, group);
             this._hideIntersectPicker();
-            if (countryHit?.feature) {
-                const aliases = countryHit.feature.names || [];
-                const canonicalCountry = this._resolveCountryFilterValue(countryHit.feature.name, aliases);
-                this._setPendingFilterSelection('country', canonicalCountry);
-                this._showCountryPanel(countryHit.feature.name, aliases);
-                this._setCountryBorderHighlight(THREE, countryHit.feature, group);
-            }
+            applyCountryChoice();
             return;
         });
 
