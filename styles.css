@@ -3232,9 +3232,10 @@ body.exposure-3  { --leak-opacity: 0.35; }
     width: 220px;
     max-height: min(44vh, 320px);
     overflow-y: auto;
-    border: 1px solid currentColor;
-    background: rgba(0, 0, 0, 0.16);
-    backdrop-filter: blur(2px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(18, 18, 18, 0.82);
+    backdrop-filter: blur(10px);
+    color: #ffffff;
     padding: 0.45rem;
     z-index: 1002;
 }
@@ -3503,8 +3504,6 @@ body.exposure-3 .globe-explorer-panel {
     width: 250px;
     border: 1px solid currentColor;
     padding: 0.8rem;
-    background: rgba(0, 0, 0, 0.12);
-    backdrop-filter: blur(2px);
     overflow: hidden;
     max-height: 480px;
     opacity: 1;
@@ -3615,16 +3614,34 @@ body.exposure--3 .country-filter-panel,
 body.exposure--2 .country-filter-panel {
     background: rgba(255, 255, 255, 0.05);
 }
+body.exposure--3 .country-filter-body,
+body.exposure--2 .country-filter-body {
+    background: rgba(10, 10, 10, 0.82);
+    backdrop-filter: blur(12px);
+}
 
 body.exposure--1 .country-filter-panel,
 body.exposure-0 .country-filter-panel {
     background: rgba(255, 255, 255, 0.12);
+}
+body.exposure--1 .country-filter-body,
+body.exposure-0 .country-filter-body {
+    background: rgba(20, 20, 20, 0.78);
+    backdrop-filter: blur(12px);
 }
 
 body.exposure-1 .country-filter-panel,
 body.exposure-2 .country-filter-panel,
 body.exposure-3 .country-filter-panel {
     background: rgba(0, 0, 0, 0.08);
+}
+body.exposure-1 .country-filter-body,
+body.exposure-2 .country-filter-body,
+body.exposure-3 .country-filter-body {
+    background: rgba(245, 245, 245, 0.84);
+    color: #141414;
+    border-color: rgba(0, 0, 0, 0.15);
+    backdrop-filter: blur(12px);
 }
 
 /* Globe explorer responsive */
