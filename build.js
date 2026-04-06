@@ -11,9 +11,6 @@ const path = require('path');
 // Get environment variables
 const API_BASE_URL = process.env.API_BASE_URL || '';
 
-console.log('Building with environment variables:');
-console.log('API_BASE_URL:', API_BASE_URL);
-
 // Create the config content
 const configContent = `/**
  * Configuration for the application
