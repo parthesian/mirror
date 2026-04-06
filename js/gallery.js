@@ -250,7 +250,7 @@ class Gallery {
         const itemWidth = Math.max(1, (containerWidth - gap * Math.max(columns - 1, 0)) / columns);
         const rowHeight = itemWidth * 0.75;
         const rowSpan = rowHeight + gap;
-        const overscanRows = Math.max(6, Math.ceil((window.innerHeight * 3) / Math.max(rowHeight, 1)));
+        const overscanRows = Math.max(2, Math.ceil(window.innerHeight / Math.max(rowSpan, 1)));
 
         const containerRect = this.galleryContainer.getBoundingClientRect();
         const paddingTop = parseFloat(getComputedStyle(this.galleryContainer).paddingTop) || 0;
