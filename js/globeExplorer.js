@@ -34,7 +34,7 @@ class GlobeExplorer {
         this._orbitPromise = null;
         this._geoPromise = null;
         this._geoFetchedOnce = false;
-        this.autoRotateEnabled = false;
+        this.autoRotateEnabled = true;
         this.locationUnitVectors = [];
         this.locationGroups = [];
         this.pointerGesture = null;
@@ -569,6 +569,13 @@ class GlobeExplorer {
             if (this.pointerGesture && ((dx * dx + dy * dy) > 36)) {
                 this.pointerGesture.dragged = true;
                 this.lastManualRotateAt = Date.now();
+                if (this.autoRotateEnabled) {
+                    this.autoRotateEnabled = false;
+                    if (controls) {
+                        controls.autoRotate = false;
+                    }
+                    this._syncRotateToggleUI();
+                }
             }
             // Only apply fallback while controls are missing.
             if (!controls) {
