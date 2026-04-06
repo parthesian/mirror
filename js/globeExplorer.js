@@ -308,10 +308,16 @@ class GlobeExplorer {
         return true;
     }
 
-    _dirToLatLon(THREE, direction) {
-        const d = direction.clone().normalize();
-        const lat = THREE.MathUtils.radToDeg(Math.asin(THREE.MathUtils.clamp(d.y, -1, 1)));
-        let lon = THREE.MathUtils.radToDeg(Math.atan2(d.z, -d.x)) - 180;
+    _dirToLatLon(THREE, worldDirection, group) {
+        const localDir = worldDirection.clone().normalize();
+        if (group) {
+            // Raycast hit points are in world space; convert to globe local space
+            // so lon/lat math matches the same frame as _latLonToVec3.
+            const worldQuat = group.getWorldQuaternion(new THREE.Quaternion());
+            localDir.applyQuaternion(worldQuat.invert()).normalize();
+        }
+        const lat = THREE.MathUtils.radToDeg(Math.asin(THREE.MathUtils.clamp(localDir.y, -1, 1)));
+        let lon = THREE.MathUtils.radToDeg(Math.atan2(-localDir.z, localDir.x));
         lon = ((lon + 540) % 360) - 180;
         return { lat, lon };
     }
@@ -325,9 +331,9 @@ class GlobeExplorer {
         return lon >= bbox.minLon && lon <= bbox.maxLon;
     }
 
-    _findCountryFromDirection(THREE, direction) {
+    _findCountryFromDirection(THREE, direction, group) {
         if (!this.countryBoundaryFeatures.length) return null;
-        const { lat, lon } = this._dirToLatLon(THREE, direction);
+        const { lat, lon } = this._dirToLatLon(THREE, direction, group);
         for (const feature of this.countryBoundaryFeatures) {
             if (!this._isWithinBbox(lon, lat, feature.bbox)) continue;
             for (const polygon of feature.polygons) {
@@ -908,7 +914,7 @@ class GlobeExplorer {
             }
             this._setHoverHighlight(null, null);
             const hitDir = globeHits[0].point.clone().normalize();
-            const countryHit = this._findCountryFromDirection(THREE, hitDir);
+            const countryHit = this._findCountryFromDirection(THREE, hitDir, group);
             if (countryHit?.feature) {
                 this._setCountryBorderHighlight(THREE, countryHit.feature, group);
             } else {
@@ -1020,7 +1026,7 @@ class GlobeExplorer {
             }
 
             // If no point is selected, fallback to country polygons.
-            const countryHit = this._findCountryFromDirection(THREE, clickDir);
+            const countryHit = this._findCountryFromDirection(THREE, clickDir, group);
             this._hideIntersectPicker();
             if (countryHit?.feature) {
                 const aliases = countryHit.feature.names || [];
