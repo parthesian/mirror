@@ -39,7 +39,7 @@ body {
 .header {
     background-color: #a8a8a8;
     color: #333;
-    padding: 2rem 0 1rem 60px;
+    padding: 2rem 0 1rem 0;
     text-align: center;
     position: relative;
 }
@@ -99,7 +99,7 @@ body {
 .exposure-dial-left {
     position: absolute;
     top: 2rem;
-    left: calc(60px + 2rem);
+    left: 2rem;
 }
 
 .dial-container {
@@ -776,7 +776,6 @@ body.exposure-3 .timeline-month.active {
     max-width: 1400px;
     margin: 0 auto;
     padding: 2rem;
-    padding-left: calc(60px + 2rem);
 }
 
 /* Loading spinner */
@@ -973,16 +972,15 @@ body.exposure-3 .scroll-loading p {
 .timeline-sidebar {
     position: fixed;
     left: 0;
-    top: 0;
+    top: 8rem;
     bottom: 0;
     width: 60px;
     overflow-y: auto;
     z-index: 50;
-    padding-top: 7rem;
+    padding-top: 0.5rem;
     padding-bottom: 2rem;
     -ms-overflow-style: none;
     scrollbar-width: none;
-    border-right: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 .timeline-sidebar::-webkit-scrollbar {
@@ -2129,18 +2127,9 @@ body.exposure-3 .btn-secondary {
     .timeline-sidebar {
         display: none;
     }
-
-    .header {
-        padding-left: 0;
-    }
-
-    .exposure-dial-left {
-        left: 2rem;
-    }
     
     .main-content {
         padding: 1rem;
-        padding-left: 1rem;
     }
     
     .gallery-container {
