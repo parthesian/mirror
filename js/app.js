@@ -6,6 +6,7 @@ class PhotoGalleryApp {
         this.imageService = null;
         this.gallery = null;
         this.modal = null;
+        this.timeline = null;
         
         this.init();
     }
@@ -40,8 +41,7 @@ class PhotoGalleryApp {
             // Initialize UI components
             this.gallery = new Gallery(this.imageService);
             this.modal = new Modal(this.imageService);
-            
-            // Swipe support is already enabled in modal constructor
+            this.timeline = new Timeline(this.imageService, this.gallery);
             
             // Set up global error handling
             this.setupErrorHandling();
@@ -50,6 +50,7 @@ class PhotoGalleryApp {
             window.app = this;
             window.gallery = this.gallery;
             window.modal = this.modal;
+            window.timeline = this.timeline;
             window.imageService = this.imageService;
             
             console.log('Photo Gallery App initialized successfully');

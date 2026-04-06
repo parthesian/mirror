@@ -39,7 +39,7 @@ body {
 .header {
     background-color: #a8a8a8;
     color: #333;
-    padding: 2rem 0 1rem 0;
+    padding: 2rem 0 1rem 60px;
     text-align: center;
     position: relative;
 }
@@ -99,7 +99,7 @@ body {
 .exposure-dial-left {
     position: absolute;
     top: 2rem;
-    left: 2rem;
+    left: calc(60px + 2rem);
 }
 
 .dial-container {
@@ -575,6 +575,140 @@ body.exposure-3 .modal {
     background: rgba(255, 255, 255, 0.98);
 }
 
+/* Timeline exposure theme variants */
+body.exposure--3 .timeline-sidebar {
+    border-right-color: rgba(255, 255, 255, 0.1);
+}
+body.exposure--3 .timeline-line {
+    background: rgba(255, 255, 255, 0.1);
+}
+body.exposure--3 .timeline-year {
+    color: #999;
+}
+body.exposure--3 .timeline-month {
+    color: #666;
+}
+body.exposure--3 .timeline-month:hover {
+    color: #fff;
+}
+body.exposure--3 .timeline-month.active {
+    color: #fff;
+}
+
+body.exposure--2 .timeline-sidebar {
+    border-right-color: rgba(255, 255, 255, 0.1);
+}
+body.exposure--2 .timeline-line {
+    background: rgba(255, 255, 255, 0.1);
+}
+body.exposure--2 .timeline-year {
+    color: #999;
+}
+body.exposure--2 .timeline-month {
+    color: #777;
+}
+body.exposure--2 .timeline-month:hover {
+    color: #fff;
+}
+body.exposure--2 .timeline-month.active {
+    color: #fff;
+}
+
+body.exposure--1 .timeline-sidebar {
+    border-right-color: rgba(0, 0, 0, 0.1);
+}
+body.exposure--1 .timeline-line {
+    background: rgba(0, 0, 0, 0.1);
+}
+body.exposure--1 .timeline-year {
+    color: #333;
+}
+body.exposure--1 .timeline-month {
+    color: #555;
+}
+body.exposure--1 .timeline-month:hover {
+    color: #000;
+}
+body.exposure--1 .timeline-month.active {
+    color: #000;
+}
+
+body.exposure-0 .timeline-sidebar {
+    border-right-color: rgba(0, 0, 0, 0.08);
+}
+body.exposure-0 .timeline-line {
+    background: rgba(0, 0, 0, 0.08);
+}
+body.exposure-0 .timeline-year {
+    color: #666;
+}
+body.exposure-0 .timeline-month {
+    color: #999;
+}
+body.exposure-0 .timeline-month:hover {
+    color: #333;
+}
+body.exposure-0 .timeline-month.active {
+    color: #333;
+}
+
+body.exposure-1 .timeline-sidebar {
+    border-right-color: rgba(0, 0, 0, 0.08);
+}
+body.exposure-1 .timeline-line {
+    background: rgba(0, 0, 0, 0.08);
+}
+body.exposure-1 .timeline-year {
+    color: #555;
+}
+body.exposure-1 .timeline-month {
+    color: #888;
+}
+body.exposure-1 .timeline-month:hover {
+    color: #000;
+}
+body.exposure-1 .timeline-month.active {
+    color: #000;
+}
+
+body.exposure-2 .timeline-sidebar {
+    border-right-color: rgba(0, 0, 0, 0.06);
+}
+body.exposure-2 .timeline-line {
+    background: rgba(0, 0, 0, 0.06);
+}
+body.exposure-2 .timeline-year {
+    color: #555;
+}
+body.exposure-2 .timeline-month {
+    color: #888;
+}
+body.exposure-2 .timeline-month:hover {
+    color: #000;
+}
+body.exposure-2 .timeline-month.active {
+    color: #000;
+}
+
+body.exposure-3 .timeline-sidebar {
+    border-right-color: rgba(0, 0, 0, 0.06);
+}
+body.exposure-3 .timeline-line {
+    background: rgba(0, 0, 0, 0.06);
+}
+body.exposure-3 .timeline-year {
+    color: #555;
+}
+body.exposure-3 .timeline-month {
+    color: #888;
+}
+body.exposure-3 .timeline-month:hover {
+    color: #000;
+}
+body.exposure-3 .timeline-month.active {
+    color: #000;
+}
+
 .upload-btn {
     background: transparent;
     color: #666;
@@ -642,6 +776,7 @@ body.exposure-3 .modal {
     max-width: 1400px;
     margin: 0 auto;
     padding: 2rem;
+    padding-left: calc(60px + 2rem);
 }
 
 /* Loading spinner */
@@ -832,6 +967,83 @@ body.exposure-3 .scroll-loading p {
 
 .gallery-item-info {
     display: none; /* Hide all metadata in grid view */
+}
+
+/* Timeline sidebar */
+.timeline-sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 60px;
+    overflow-y: auto;
+    z-index: 50;
+    padding-top: 7rem;
+    padding-bottom: 2rem;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+    border-right: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.timeline-sidebar::-webkit-scrollbar {
+    display: none;
+}
+
+.timeline-list {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    padding: 0 4px;
+}
+
+.timeline-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 1px;
+    background: rgba(0, 0, 0, 0.08);
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+.timeline-year {
+    position: relative;
+    z-index: 1;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 9px;
+    font-weight: 400;
+    letter-spacing: 0.1em;
+    text-align: center;
+    padding: 10px 0 4px;
+    color: #666;
+    width: 100%;
+}
+
+.timeline-month {
+    position: relative;
+    z-index: 1;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-size: 8px;
+    font-weight: 300;
+    letter-spacing: 0.05em;
+    text-align: center;
+    padding: 5px 0;
+    color: #999;
+    cursor: pointer;
+    transition: color 0.3s ease;
+    width: 100%;
+}
+
+.timeline-month:hover {
+    color: #333;
+}
+
+.timeline-month.active {
+    color: #333;
+    font-weight: 500;
 }
 
 /* Modal styles - Fullscreen experience */
@@ -1912,9 +2124,23 @@ body.exposure-3 .btn-secondary {
     .zoom-controls {
         display: none;
     }
+
+    /* Hide timeline on mobile */
+    .timeline-sidebar {
+        display: none;
+    }
+
+    .header {
+        padding-left: 0;
+    }
+
+    .exposure-dial-left {
+        left: 2rem;
+    }
     
     .main-content {
         padding: 1rem;
+        padding-left: 1rem;
     }
     
     .gallery-container {

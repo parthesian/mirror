@@ -190,6 +190,7 @@ class Gallery {
             this.cachedLayout = null;
             this.scheduleRefresh(true);
             this.triggerGlobePreloading(images);
+            document.dispatchEvent(new CustomEvent('galleryUpdated'));
 
             window.setTimeout(() => this.checkIfNeedsMoreContent(), 60);
         } catch (error) {
@@ -212,6 +213,7 @@ class Gallery {
             if (newImages.length > 0) {
                 this.cachedLayout = null;
                 this.scheduleRefresh(true);
+                document.dispatchEvent(new CustomEvent('galleryUpdated'));
                 window.setTimeout(() => this.checkIfNeedsMoreContent(), 60);
             }
         } catch (error) {
