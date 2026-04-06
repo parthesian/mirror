@@ -32,6 +32,7 @@ class GlobeExplorer {
         this._geoFetchedOnce = false;
         this.autoRotateEnabled = true;
         this.locationUnitVectors = [];
+        this.locationGroups = [];
         this.pointerGesture = null;
         this.lastPointerGesture = null;
         this.selectedFilterType = 'country';
@@ -56,6 +57,19 @@ class GlobeExplorer {
             ? `PLACE: ${String(filterValue || '').toUpperCase()}`
             : `COUNTRY: ${String(filterValue || '').toUpperCase()}`;
         return label ? `${base} · ${String(label).toUpperCase()}` : base;
+    }
+
+    _locationKeyFor(loc) {
+        const place = String(loc?.location || '').trim();
+        if (place) {
+            return `place:${place.toLowerCase()}`;
+        }
+        const lat = Number(loc?.latitude);
+        const lon = Number(loc?.longitude);
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+            return `coords:${lat.toFixed(3)},${lon.toFixed(3)}`;
+        }
+        return `photo:${String(loc?.id || '')}`;
     }
 
     // ── event wiring ──
@@ -170,16 +184,23 @@ class GlobeExplorer {
         }
 
         this.locationsByCountry = {};
+        const placeBuckets = new Map();
         this.locationsByPlace = {};
         for (const loc of this.locations) {
             const c = loc.country || 'Unknown';
             if (!this.locationsByCountry[c]) this.locationsByCountry[c] = [];
             this.locationsByCountry[c].push(loc);
-            const place = String(loc.location || '').trim();
-            if (place) {
-                if (!this.locationsByPlace[place]) this.locationsByPlace[place] = [];
-                this.locationsByPlace[place].push(loc);
+            const placeRaw = String(loc.location || '').trim();
+            if (placeRaw) {
+                const placeKey = placeRaw.toLowerCase();
+                if (!placeBuckets.has(placeKey)) {
+                    placeBuckets.set(placeKey, { label: placeRaw, items: [] });
+                }
+                placeBuckets.get(placeKey).items.push(loc);
             }
+        }
+        for (const bucket of placeBuckets.values()) {
+            this.locationsByPlace[bucket.label] = bucket.items;
         }
         this._renderFilterMenu();
     }
@@ -357,7 +378,9 @@ class GlobeExplorer {
                 if (hits.length > 0) {
                     const idx = hits[0].index;
                     if (idx != null && idx < this.locations.length) {
-                        const picked = this._resolveClusterClick(THREE, clickDir, group, idx);
+                        const selectedLocation = this.locations[idx];
+                        const preferredKey = this._locationKeyFor(selectedLocation);
+                        const picked = this._resolveClusterClick(THREE, clickDir, group, preferredKey);
                         if (picked && picked.location?.country) {
                             this._showPointPanel(picked.location, picked);
                         }
@@ -372,10 +395,10 @@ class GlobeExplorer {
             }
 
             const nearest = this._pickNearestCountryFromSurface(THREE, clickDir, group);
-            if (!nearest || nearest.index == null || !nearest.location?.country) {
+            if (!nearest || !nearest.location?.country) {
                 return;
             }
-            const picked = this._resolveClusterClick(THREE, clickDir, group, nearest.index);
+            const picked = this._resolveClusterClick(THREE, clickDir, group, nearest.key);
             if (!picked || !picked.location?.country) return;
             this._showInferredCountryPanel(picked.location.country, picked.location, picked.angleDeg, picked);
         });
@@ -446,6 +469,8 @@ class GlobeExplorer {
         const positions = new Float32Array(this.locations.length * 3);
         const radius = 1.01;
         this.locationUnitVectors = [];
+        this.locationGroups = [];
+        const groupMap = new Map();
 
         for (let i = 0; i < this.locations.length; i++) {
             const v = this._latLonToVec3(this.locations[i].latitude, this.locations[i].longitude, radius, THREE);
@@ -453,7 +478,28 @@ class GlobeExplorer {
             positions[i * 3 + 1] = v.y;
             positions[i * 3 + 2] = v.z;
             this.locationUnitVectors.push(v.clone().normalize());
+
+            const loc = this.locations[i];
+            const key = this._locationKeyFor(loc);
+            if (!groupMap.has(key)) {
+                groupMap.set(key, {
+                    key,
+                    sample: loc,
+                    indices: [],
+                    sum: new THREE.Vector3()
+                });
+            }
+            const entry = groupMap.get(key);
+            entry.indices.push(i);
+            entry.sum.add(v.clone().normalize());
         }
+
+        this.locationGroups = Array.from(groupMap.values()).map((entry) => ({
+            key: entry.key,
+            sample: entry.sample,
+            indices: entry.indices,
+            unitVec: entry.sum.clone().normalize()
+        }));
 
         const dotGeo = new THREE.BufferGeometry();
         dotGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -600,38 +646,38 @@ class GlobeExplorer {
     _pickNearestCountryFromSurface(THREE, clickDir, group) {
         const groupQuat = group.getWorldQuaternion(new THREE.Quaternion());
         const maxAngle = THREE.MathUtils.degToRad(18);
-        let bestIndex = -1;
+        let bestGroup = null;
         let bestAngle = Infinity;
 
-        for (let i = 0; i < this.locationUnitVectors.length; i++) {
-            const loc = this.locations[i];
+        for (const item of this.locationGroups) {
+            const loc = item.sample;
             if (!loc || !loc.country) continue;
-            const worldDir = this.locationUnitVectors[i].clone().applyQuaternion(groupQuat).normalize();
+            const worldDir = item.unitVec.clone().applyQuaternion(groupQuat).normalize();
             const dot = THREE.MathUtils.clamp(clickDir.dot(worldDir), -1, 1);
             const angle = Math.acos(dot);
             if (angle < bestAngle) {
                 bestAngle = angle;
-                bestIndex = i;
+                bestGroup = item;
             }
         }
 
-        if (bestIndex === -1 || bestAngle > maxAngle) return null;
+        if (!bestGroup || bestAngle > maxAngle) return null;
         return {
-            index: bestIndex,
-            location: this.locations[bestIndex],
+            key: bestGroup.key,
+            location: bestGroup.sample,
             angleDeg: THREE.MathUtils.radToDeg(bestAngle)
         };
     }
 
-    _resolveClusterClick(THREE, clickDir, group, preferredIndex) {
+    _resolveClusterClick(THREE, clickDir, group, preferredKey = '') {
         const cluster = this._buildClickCluster(THREE, clickDir, group);
         if (!cluster.length) return null;
 
         const now = Date.now();
-        const clusterKey = cluster.map((item) => item.index).join(',');
+        const clusterKey = cluster.map((item) => item.key).join(',');
         const anchorTolerance = THREE.MathUtils.degToRad(2.0);
         const cycleTimeoutMs = 1800;
-        let position = cluster.findIndex((item) => item.index === preferredIndex);
+        let position = cluster.findIndex((item) => item.key === preferredKey);
         if (position === -1) position = 0;
 
         const canCycle = Boolean(
@@ -653,7 +699,7 @@ class GlobeExplorer {
 
         const chosen = cluster[position];
         return {
-            index: chosen.index,
+            key: chosen.key,
             location: chosen.location,
             angleDeg: THREE.MathUtils.radToDeg(chosen.angle),
             clusterPosition: position,
@@ -666,15 +712,15 @@ class GlobeExplorer {
         const clusterRadius = THREE.MathUtils.degToRad(5.0);
         const cluster = [];
 
-        for (let i = 0; i < this.locationUnitVectors.length; i++) {
-            const loc = this.locations[i];
+        for (const item of this.locationGroups) {
+            const loc = item.sample;
             if (!loc || !loc.country) continue;
-            const worldDir = this.locationUnitVectors[i].clone().applyQuaternion(groupQuat).normalize();
+            const worldDir = item.unitVec.clone().applyQuaternion(groupQuat).normalize();
             const dot = THREE.MathUtils.clamp(clickDir.dot(worldDir), -1, 1);
             const angle = Math.acos(dot);
             if (angle <= clusterRadius) {
                 cluster.push({
-                    index: i,
+                    key: item.key,
                     angle,
                     location: loc
                 });
@@ -713,10 +759,18 @@ class GlobeExplorer {
 
     _renderFilterMenu() {
         if (!this.filterTypeList || !this.filterOptionList) return;
-        const currentType = this.imageService.locationFilter ? 'location' : (this.imageService.countryFilter ? 'country' : 'country');
-        const currentValue = this.imageService.locationFilter || this.imageService.countryFilter || '';
-        this.selectedFilterType = currentType;
-        this.selectedFilterValue = currentValue;
+        const serviceType = this.imageService.locationFilter ? 'location' : (this.imageService.countryFilter ? 'country' : '');
+        const serviceValue = this.imageService.locationFilter || this.imageService.countryFilter || '';
+        if (serviceValue && (serviceType !== this.selectedFilterType || serviceValue !== this.selectedFilterValue)) {
+            this.selectedFilterType = serviceType;
+            this.selectedFilterValue = serviceValue;
+        }
+        if (!this.selectedFilterType) {
+            this.selectedFilterType = 'country';
+        }
+        if (this.selectedFilterValue && !this._isOptionValid(this.selectedFilterType, this.selectedFilterValue)) {
+            this.selectedFilterValue = '';
+        }
 
         this.filterTypeList.innerHTML = '';
         const kinds = [

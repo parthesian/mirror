@@ -116,7 +116,12 @@ class Timeline {
             toggleBtn.dataset.year = String(year);
             toggleBtn.setAttribute('aria-label', `Collapse ${year}`);
             toggleBtn.textContent = '▾';
+            toggleBtn.addEventListener('pointerdown', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+            });
             toggleBtn.addEventListener('click', (event) => {
+                event.preventDefault();
                 event.stopPropagation();
                 const isCollapsed = this.collapsedYears.has(year);
                 this.setYearCollapsed(year, !isCollapsed);
