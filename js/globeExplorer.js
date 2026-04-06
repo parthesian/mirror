@@ -352,7 +352,7 @@ class GlobeExplorer {
 
     _warmup() {
         this._loadThree()
-            .then((THREE) => this._loadOrbitControls(THREE))
+            .then(() => this._loadOrbitControls())
             .catch(() => {});
         this._fetchLocations().catch(() => {});
     }
@@ -432,28 +432,17 @@ class GlobeExplorer {
     _loadThree() {
         if (window.THREE) return Promise.resolve(window.THREE);
         if (this._threePromise) return this._threePromise;
-        this._threePromise = new Promise((resolve, reject) => {
-            const s = document.createElement('script');
-            s.src = 'https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js';
-            s.async = true;
-            s.onload = () => resolve(window.THREE);
-            s.onerror = () => reject(new Error('Failed to load Three.js'));
-            document.head.appendChild(s);
+        this._threePromise = import('three').then(mod => {
+            window.THREE = mod;
+            return mod;
         });
         return this._threePromise;
     }
 
-    _loadOrbitControls(THREE) {
-        if (THREE.OrbitControls) return Promise.resolve(THREE.OrbitControls);
+    _loadOrbitControls() {
         if (this._orbitPromise) return this._orbitPromise;
-        this._orbitPromise = new Promise((resolve, reject) => {
-            const s = document.createElement('script');
-            s.src = 'https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js';
-            s.async = true;
-            s.onload = () => resolve(THREE.OrbitControls);
-            s.onerror = () => reject(new Error('Failed to load OrbitControls'));
-            document.head.appendChild(s);
-        });
+        this._orbitPromise = import('three/addons/controls/OrbitControls.js')
+            .then(mod => mod.OrbitControls);
         return this._orbitPromise;
     }
 
@@ -465,7 +454,7 @@ class GlobeExplorer {
         const THREE = await this._loadThree();
         let OrbitControls = null;
         try {
-            OrbitControls = await this._loadOrbitControls(THREE);
+            OrbitControls = await this._loadOrbitControls();
         } catch (err) {
             console.warn('[GlobeExplorer] OrbitControls unavailable, continuing without controls', err);
         }

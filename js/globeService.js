@@ -26,16 +26,10 @@ class GlobeService {
   _loadThree() {
     if (window.THREE) return Promise.resolve(window.THREE);
     if (this._threePromise) return this._threePromise;
-
-    this._threePromise = new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js';
-      script.async = true;
-      script.onload = () => resolve(window.THREE);
-      script.onerror = () => reject(new Error('Failed to load Three.js'));
-      document.head.appendChild(script);
+    this._threePromise = import('three').then(mod => {
+      window.THREE = mod;
+      return mod;
     });
-
     return this._threePromise;
   }
 

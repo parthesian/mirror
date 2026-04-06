@@ -11,7 +11,7 @@ class Gallery {
         this.zoomInBtn = document.getElementById('zoom-in-btn');
         this.zoomOutBtn = document.getElementById('zoom-out-btn');
 
-        this.currentZoom = 6;
+        this.currentZoom = 4;
         this.minZoom = 2;
         this.maxZoom = 6;
 
@@ -312,18 +312,10 @@ class Gallery {
 
     fullRebuild(images, startIndex, endIndex, layout) {
         const fragment = document.createDocumentFragment();
-        const activeIds = new Set();
 
         for (let i = startIndex; i < endIndex; i++) {
             const node = this.getOrCreateItem(images[i], i, layout);
             fragment.appendChild(node);
-            activeIds.add(images[i].id);
-        }
-
-        for (const [id] of this.mountedItems) {
-            if (!activeIds.has(id)) {
-                this.mountedItems.delete(id);
-            }
         }
 
         this.windowGrid.innerHTML = '';
@@ -348,18 +340,12 @@ class Gallery {
         }
 
         while (this.windowGrid.firstChild && prevStart < nextStart) {
-            const child = this.windowGrid.firstChild;
-            const id = child.dataset && child.dataset.imageId;
-            if (id) this.mountedItems.delete(id);
-            this.windowGrid.removeChild(child);
+            this.windowGrid.removeChild(this.windowGrid.firstChild);
             prevStart++;
         }
 
         while (this.windowGrid.lastChild && prevEnd > nextEnd) {
-            const child = this.windowGrid.lastChild;
-            const id = child.dataset && child.dataset.imageId;
-            if (id) this.mountedItems.delete(id);
-            this.windowGrid.removeChild(child);
+            this.windowGrid.removeChild(this.windowGrid.lastChild);
             prevEnd--;
         }
     }
