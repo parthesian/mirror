@@ -615,63 +615,77 @@ class GlobeExplorer {
             const clickDir = globeHits[0].point.clone().normalize();
             if (dotsMesh) {
                 const hits = raycaster.intersectObject(dotsMesh);
+                const pointerPx = { x: e.clientX - rect.left, y: e.clientY - rect.top };
                 const preciseIdx = this._pickPrecisePointIndex(
                     hits,
-                    { x: e.clientX - rect.left, y: e.clientY - rect.top },
+                    pointerPx,
                     camera,
                     renderer,
                     group,
                     THREE,
                     15
                 );
-                if (preciseIdx != null && preciseIdx < this.locations.length) {
-                    const selectedLocation = this.locations[preciseIdx];
-                    const preferredKey = this._locationKeyFor(selectedLocation);
-                    const intersectKeys = this._collectIntersectingLocationKeys(
-                        hits,
-                        { x: e.clientX - rect.left, y: e.clientY - rect.top },
-                        camera,
-                        renderer,
-                        group,
-                        THREE,
-                        22
-                    );
-                    const rawHitKeys = this._collectUniqueHitLocationKeys(hits);
-                    const candidateKeys = intersectKeys.length > 1
-                        ? intersectKeys
-                        : (rawHitKeys.length > 1 ? rawHitKeys : [preferredKey]);
-                    const uniqueKeys = [...new Set(candidateKeys)];
-                    const options = uniqueKeys
-                        .map((key) => {
-                            const groupEntry = this.locationGroupByKey.get(key);
-                            const sample = groupEntry?.sample;
-                            if (!sample) return null;
-                            return {
-                                key,
-                                label: sample.location || sample.country || 'Unknown',
-                                country: sample.country || '',
-                                sample
-                            };
-                        })
-                        .filter(Boolean);
+                const selectedLocation = (preciseIdx != null && preciseIdx < this.locations.length)
+                    ? this.locations[preciseIdx]
+                    : null;
+                const preferredKey = selectedLocation
+                    ? this._locationKeyFor(selectedLocation)
+                    : '';
 
-                    const applyPickedOption = (option) => {
-                        const selectedForPanel = option.sample || selectedLocation;
-                        if (!selectedForPanel?.country) return;
-                        if (selectedForPanel.location) {
-                            this._setPendingFilterSelection('location', selectedForPanel.location);
-                        } else {
-                            this._setPendingFilterSelection('country', selectedForPanel.country);
-                        }
-                        this._showPointPanel(selectedForPanel, null);
-                    };
+                const intersectKeys = this._collectIntersectingLocationKeys(
+                    hits,
+                    pointerPx,
+                    camera,
+                    renderer,
+                    group,
+                    THREE,
+                    22
+                );
+                const previousThreshold = raycaster.params.Points?.threshold ?? 0.034;
+                raycaster.params.Points.threshold = 0.095;
+                const expandedHits = raycaster.intersectObject(dotsMesh);
+                raycaster.params.Points.threshold = previousThreshold;
 
-                    if (options.length > 1) {
-                        this._showIntersectPicker(options, applyPickedOption);
-                    } else if (options.length === 1) {
-                        this._hideIntersectPicker();
-                        applyPickedOption(options[0]);
+                const rawHitKeys = this._collectUniqueHitLocationKeys(expandedHits);
+                let candidateKeys = [];
+                if (intersectKeys.length > 1) candidateKeys = intersectKeys;
+                else if (rawHitKeys.length > 1) candidateKeys = rawHitKeys;
+                else if (preferredKey) candidateKeys = [preferredKey];
+                else if (rawHitKeys.length === 1) candidateKeys = rawHitKeys;
+
+                const uniqueKeys = [...new Set(candidateKeys)];
+                const options = uniqueKeys
+                    .map((key) => {
+                        const groupEntry = this.locationGroupByKey.get(key);
+                        const sample = groupEntry?.sample;
+                        if (!sample) return null;
+                        return {
+                            key,
+                            label: sample.location || sample.country || 'Unknown',
+                            country: sample.country || '',
+                            sample
+                        };
+                    })
+                    .filter(Boolean);
+
+                const applyPickedOption = (option) => {
+                    const selectedForPanel = option.sample || selectedLocation;
+                    if (!selectedForPanel?.country) return;
+                    if (selectedForPanel.location) {
+                        this._setPendingFilterSelection('location', selectedForPanel.location);
+                    } else {
+                        this._setPendingFilterSelection('country', selectedForPanel.country);
                     }
+                    this._showPointPanel(selectedForPanel, null);
+                };
+
+                if (options.length > 1) {
+                    this._showIntersectPicker(options, applyPickedOption);
+                    return;
+                }
+                if (options.length === 1) {
+                    this._hideIntersectPicker();
+                    applyPickedOption(options[0]);
                     return;
                 }
             }
