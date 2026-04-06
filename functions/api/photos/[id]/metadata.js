@@ -17,7 +17,12 @@ async function getPhotoMetadata(context) {
         return errorResponse('Photo not found.', 404);
     }
 
-    return json(mapPhotoRecord(result));
+    return json(mapPhotoRecord(result), {
+        headers: {
+            'Cache-Control': 'public, s-maxage=3600, max-age=300',
+            'Vary': 'Accept-Encoding'
+        }
+    });
 }
 
 export async function onRequest(context) {

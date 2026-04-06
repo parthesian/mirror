@@ -3313,6 +3313,8 @@ body.exposure-3  { --leak-opacity: 0.35; }
 }
 
 .globe-explorer-panel {
+    position: relative;
+    z-index: 2;
     width: 280px;
     flex-shrink: 0;
     display: flex;
@@ -3434,6 +3436,32 @@ body.exposure-0  .globe-explorer { background: rgba(168, 168, 168, 0.98); color:
 body.exposure-1  .globe-explorer { background: rgba(204, 204, 204, 0.98); color: #000000; }
 body.exposure-2  .globe-explorer { background: rgba(232, 232, 232, 0.98); color: #000000; }
 body.exposure-3  .globe-explorer { background: rgba(255, 255, 255, 0.98); color: #000000; }
+
+/* Side panel: opaque surface so copy never reads as black-on-dark against the globe */
+body.exposure--3 .globe-explorer-panel,
+body.exposure--2 .globe-explorer-panel,
+body.exposure--1 .globe-explorer-panel {
+    background: rgba(22, 22, 22, 0.94);
+    color: rgba(255, 255, 255, 0.96);
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: -10px 0 28px rgba(0, 0, 0, 0.35);
+}
+
+body.exposure-0 .globe-explorer-panel {
+    background: rgba(248, 248, 248, 0.97);
+    color: #2a2a2a;
+    border-left: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow: -8px 0 22px rgba(0, 0, 0, 0.06);
+}
+
+body.exposure-1 .globe-explorer-panel,
+body.exposure-2 .globe-explorer-panel,
+body.exposure-3 .globe-explorer-panel {
+    background: rgba(255, 255, 255, 0.97);
+    color: #141414;
+    border-left: 1px solid rgba(0, 0, 0, 0.1);
+    box-shadow: -8px 0 22px rgba(0, 0, 0, 0.08);
+}
 
 /* ============================================
    Country Filter Panel (bottom-right)
@@ -3664,6 +3692,28 @@ body.exposure-3 .country-filter-panel {
         padding: 1rem;
         box-sizing: border-box;
         overflow-x: hidden;
+    }
+
+    body.exposure--3 .globe-explorer-panel,
+    body.exposure--2 .globe-explorer-panel,
+    body.exposure--1 .globe-explorer-panel {
+        border-left: none;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.35);
+    }
+
+    body.exposure-0 .globe-explorer-panel {
+        border-left: none;
+        border-top: 1px solid rgba(0, 0, 0, 0.08);
+        box-shadow: 0 -8px 22px rgba(0, 0, 0, 0.06);
+    }
+
+    body.exposure-1 .globe-explorer-panel,
+    body.exposure-2 .globe-explorer-panel,
+    body.exposure-3 .globe-explorer-panel {
+        border-left: none;
+        border-top: 1px solid rgba(0, 0, 0, 0.1);
+        box-shadow: 0 -8px 22px rgba(0, 0, 0, 0.08);
     }
 
     .globe-explorer-panel-inner {

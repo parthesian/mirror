@@ -1,0 +1,16 @@
+# Static assets use ?v= query-string busting, so immutable is safe.
+/js/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/styles.css
+  Cache-Control: public, max-age=31536000, immutable
+
+/admin/*
+  Cache-Control: no-store
+
+# HTML entry points: short browser cache, edge refreshes frequently.
+/
+  Cache-Control: public, max-age=60, s-maxage=120
+
+/index.html
+  Cache-Control: public, max-age=60, s-maxage=120

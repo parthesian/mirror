@@ -63,6 +63,11 @@ async function listPhotos(context) {
         photos,
         hasMore,
         nextCursor
+    }, {
+        headers: {
+            'Cache-Control': 'public, s-maxage=60, max-age=10',
+            'Vary': 'Accept-Encoding'
+        }
     });
 }
 

@@ -1,6 +1,6 @@
 import { requireAdmin } from '../../_lib/access.js';
 import { errorResponse, handleOptions, json } from '../../_lib/http.js';
-import { buildThumbnailStorageKey, getExtensionFromType, mapPhotoRecord } from '../../_lib/photos.js';
+import { getExtensionFromType, mapPhotoRecord } from '../../_lib/photos.js';
 
 async function createPhoto(context) {
     const { request, env } = context;
@@ -12,7 +12,6 @@ async function createPhoto(context) {
 
     const formData = await request.formData();
     const photo = formData.get('photo');
-    const thumbnail = formData.get('thumbnail');
     const location = (formData.get('location') || '').toString().trim();
     const description = (formData.get('description') || '').toString().trim();
     const takenAt = (formData.get('takenAt') || '').toString().trim();
@@ -35,7 +34,6 @@ async function createPhoto(context) {
     const contentType = photo.type || 'image/jpeg';
     const extension = getExtensionFromType(contentType);
     const storageKey = `photos/${photoId}.${extension}`;
-    const thumbnailStorageKey = buildThumbnailStorageKey(storageKey);
     const uploadedAt = new Date().toISOString();
     const normalizedTakenAt = takenAt || uploadedAt;
 
@@ -44,14 +42,6 @@ async function createPhoto(context) {
             contentType
         }
     });
-
-    if (thumbnail instanceof File) {
-        await env.PHOTO_BUCKET.put(thumbnailStorageKey, await thumbnail.arrayBuffer(), {
-            httpMetadata: {
-                contentType: thumbnail.type || contentType
-            }
-        });
-    }
 
     const normalizedLatitude = Number.isFinite(latitude) ? latitude : null;
     const normalizedLongitude = Number.isFinite(longitude) ? longitude : null;

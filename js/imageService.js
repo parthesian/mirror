@@ -575,9 +575,6 @@ class ImageService {
             const preparedAssets = await this.prepareUploadAssets(file);
             const formData = new FormData();
             formData.append('photo', preparedAssets.photoFile, preparedAssets.photoFile.name);
-            if (preparedAssets.thumbnailFile) {
-                formData.append('thumbnail', preparedAssets.thumbnailFile, preparedAssets.thumbnailFile.name);
-            }
             formData.append('location', location);
             formData.append('description', description);
 
@@ -617,7 +614,6 @@ class ImageService {
                 contentType: preparedAssets.photoFile.type,
                 takenAt: normalizedTimestamp || 'not provided',
                 fileSize: preparedAssets.photoFile.size,
-                thumbnailSize: preparedAssets.thumbnailFile?.size || 0,
                 width: preparedAssets.width,
                 height: preparedAssets.height,
                 latitude: coords?.latitude ?? 'not provided',
@@ -679,7 +675,8 @@ class ImageService {
     }
 
     /**
-     * Prepare a full-size upload plus a smaller thumbnail derivative.
+     * Prepare a full-size upload (compressed if large).
+     * Thumbnails are generated on-the-fly via Cloudflare Image Transformations.
      * @param {File} file - Original user-selected file
      * @returns {Promise<Object>} Prepared upload assets
      */
@@ -687,30 +684,14 @@ class ImageService {
         const photoFile = await this.compressImage(file);
 
         if (!photoFile.type.startsWith('image/')) {
-            return {
-                photoFile,
-                thumbnailFile: null,
-                width: null,
-                height: null
-            };
+            return { photoFile, width: null, height: null };
         }
 
         const imageElement = await this.loadImageElement(photoFile);
         const width = imageElement.naturalWidth || imageElement.width || null;
         const height = imageElement.naturalHeight || imageElement.height || null;
-        const thumbnailFile = await this.createDerivedImageFile(photoFile, {
-            maxWidth: 640,
-            maxHeight: 640,
-            quality: 0.82,
-            suffix: '-thumb'
-        });
 
-        return {
-            photoFile,
-            thumbnailFile,
-            width,
-            height
-        };
+        return { photoFile, width, height };
     }
 
     /**

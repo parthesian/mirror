@@ -102,10 +102,12 @@ class Gallery {
         window.addEventListener('scroll', () => this.scheduleRefresh(), { passive: true });
 
         window.addEventListener('resize', this.throttle(() => {
+            const prevColumns = this.cachedLayout?.columns;
             this.cachedLayout = null;
-            this.scheduleRefresh(true);
+            const columnsChanged = prevColumns != null && this.getLayout().columns !== prevColumns;
+            this.scheduleRefresh(columnsChanged);
             this.checkIfNeedsMoreContent();
-        }, 120));
+        }, 200));
 
         this.updateZoomState(false);
     }
@@ -287,24 +289,25 @@ class Gallery {
         const startIndex = startRow * layout.columns;
         const endIndex = Math.min(images.length, (endRow + 1) * layout.columns);
 
-        if (!force &&
-            startIndex === this.renderState.startIndex &&
-            endIndex === this.renderState.endIndex) {
+        const indicesChanged = startIndex !== this.renderState.startIndex ||
+            endIndex !== this.renderState.endIndex;
+        const columnsChanged = layout.columns !== (this.renderState.columns || 0);
+
+        this.applyWindowLayout(layout);
+        this.topSpacer.style.height = `${startRow * layout.rowSpan}px`;
+        const bottomRows = Math.max(0, totalRows - endRow - 1);
+        this.bottomSpacer.style.height = `${bottomRows * layout.rowSpan}px`;
+
+        if (!force && !indicesChanged) {
             return;
         }
 
         const prevStart = this.renderState.startIndex;
         const prevEnd = this.renderState.endIndex;
 
-        this.applyWindowLayout(layout);
-
-        this.topSpacer.style.height = `${startRow * layout.rowSpan}px`;
-        const bottomRows = Math.max(0, totalRows - endRow - 1);
-        this.bottomSpacer.style.height = `${bottomRows * layout.rowSpan}px`;
-
-        if (force || prevStart === -1 || layout.columns !== (this.renderState.columns || 0)) {
+        if (prevStart === -1 || columnsChanged) {
             this.fullRebuild(images, startIndex, endIndex, layout);
-        } else {
+        } else if (indicesChanged) {
             this.incrementalUpdate(images, prevStart, prevEnd, startIndex, endIndex, layout);
         }
 
