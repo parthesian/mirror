@@ -111,16 +111,29 @@ class Timeline {
         return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 };
     }
 
-    scrollToDate(year, month) {
+    async scrollToDate(year, month) {
         year = Number(year);
         month = Number(month);
-        const images = this.imageService.images;
-        if (!images || images.length === 0) return;
 
-        const targetIndex = images.findIndex(img => {
-            const ym = this.imageYearMonth(img);
-            return ym.year === year && ym.month === month;
-        });
+        const findTarget = () => {
+            return this.imageService.images.findIndex(img => {
+                const ym = this.imageYearMonth(img);
+                return ym.year === year && ym.month === month;
+            });
+        };
+
+        let targetIndex = findTarget();
+
+        if (targetIndex === -1 && this.imageService.hasMore) {
+            while (this.imageService.hasMore) {
+                const added = await this.imageService.loadMorePhotos();
+                if (!added || !added.length) break;
+                targetIndex = findTarget();
+                if (targetIndex !== -1) break;
+            }
+            this.gallery.cachedLayout = null;
+            this.gallery.scheduleRefresh(true);
+        }
 
         if (targetIndex === -1) return;
 

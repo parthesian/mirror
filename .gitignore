@@ -119,6 +119,7 @@ out/
 
 # Local development
 .local
+.wrangler
 
 # Backup files
 *.bak
