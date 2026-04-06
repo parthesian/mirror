@@ -1,13 +1,11 @@
 /**
- * FilmEffects - Grain, vignette, and light leak overlays
- * Reacts to the exposure dial: darker = more pronounced film artifacts
+ * FilmEffects - Controls animated light-leak behavior.
  */
 class FilmEffects {
     constructor() {
         this.scrollRaf = null;
         this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-        this._initDOM();
         this._bindEvents();
         this._applyExposure(this._currentExposure());
         this._updateScrollRatio();
@@ -16,13 +14,6 @@ class FilmEffects {
     _currentExposure() {
         const m = document.body.className.match(/exposure-([-\d]+)/);
         return m ? parseInt(m[1], 10) : 0;
-    }
-
-    _initDOM() {
-        this.grain = document.querySelector('.grain-svg');
-        if (this.grain && this.reducedMotion) {
-            this.grain.style.animation = 'none';
-        }
     }
 
     _bindEvents() {
@@ -43,20 +34,10 @@ class FilmEffects {
 
         window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', (e) => {
             this.reducedMotion = e.matches;
-            if (this.grain) {
-                this.grain.style.animation = e.matches ? 'none' : '';
-            }
         });
     }
 
     _applyExposure(exp) {
-        const grainOpacity = {
-            '-3': 0.12, '-2': 0.09, '-1': 0.06,
-            '0': 0.04, '1': 0.02, '2': 0.02, '3': 0.02
-        };
-        if (this.grain) {
-            this.grain.style.opacity = grainOpacity[String(exp)] ?? 0.04;
-        }
         document.body.style.setProperty('--film-exposure', exp);
     }
 

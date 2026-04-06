@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>आईना</title>
     <link rel="icon" type="image/svg+xml" href="mirror.svg">
-    <link rel="stylesheet" href="styles.css?v=20260406a">
+    <link rel="stylesheet" href="styles.css?v=20260406c">
 </head>
 <body class="exposure-0">
     <header class="header">
@@ -86,17 +86,6 @@
         </div>
     </div>
 
-    <!-- Film grain SVG overlay -->
-    <svg class="grain-svg" aria-hidden="true">
-        <filter id="grain-filter">
-            <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/>
-        </filter>
-        <rect width="100%" height="100%" filter="url(#grain-filter)"/>
-    </svg>
-
-    <!-- Ambient particle canvas -->
-    <canvas id="ambient-canvas" aria-hidden="true"></canvas>
-
     <!-- Hidden container for globe preloading -->
     <div id="globe-preload-container" class="globe-container hidden" style="position: absolute; top: -9999px; left: -9999px; width: 160px; height: 160px;"></div>
 
@@ -131,9 +120,8 @@
     <script src="js/customCalendar.js?v=20260405c"></script>
     <script src="js/timeline.js?v=20260405c"></script>
     <script src="js/modal.js?v=20260405c"></script>
-    <script src="js/filmEffects.js?v=20260406a"></script>
-    <script src="js/ambientParticles.js?v=20260406a"></script>
-    <script src="js/globeExplorer.js?v=20260406a"></script>
-    <script src="js/app.js?v=20260406a"></script>
+    <script src="js/filmEffects.js?v=20260406c"></script>
+    <script src="js/globeExplorer.js?v=20260406c"></script>
+    <script src="js/app.js?v=20260406c"></script>
 </body>
 </html>

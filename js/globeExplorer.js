@@ -22,8 +22,11 @@ class GlobeExplorer {
         this.orbitControls = null;
         this._threePromise = null;
         this._orbitPromise = null;
+        this._geoPromise = null;
+        this._geoFetchedOnce = false;
 
         this._bindEvents();
+        this._warmup();
     }
 
     // ── event wiring ──
@@ -65,12 +68,33 @@ class GlobeExplorer {
         this.overlay.classList.remove('active');
         this.overlay.classList.add('hidden');
         document.body.style.overflow = '';
-        this._destroyScene();
+        // Keep scene alive for faster subsequent opens.
+        // this._destroyScene();
+    }
+
+    _warmup() {
+        // Warm script/data caches in the background to reduce first-open latency.
+        this._loadThree().catch(() => {});
+        this._loadThree()
+            .then((THREE) => this._loadOrbitControls(THREE))
+            .catch(() => {});
+        this._fetchLocations().catch(() => {});
     }
 
     // ── data ──
 
     async _fetchLocations() {
+        if (this._geoFetchedOnce) return;
+        if (this._geoPromise) return this._geoPromise;
+        this._geoPromise = this._fetchLocationsInternal();
+        try {
+            await this._geoPromise;
+        } finally {
+            this._geoPromise = null;
+        }
+    }
+
+    async _fetchLocationsInternal() {
         try {
             const base = (window.CONFIG?.API_BASE_URL || '').replace(/\/$/, '');
             const url = base ? `${base}/api/photos/geo` : '/api/photos/geo';
@@ -79,6 +103,7 @@ class GlobeExplorer {
             const data = await res.json();
             this.locations = Array.isArray(data.locations) ? data.locations : [];
             console.log('[GlobeExplorer] geo locations loaded:', this.locations.length);
+            this._geoFetchedOnce = true;
         } catch (err) {
             console.error('[GlobeExplorer] failed to fetch geo data', err);
             this.locations = [];
@@ -177,7 +202,7 @@ class GlobeExplorer {
         const group = new THREE.Group();
         scene.add(group);
 
-        const geo = new THREE.SphereGeometry(1, 64, 64);
+        const geo = new THREE.SphereGeometry(1, 48, 48);
         let tex = null;
         let mat = null;
         try {
@@ -196,6 +221,30 @@ class GlobeExplorer {
 
         const dotsMesh = this._buildDots(THREE, group);
         this._buildArcs(THREE, group);
+
+        // Fallback drag-rotate (works even when OrbitControls fails to load).
+        let drag = null;
+        renderer.domElement.addEventListener('pointerdown', (e) => {
+            drag = {
+                x: e.clientX,
+                y: e.clientY,
+                rotX: group.rotation.x,
+                rotY: group.rotation.y
+            };
+        });
+        renderer.domElement.addEventListener('pointermove', (e) => {
+            if (!drag) return;
+            const dx = e.clientX - drag.x;
+            const dy = e.clientY - drag.y;
+            // Only apply fallback while controls are missing.
+            if (!controls) {
+                group.rotation.y = drag.rotY + dx * 0.005;
+                group.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, drag.rotX + dy * 0.005));
+            }
+        });
+        const endDrag = () => { drag = null; };
+        renderer.domElement.addEventListener('pointerup', endDrag);
+        renderer.domElement.addEventListener('pointerleave', endDrag);
 
         const raycaster = new THREE.Raycaster();
         raycaster.params.Points = { threshold: 0.06 };
@@ -238,6 +287,7 @@ class GlobeExplorer {
         const animate = () => {
             if (state.disposed) return;
             if (controls) controls.update();
+            else group.rotation.y += 0.001; // subtle autorotate so points become visible quickly
             renderer.render(scene, camera);
             state.rafId = requestAnimationFrame(animate);
         };
@@ -296,7 +346,7 @@ class GlobeExplorer {
 
         const dotMat = new THREE.PointsMaterial({
             color: 0xffffff,
-            size: 0.04,
+            size: 0.06,
             sizeAttenuation: true,
             transparent: true,
             opacity: 0.9,
