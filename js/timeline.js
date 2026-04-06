@@ -11,6 +11,8 @@ class Timeline {
         this.groups = [];
         this.activeKey = null;
         this.monthElements = new Map();
+        this.yearGroups = new Map();
+        this.collapsedYears = new Set();
         this.enabledKeys = new Set();
         this.lockedKey = null;
 
@@ -74,6 +76,7 @@ class Timeline {
         if (!this.container || this.groups.length === 0) return;
 
         this.monthElements.clear();
+        this.yearGroups.clear();
         this.container.innerHTML = '';
 
         const list = document.createElement('div');
@@ -83,35 +86,84 @@ class Timeline {
         line.className = 'timeline-line';
         list.appendChild(line);
 
-        let currentYear = null;
-
+        const byYear = new Map();
         for (const group of this.groups) {
-            if (group.year !== currentYear) {
-                currentYear = group.year;
-                const yearEl = document.createElement('div');
-                yearEl.className = 'timeline-year';
-                yearEl.textContent = currentYear;
-                list.appendChild(yearEl);
-            }
+            const year = Number(group.year);
+            if (!byYear.has(year)) byYear.set(year, []);
+            byYear.get(year).push(group);
+        }
 
-            const monthEl = document.createElement('div');
-            monthEl.className = 'timeline-month';
-            monthEl.textContent = this.monthAbbr(group.month);
-            monthEl.dataset.year = group.year;
-            monthEl.dataset.month = group.month;
+        for (const [year, months] of byYear.entries()) {
+            const yearGroup = document.createElement('div');
+            yearGroup.className = 'timeline-year-group';
+            yearGroup.dataset.year = String(year);
 
-            monthEl.addEventListener('click', () => {
-                if (monthEl.classList.contains('disabled')) return;
-                this.scrollToDate(group.year, group.month);
+            const yearRow = document.createElement('div');
+            yearRow.className = 'timeline-year-row';
+
+            const yearBtn = document.createElement('button');
+            yearBtn.type = 'button';
+            yearBtn.className = 'timeline-year';
+            yearBtn.textContent = String(year);
+            yearBtn.setAttribute('aria-label', `Jump to earliest photo in ${year}`);
+            yearBtn.addEventListener('click', () => {
+                this.scrollToYearEarliest(year);
             });
 
-            const key = `${group.year}-${group.month}`;
-            this.monthElements.set(key, monthEl);
-            list.appendChild(monthEl);
+            const toggleBtn = document.createElement('button');
+            toggleBtn.type = 'button';
+            toggleBtn.className = 'timeline-year-toggle';
+            toggleBtn.dataset.year = String(year);
+            toggleBtn.setAttribute('aria-label', `Collapse ${year}`);
+            toggleBtn.textContent = '▾';
+            toggleBtn.addEventListener('click', (event) => {
+                event.stopPropagation();
+                const isCollapsed = this.collapsedYears.has(year);
+                this.setYearCollapsed(year, !isCollapsed);
+            });
+
+            yearRow.appendChild(yearBtn);
+            yearRow.appendChild(toggleBtn);
+            yearGroup.appendChild(yearRow);
+
+            const monthsWrap = document.createElement('div');
+            monthsWrap.className = 'timeline-year-months';
+            for (const group of months) {
+                const monthEl = document.createElement('div');
+                monthEl.className = 'timeline-month';
+                monthEl.textContent = this.monthAbbr(group.month);
+                monthEl.dataset.year = group.year;
+                monthEl.dataset.month = group.month;
+
+                monthEl.addEventListener('click', () => {
+                    if (monthEl.classList.contains('disabled')) return;
+                    this.scrollToDate(group.year, group.month);
+                });
+
+                const key = `${group.year}-${group.month}`;
+                this.monthElements.set(key, monthEl);
+                monthsWrap.appendChild(monthEl);
+            }
+            yearGroup.appendChild(monthsWrap);
+            this.yearGroups.set(year, { groupEl: yearGroup, monthsWrap, toggleBtn });
+            if (this.collapsedYears.has(year)) {
+                this.setYearCollapsed(year, true);
+            }
+            list.appendChild(yearGroup);
         }
 
         this.container.appendChild(list);
         this.syncActiveFromScroll();
+    }
+
+    setYearCollapsed(year, collapsed) {
+        const state = this.yearGroups.get(Number(year));
+        if (!state) return;
+        if (collapsed) this.collapsedYears.add(Number(year));
+        else this.collapsedYears.delete(Number(year));
+        state.groupEl.classList.toggle('collapsed', collapsed);
+        state.toggleBtn.textContent = collapsed ? '▸' : '▾';
+        state.toggleBtn.setAttribute('aria-label', collapsed ? `Expand ${year}` : `Collapse ${year}`);
     }
 
     getActiveFilters() {
@@ -218,6 +270,60 @@ class Timeline {
         if (targetIndex === -1) return;
 
         this.gallery.cachedLayout = null;
+        const layout = this.gallery.getLayout();
+        const row = Math.floor(targetIndex / layout.columns);
+        const targetY = layout.contentTop + (row * layout.rowSpan);
+        window.scrollTo({ top: Math.max(0, targetY - 80), behavior: 'smooth' });
+    }
+
+    async scrollToYearEarliest(year) {
+        year = Number(year);
+        if (!Number.isFinite(year)) return;
+
+        const findLastIndexInYear = () => {
+            let last = -1;
+            for (let i = 0; i < this.imageService.images.length; i++) {
+                const ym = this.imageYearMonth(this.imageService.images[i]);
+                if (ym.year === year) {
+                    last = i;
+                }
+            }
+            return last;
+        };
+
+        let targetIndex = findLastIndexInYear();
+        const oldestLoaded = () => this.imageService.images[this.imageService.images.length - 1] || null;
+
+        while (this.imageService.hasMore) {
+            const oldest = oldestLoaded();
+            if (!oldest) break;
+            const oldestYear = this.imageYearMonth(oldest).year;
+            if (oldestYear < year) break;
+            if (oldestYear > year && targetIndex === -1) {
+                const added = await this.imageService.loadMorePhotos();
+                if (!added?.length) break;
+                targetIndex = findLastIndexInYear();
+                continue;
+            }
+            if (oldestYear === year || targetIndex === -1) {
+                const added = await this.imageService.loadMorePhotos();
+                if (!added?.length) break;
+                targetIndex = findLastIndexInYear();
+                continue;
+            }
+            break;
+        }
+
+        if (targetIndex === -1) return;
+
+        const targetImg = this.imageService.images[targetIndex];
+        const ym = this.imageYearMonth(targetImg);
+        const key = `${ym.year}-${ym.month}`;
+        this.lockedKey = key;
+        this.setActive(key);
+
+        this.gallery.cachedLayout = null;
+        this.gallery.scheduleRefresh(true);
         const layout = this.gallery.getLayout();
         const row = Math.floor(targetIndex / layout.columns);
         const targetY = layout.contentTop + (row * layout.rowSpan);
