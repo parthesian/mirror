@@ -39,10 +39,11 @@ class PhotoGalleryApp {
         try {
             // Initialize services
             this.imageService = new ImageService();
+            this.imagePreloader = new ImagePreloader();
             
             // Initialize UI components
-            this.gallery = new Gallery(this.imageService);
-            this.modal = new Modal(this.imageService);
+            this.gallery = new Gallery(this.imageService, this.imagePreloader);
+            this.modal = new Modal(this.imageService, this.imagePreloader);
             this.timeline = new Timeline(this.imageService, this.gallery);
             this.filmEffects = new FilmEffects();
             this.globeExplorer = new GlobeExplorer(this.imageService);
@@ -56,9 +57,6 @@ class PhotoGalleryApp {
             window.modal = this.modal;
             window.timeline = this.timeline;
             window.imageService = this.imageService;
-            
-            console.log('Photo Gallery App initialized successfully');
-            
         } catch (error) {
             console.error('Error initializing components:', error);
             this.showInitializationError();

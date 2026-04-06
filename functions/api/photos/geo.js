@@ -23,7 +23,12 @@ async function getGeoLocations(context) {
         takenAt: r.taken_at
     }));
 
-    return json({ locations });
+    return json({ locations }, {
+        headers: {
+            'Cache-Control': 'public, s-maxage=600, max-age=120',
+            'Vary': 'Accept-Encoding'
+        }
+    });
 }
 
 export async function onRequest(context) {

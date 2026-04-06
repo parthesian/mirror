@@ -247,15 +247,12 @@ class GlobeService {
    */
   async preloadGlobe(preloadContainer, locationOrOptions) {
     try {
-      console.log('GlobeService: Starting globe preload for:', locationOrOptions);
-      
       this.preloadContainer = preloadContainer;
       this.preloadLocation = locationOrOptions;
       
       await this.createOrUpdate(preloadContainer, locationOrOptions);
       
       this.isPreloaded = true;
-      console.log('GlobeService: Globe preloaded successfully');
     } catch (error) {
       console.error('GlobeService: Failed to preload globe:', error);
       this.isPreloaded = false;
@@ -278,14 +275,11 @@ class GlobeService {
   async transferOrCreate(targetContainer, locationOrOptions) {
     try {
       if (this.instances.has(targetContainer)) {
-        console.log('GlobeService: Reusing existing modal globe instance');
         await this.createOrUpdate(targetContainer, locationOrOptions);
         return;
       }
 
       if (this.isGlobePreloaded()) {
-        console.log('GlobeService: Transferring preloaded globe to modal');
-        
         const preloadedInstance = this.instances.get(this.preloadContainer);
         if (preloadedInstance && !preloadedInstance.disposed) {
           targetContainer.innerHTML = '';
@@ -321,12 +315,10 @@ class GlobeService {
           this.isPreloaded = false;
           this.preloadLocation = null;
           
-          console.log('GlobeService: Globe transferred successfully');
           return;
         }
       }
 
-      console.log('GlobeService: Creating globe instance (no reusable/preloaded instance available)');
       await this.createOrUpdate(targetContainer, locationOrOptions);
     } catch (error) {
       console.error('GlobeService: Failed to transfer globe, falling back to new instance:', error);

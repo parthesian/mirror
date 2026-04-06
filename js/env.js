@@ -28,7 +28,6 @@ async function loadEnvironmentVariables() {
             }
         });
         
-        console.log('Environment variables loaded successfully');
     } catch (error) {
         console.warn('Failed to load environment variables:', error);
     }

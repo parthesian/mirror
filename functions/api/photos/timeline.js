@@ -42,7 +42,12 @@ async function getTimeline(context) {
     const results = await statement.all();
     const groups = Array.isArray(results.results) ? results.results : [];
 
-    return json({ groups });
+    return json({ groups }, {
+        headers: {
+            'Cache-Control': 'public, s-maxage=300, max-age=60',
+            'Vary': 'Accept-Encoding'
+        }
+    });
 }
 
 export async function onRequest(context) {

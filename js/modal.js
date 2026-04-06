@@ -2,7 +2,7 @@
  * Modal - Handles the fullscreen image modal and navigation
  */
 class Modal {
-    constructor(imageService) {
+    constructor(imageService, imagePreloader) {
         this.imageService = imageService;
         
         // View modal elements
@@ -52,7 +52,7 @@ class Modal {
         
         // Globe integration
         this.globeService = new GlobeService();
-        this.imagePreloader = new ImagePreloader();
+        this.imagePreloader = imagePreloader || new ImagePreloader();
         
         this.init();
     }
@@ -159,7 +159,6 @@ class Modal {
 
         // Listen for custom events
         document.addEventListener('openModal', (e) => {
-            console.log('Modal: Received openModal event for image:', e.detail.imageId);
             void this.open(e.detail.imageId);
         });
 
@@ -178,7 +177,6 @@ class Modal {
      * @param {string} imageId - Image ID to display
      */
     async open(imageId) {
-        console.log('Modal: Opening modal for image:', imageId);
         const base = this.imageService.getImageById(imageId);
         if (!base) {
             console.error('Image not found:', imageId);
@@ -200,24 +198,18 @@ class Modal {
             return;
         }
 
-        console.log('Modal: Found image:', image);
         this.currentImageId = imageId;
         this.isOpen = true;
 
-        console.log('Modal: Adding active class to modal');
         this.modal.classList.remove('hidden');
         this.modal.classList.add('active');
         document.body.style.overflow = 'hidden';
-
-        console.log('Modal: Modal classes after adding active:', this.modal.className);
 
         this.loadImageContent(image);
 
         this.updateNavigationButtons();
 
         this.closeBtn.focus();
-
-        console.log('Modal: Modal should now be visible');
     }
 
     /**
@@ -390,9 +382,6 @@ class Modal {
                 const resolved = this.imageService.getImageById(prevImage.id) || prevImage;
                 this.currentImageId = resolved.id;
                 this.loadImageContent(resolved);
-                if (window.gallery && typeof window.gallery.refreshWindow === 'function') {
-                    window.gallery.refreshWindow(true);
-                }
             }
         } finally {
             this.isNavigating = false;
@@ -416,9 +405,6 @@ class Modal {
                 const resolved = this.imageService.getImageById(nextImage.id) || nextImage;
                 this.currentImageId = resolved.id;
                 this.loadImageContent(resolved);
-                if (window.gallery && typeof window.gallery.refreshWindow === 'function') {
-                    window.gallery.refreshWindow(true);
-                }
             }
         } finally {
             this.isNavigating = false;

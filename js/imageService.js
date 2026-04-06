@@ -53,7 +53,7 @@ class ImageService {
         const safeId = encodeURIComponent(id);
         const basePath = `/api/photos/${safeId}/image`;
         if (variant === 'thumb') {
-            return this.buildApiUrl(`/cdn-cgi/image/width=640,height=640,fit=inside,quality=82${basePath}`);
+            return this.buildApiUrl(`/cdn-cgi/image/width=640,height=640,fit=scale-down,quality=82${basePath}`);
         }
         return this.buildApiUrl(basePath);
     }
@@ -313,7 +313,6 @@ class ImageService {
             this.nextCursor = result.nextCursor;
             this.hasMore = result.hasMore;
 
-            console.log(`Loaded ${this.images.length} initial photos. Has more: ${this.hasMore}`);
             return this.images;
         } catch (error) {
             console.error('Failed to fetch images:', error);
@@ -373,7 +372,6 @@ class ImageService {
             this.nextCursor = result.nextCursor;
             this.hasMore = result.hasMore;
 
-            console.log(`Loaded ${addedPhotos.length} more photos. Total: ${this.images.length}. Has more: ${this.hasMore}`);
             return addedPhotos;
         } catch (error) {
             console.error('Failed to load more photos:', error);
@@ -612,20 +610,6 @@ class ImageService {
                 formData.append('camera', cameraTrimmed);
             }
 
-            console.log('Uploading photo with multipart payload:', {
-                location,
-                description,
-                contentType: preparedAssets.photoFile.type,
-                takenAt: normalizedTimestamp || 'not provided',
-                fileSize: preparedAssets.photoFile.size,
-                width: preparedAssets.width,
-                height: preparedAssets.height,
-                latitude: coords?.latitude ?? 'not provided',
-                longitude: coords?.longitude ?? 'not provided',
-                country: coords?.country || 'not provided',
-                camera: cameraTrimmed || 'not provided'
-            });
-
             const response = await fetch(this.buildApiUrl('/api/admin/photos'), {
                 method: 'POST',
                 mode: 'cors',
@@ -645,8 +629,6 @@ class ImageService {
             }
 
             const result = await this.parseJsonResponse(response);
-            console.log('Upload response received:', result);
-            await this.fetchImages();
             return result;
         } catch (error) {
             console.error('Failed to upload photo:', error);

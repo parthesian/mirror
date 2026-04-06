@@ -3,28 +3,11 @@
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+    scroll-padding-top: 2rem;
 }
 
 html {
-    scroll-behavior: smooth;
-}
-
-/* Custom faster smooth scrolling */
-@media (prefers-reduced-motion: no-preference) {
-    html {
-        scroll-behavior: auto;
-    }
-    
-    * {
-        scroll-behavior: smooth;
-        scroll-padding-top: 2rem;
-    }
-}
-
-/* Override for even faster scrolling */
-html, body {
-    scroll-behavior: smooth;
-    scroll-snap-type: y proximity;
+    scroll-behavior: auto;
 }
 
 body {

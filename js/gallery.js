@@ -2,7 +2,7 @@
  * Gallery - windowed grid that only mounts viewport-near images.
  */
 class Gallery {
-    constructor(imageService) {
+    constructor(imageService, imagePreloader) {
         this.imageService = imageService;
         this.galleryContainer = document.getElementById('gallery-container');
         this.loadingElement = document.getElementById('loading');
@@ -15,17 +15,13 @@ class Gallery {
         this.minZoom = 2;
         this.maxZoom = 6;
 
-        this.imagePreloader = new ImagePreloader();
+        this.imagePreloader = imagePreloader || new ImagePreloader();
         this.globeService = new GlobeService();
         this.globePreloaded = false;
 
-        this.scrollState = {
-            isScrolling: false,
-            scrollDirection: 0,
-            lastScrollTime: 0
-        };
         this.keyScrollRaf = null;
         this.keyScrollDirection = 0;
+        this.keyScrollSpeed = 0;
 
         this.renderState = {
             startIndex: -1,
@@ -64,7 +60,7 @@ class Gallery {
                 return;
             }
             if (window.app && window.app.modal && window.app.modal.isModalOpen()) {
-                this.stopContinuousKeyScroll();
+                this.releaseKeyScroll();
                 return;
             }
             switch (event.key) {
@@ -79,11 +75,11 @@ class Gallery {
                     break;
                 case 'ArrowUp':
                     event.preventDefault();
-                    this.handleScrollKey(-200, event.repeat);
+                    this.startKeyScroll(-1);
                     break;
                 case 'ArrowDown':
                     event.preventDefault();
-                    this.handleScrollKey(200, event.repeat);
+                    this.startKeyScroll(1);
                     break;
                 default:
                     break;
@@ -92,8 +88,7 @@ class Gallery {
 
         document.addEventListener('keyup', (event) => {
             if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-                this.scrollState.isScrolling = false;
-                this.stopContinuousKeyScroll();
+                this.releaseKeyScroll();
             }
         });
 
@@ -588,61 +583,64 @@ class Gallery {
 
     // ── keyboard scroll ──
 
-    handleScrollKey(distance, isRepeat) {
-        if (!isRepeat) {
-            this.scrollState.isScrolling = true;
-            this.scrollState.scrollDirection = distance;
-            this.scrollState.lastScrollTime = Date.now();
-            this.stopContinuousKeyScroll();
-            window.scrollBy({ top: distance, behavior: 'smooth' });
-            return;
-        }
-        this.startContinuousKeyScroll(Math.sign(distance));
-    }
-
-    startContinuousKeyScroll(direction) {
-        if (!direction) return;
+    startKeyScroll(direction) {
         this.keyScrollDirection = direction;
         if (this.keyScrollRaf != null) return;
 
+        const maxSpeed = 1200;
+        const accel = 4000;
+        const decel = 3000;
         let lastTs = performance.now();
-        const pxPerSecond = 900;
+
         const step = (ts) => {
-            const dt = Math.min(40, ts - lastTs);
+            const dt = Math.min(40, ts - lastTs) / 1000;
             lastTs = ts;
-            const delta = this.keyScrollDirection * pxPerSecond * (dt / 1000);
-            window.scrollBy({ top: delta, behavior: 'auto' });
+
+            if (this.keyScrollDirection) {
+                this.keyScrollSpeed += this.keyScrollDirection * accel * dt;
+                const cap = maxSpeed * Math.sign(this.keyScrollSpeed);
+                if (Math.abs(this.keyScrollSpeed) > maxSpeed) {
+                    this.keyScrollSpeed = cap;
+                }
+            } else {
+                const decay = decel * dt;
+                if (Math.abs(this.keyScrollSpeed) <= decay) {
+                    this.keyScrollSpeed = 0;
+                    cancelAnimationFrame(this.keyScrollRaf);
+                    this.keyScrollRaf = null;
+                    return;
+                }
+                this.keyScrollSpeed -= Math.sign(this.keyScrollSpeed) * decay;
+            }
+
+            window.scrollBy(0, Math.round(this.keyScrollSpeed * dt));
             this.keyScrollRaf = requestAnimationFrame(step);
         };
 
         this.keyScrollRaf = requestAnimationFrame(step);
     }
 
-    stopContinuousKeyScroll() {
-        if (this.keyScrollRaf != null) {
-            cancelAnimationFrame(this.keyScrollRaf);
-            this.keyScrollRaf = null;
-        }
+    releaseKeyScroll() {
+        this.keyScrollDirection = 0;
     }
 
     // ── globe preloading ──
 
     triggerGlobePreloading(images) {
         if (this.globePreloaded || !images || images.length === 0) return;
-        const firstImage = images[0];
-        if (!firstImage || !firstImage.location) return;
+        this.globePreloaded = true;
 
         setTimeout(async () => {
             try {
                 const container = document.getElementById('globe-preload-container');
                 if (!container) return;
+                const first = images[0];
                 await this.globeService.preloadGlobe(container, {
-                    latitude: firstImage.latitude,
-                    longitude: firstImage.longitude,
-                    country: firstImage.country,
-                    location: firstImage.location
+                    latitude: first.latitude,
+                    longitude: first.longitude,
+                    country: first.country,
+                    location: first.location
                 });
-                this.globePreloaded = true;
             } catch (error) {
                 console.error('Gallery: Failed to preload globe:', error);
                 this.globePreloaded = false;

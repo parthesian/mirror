@@ -53,21 +53,18 @@ class CustomCalendar {
     bindEvents() {
         // Input click to toggle calendar
         this.inputElement.addEventListener('click', (e) => {
-            console.log('Input clicked');
             e.preventDefault();
             this.toggle();
         });
         
         // Input focus to show calendar
         this.inputElement.addEventListener('focus', (e) => {
-            console.log('Input focused');
             e.preventDefault();
             this.show();
         });
         
         // Input change to update calendar
-        this.inputElement.addEventListener('change', (e) => {
-            console.log('Input changed:', e.target.value);
+        this.inputElement.addEventListener('change', () => {
             this.updateFromInput();
         });
         
@@ -181,10 +178,9 @@ class CustomCalendar {
                     this.selectedDate = newDate;
                     this.currentDate = new Date(newDate);
                     this.renderCalendar();
-                    console.log('Updated calendar from input:', inputValue);
                 }
             } catch (e) {
-                console.log('Invalid date in input:', inputValue);
+                // invalid date string, ignore
             }
         } else {
             this.selectedDate = null;
@@ -202,25 +198,19 @@ class CustomCalendar {
     show() {
         if (this.isOpen) return;
         
-        console.log('Showing calendar');
         this.isOpen = true;
         this.calendarElement.classList.add('active');
         
-        // Position calendar
         this.positionCalendar();
         
-        // Force visibility and positioning
         this.calendarElement.style.display = 'block';
         this.calendarElement.style.visibility = 'visible';
         this.calendarElement.style.opacity = '1';
-        
-        console.log('Calendar should now be visible', this.calendarElement);
     }
     
     hide() {
         if (!this.isOpen) return;
         
-        console.log('Hiding calendar');
         this.isOpen = false;
         this.calendarElement.classList.remove('active');
         
