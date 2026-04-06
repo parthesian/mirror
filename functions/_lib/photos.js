@@ -14,6 +14,7 @@ export function parseLimit(rawValue) {
 export function encodeCursor(record) {
     return btoa(JSON.stringify({
         takenAt: record.taken_at,
+        uploadedAt: record.uploaded_at,
         id: record.id
     }));
 }
@@ -27,6 +28,10 @@ export function decodeCursor(rawCursor) {
         const parsed = JSON.parse(atob(rawCursor));
         if (!parsed.takenAt || !parsed.id) {
             return null;
+        }
+        // Fall back to takenAt for cursors generated before uploadedAt was added
+        if (!parsed.uploadedAt) {
+            parsed.uploadedAt = parsed.takenAt;
         }
 
         return parsed;
