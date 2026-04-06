@@ -351,8 +351,6 @@ class GlobeExplorer {
     }
 
     _warmup() {
-        // Warm script/data caches in the background to reduce first-open latency.
-        this._loadThree().catch(() => {});
         this._loadThree()
             .then((THREE) => this._loadOrbitControls(THREE))
             .catch(() => {});
@@ -436,7 +434,7 @@ class GlobeExplorer {
         if (this._threePromise) return this._threePromise;
         this._threePromise = new Promise((resolve, reject) => {
             const s = document.createElement('script');
-            s.src = 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js';
+            s.src = 'https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js';
             s.async = true;
             s.onload = () => resolve(window.THREE);
             s.onerror = () => reject(new Error('Failed to load Three.js'));
@@ -450,7 +448,7 @@ class GlobeExplorer {
         if (this._orbitPromise) return this._orbitPromise;
         this._orbitPromise = new Promise((resolve, reject) => {
             const s = document.createElement('script');
-            s.src = 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js';
+            s.src = 'https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js';
             s.async = true;
             s.onload = () => resolve(THREE.OrbitControls);
             s.onerror = () => reject(new Error('Failed to load OrbitControls'));
