@@ -1,7 +1,8 @@
 /**
- * AmbientParticles - Subtle seasonal particles tied to the photos in view.
- * Winter: slow-falling snow. Spring: rising pollen. Autumn: drifting leaves.
- * Summer: nothing (clean). All monochrome.
+ * AmbientEffect - Seasonal heat-distortion ripple on the background.
+ * Draws slow expanding concentric rings with a faint seasonal color tint.
+ * Winter: icy white shimmer. Spring: soft green. Summer: warm amber.
+ * Autumn: burnt orange / red.
  */
 class AmbientParticles {
     constructor(gallery) {
@@ -10,12 +11,11 @@ class AmbientParticles {
         if (!this.canvas) return;
         this.ctx = this.canvas.getContext('2d');
 
-        this.particles = [];
         this.season = null;
         this.targetSeason = null;
-        this.fadeAlpha = 1;
-        this.maxParticles = 40;
+        this.blend = 1;
         this.rafId = null;
+        this.time = 0;
         this.darkMode = false;
 
         this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -32,7 +32,8 @@ class AmbientParticles {
         document.addEventListener('exposureChange', (e) => {
             this.darkMode = e.detail.exposure < 0;
         });
-        this.darkMode = (document.body.className.match(/exposure-([-\d]+)/) || [])[1] < 0;
+        const m = document.body.className.match(/exposure-([-\d]+)/);
+        this.darkMode = m ? parseInt(m[1], 10) < 0 : false;
 
         let ticking = false;
         window.addEventListener('scroll', () => {
@@ -61,6 +62,9 @@ class AmbientParticles {
         this.height = window.innerHeight;
         this.canvas.width = this.width;
         this.canvas.height = this.height;
+        this.cx = this.width / 2;
+        this.cy = this.height / 2;
+        this.maxRadius = Math.hypot(this.cx, this.cy);
     }
 
     _detectSeason() {
@@ -82,56 +86,20 @@ class AmbientParticles {
         else if (month >= 8 && month <= 10) season = 'autumn';
         else season = 'winter';
 
-        if (season !== this.season) {
+        if (season !== this.targetSeason) {
             this.targetSeason = season;
-            this.fadeAlpha = 0;
+            this.blend = 0;
         }
     }
 
-    _seasonConfig(season) {
-        const base = this.darkMode ? 255 : 120;
+    _seasonColor(season) {
         switch (season) {
-            case 'winter': return {
-                count: this.maxParticles,
-                sizeMin: 2, sizeMax: 4,
-                vyMin: 0.3, vyMax: 0.8,
-                vxMin: -0.2, vxMax: 0.2,
-                opMin: 0.2, opMax: 0.5,
-                color: base, drift: true, rise: false, spin: false
-            };
-            case 'spring': return {
-                count: 25,
-                sizeMin: 2, sizeMax: 4,
-                vyMin: -0.4, vyMax: -0.15,
-                vxMin: -0.1, vxMax: 0.1,
-                opMin: 0.15, opMax: 0.35,
-                color: base, drift: false, rise: true, spin: false
-            };
-            case 'autumn': return {
-                count: 30,
-                sizeMin: 3, sizeMax: 6,
-                vyMin: 0.2, vyMax: 0.5,
-                vxMin: -0.3, vxMax: 0.3,
-                opMin: 0.15, opMax: 0.4,
-                color: Math.min(base, 160), drift: true, rise: false, spin: true
-            };
-            default: return null;
+            case 'winter': return { r: 200, g: 220, b: 255 };
+            case 'spring': return { r: 100, g: 200, b: 120 };
+            case 'summer': return { r: 255, g: 190, b: 100 };
+            case 'autumn': return { r: 220, g: 120, b: 60 };
+            default:       return { r: 180, g: 180, b: 180 };
         }
-    }
-
-    _spawnParticle(cfg) {
-        const r = (min, max) => min + Math.random() * (max - min);
-        return {
-            x: Math.random() * this.width,
-            y: cfg.rise ? this.height + 10 : -10,
-            vx: r(cfg.vxMin, cfg.vxMax),
-            vy: r(cfg.vyMin, cfg.vyMax),
-            size: r(cfg.sizeMin, cfg.sizeMax),
-            opacity: r(cfg.opMin, cfg.opMax),
-            rotation: cfg.spin ? Math.random() * Math.PI * 2 : 0,
-            rotSpeed: cfg.spin ? (Math.random() - 0.5) * 0.02 : 0,
-            driftPhase: Math.random() * Math.PI * 2
-        };
     }
 
     _startLoop() {
@@ -155,71 +123,64 @@ class AmbientParticles {
     }
 
     _update() {
+        this.time += 0.004;
+
         if (this.targetSeason !== this.season) {
-            this.fadeAlpha += 0.02;
-            if (this.fadeAlpha >= 1) {
+            this.blend += 0.008;
+            if (this.blend >= 1) {
                 this.season = this.targetSeason;
-                this.particles = [];
-                this.fadeAlpha = 1;
-            }
-        }
-
-        const cfg = this._seasonConfig(this.season);
-        if (!cfg) {
-            this.particles = [];
-            return;
-        }
-
-        while (this.particles.length < cfg.count) {
-            this.particles.push(this._spawnParticle(cfg));
-        }
-
-        for (let i = this.particles.length - 1; i >= 0; i--) {
-            const p = this.particles[i];
-            if (cfg.drift) {
-                p.x += p.vx + Math.sin(p.driftPhase) * 0.15;
-                p.driftPhase += 0.01;
-            } else {
-                p.x += p.vx;
-            }
-            p.y += p.vy;
-            p.rotation += p.rotSpeed;
-
-            const outOfBounds = cfg.rise
-                ? p.y < -20
-                : p.y > this.height + 20;
-
-            if (outOfBounds || p.x < -20 || p.x > this.width + 20) {
-                this.particles[i] = this._spawnParticle(cfg);
+                this.blend = 1;
             }
         }
     }
 
     _draw() {
-        this.ctx.clearRect(0, 0, this.width, this.height);
-        const cfg = this._seasonConfig(this.season);
-        if (!cfg || this.particles.length === 0) return;
+        const ctx = this.ctx;
+        ctx.clearRect(0, 0, this.width, this.height);
 
-        const alpha = this.fadeAlpha;
-        for (const p of this.particles) {
-            this.ctx.save();
-            this.ctx.globalAlpha = p.opacity * alpha;
-            this.ctx.translate(p.x, p.y);
-            if (p.rotation) this.ctx.rotate(p.rotation);
+        const season = this.season;
+        if (!season) return;
 
-            if (this.season === 'autumn') {
-                this.ctx.beginPath();
-                const s = p.size;
-                this.ctx.ellipse(0, 0, s, s * 0.6, 0, 0, Math.PI * 2);
-                this.ctx.fillStyle = `rgb(${cfg.color}, ${cfg.color}, ${cfg.color})`;
-                this.ctx.fill();
-            } else {
-                this.ctx.beginPath();
-                this.ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2);
-                this.ctx.fillStyle = `rgb(${cfg.color}, ${cfg.color}, ${cfg.color})`;
-                this.ctx.fill();
-            }
-            this.ctx.restore();
+        const col = this._seasonColor(season);
+        const baseOpacity = this.darkMode ? 0.06 : 0.035;
+        const alpha = baseOpacity * this.blend;
+
+        const ringCount = 5;
+        const speed = this.time;
+        const period = this.maxRadius * 1.2;
+
+        for (let i = 0; i < ringCount; i++) {
+            const phase = (i / ringCount) * period;
+            const rawRadius = ((speed * 80 + phase) % period);
+            const radius = rawRadius;
+
+            const life = radius / period;
+            const fadeIn = Math.min(1, life * 4);
+            const fadeOut = Math.max(0, 1 - life);
+            const ringAlpha = alpha * fadeIn * fadeOut;
+
+            if (ringAlpha < 0.001) continue;
+
+            const wobbleX = Math.sin(speed * 0.7 + i * 1.3) * 30;
+            const wobbleY = Math.cos(speed * 0.5 + i * 0.9) * 20;
+            const centerX = this.cx + wobbleX;
+            const centerY = this.cy + wobbleY;
+
+            const thickness = 40 + radius * 0.15;
+            const inner = Math.max(0, radius - thickness / 2);
+            const outer = radius + thickness / 2;
+
+            const grad = ctx.createRadialGradient(
+                centerX, centerY, inner,
+                centerX, centerY, outer
+            );
+            grad.addColorStop(0, `rgba(${col.r}, ${col.g}, ${col.b}, 0)`);
+            grad.addColorStop(0.4, `rgba(${col.r}, ${col.g}, ${col.b}, ${ringAlpha})`);
+            grad.addColorStop(0.6, `rgba(${col.r}, ${col.g}, ${col.b}, ${ringAlpha})`);
+            grad.addColorStop(1, `rgba(${col.r}, ${col.g}, ${col.b}, 0)`);
+
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, this.width, this.height);
         }
     }
 }

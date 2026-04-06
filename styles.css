@@ -3028,14 +3028,14 @@ body.exposure-3::before  { opacity: 0; }
     display: flex;
     align-items: center;
     justify-content: center;
-    filter: grayscale(1) contrast(1.05) brightness(0.9);
     overflow: hidden;
+    position: relative;
+    min-width: 0;
 }
 
 .globe-explorer-scene canvas {
     display: block;
-    max-width: 100%;
-    max-height: 100%;
+    filter: grayscale(1) contrast(1.05) brightness(0.9);
 }
 
 .globe-explorer-panel {
@@ -3214,7 +3214,7 @@ body.exposure-3  .globe-explorer { background: rgba(255, 255, 255, 0.98); color:
     }
 }
 
-/* --- Ambient Particle Canvas --- */
+/* --- Ambient Effect Canvas --- */
 #ambient-canvas {
     position: fixed;
     inset: 0;
@@ -3222,4 +3222,5 @@ body.exposure-3  .globe-explorer { background: rgba(255, 255, 255, 0.98); color:
     height: 100%;
     pointer-events: none;
     z-index: 996;
+    mix-blend-mode: screen;
 }

@@ -127,8 +127,10 @@ class GlobeExplorer {
         const THREE = await this._loadThree();
         const OrbitControls = await this._loadOrbitControls(THREE);
 
-        const w = this.sceneContainer.clientWidth || 600;
-        const h = this.sceneContainer.clientHeight || 600;
+        await new Promise(r => requestAnimationFrame(r));
+        const rect = this.sceneContainer.getBoundingClientRect();
+        const w = rect.width || 600;
+        const h = rect.height || 600;
 
         const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -202,8 +204,9 @@ class GlobeExplorer {
 
         state.onResize = () => {
             if (state.disposed) return;
-            const nw = this.sceneContainer.clientWidth || w;
-            const nh = this.sceneContainer.clientHeight || h;
+            const r = this.sceneContainer.getBoundingClientRect();
+            const nw = r.width || w;
+            const nh = r.height || h;
             renderer.setSize(nw, nh);
             camera.aspect = nw / nh;
             camera.updateProjectionMatrix();
