@@ -83,7 +83,8 @@ class ImageService {
             aspectRatio: width && height ? width / height : (4 / 3),
             latitude: photo.latitude ?? null,
             longitude: photo.longitude ?? null,
-            country: photo.country || ''
+            country: photo.country || '',
+            camera: photo.camera || ''
         };
     }
 
@@ -467,7 +468,7 @@ class ImageService {
      * @param {Object} timestamp - Optional timestamp object with day, month, year
      * @returns {Promise<Object>} Upload response
      */
-    async uploadPhoto(file, location, description = '', timestamp = null, coords = null) {
+    async uploadPhoto(file, location, description = '', timestamp = null, coords = null, camera = '') {
         try {
             if (!this.apiBaseUrl && window.location.protocol === 'file:') {
                 throw new Error('API base URL not configured. Cannot upload photos.');
@@ -507,6 +508,11 @@ class ImageService {
                 }
             }
 
+            const cameraTrimmed = (camera || '').toString().trim();
+            if (cameraTrimmed) {
+                formData.append('camera', cameraTrimmed);
+            }
+
             console.log('Uploading photo with multipart payload:', {
                 location,
                 description,
@@ -518,7 +524,8 @@ class ImageService {
                 height: preparedAssets.height,
                 latitude: coords?.latitude ?? 'not provided',
                 longitude: coords?.longitude ?? 'not provided',
-                country: coords?.country || 'not provided'
+                country: coords?.country || 'not provided',
+                camera: cameraTrimmed || 'not provided'
             });
 
             const response = await fetch(this.buildApiUrl('/api/admin/photos'), {

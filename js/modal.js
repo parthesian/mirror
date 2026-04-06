@@ -10,6 +10,10 @@ class Modal {
         this.modalImage = document.getElementById('modal-image');
         this.modalDescription = document.getElementById('modal-description');
         this.modalLocation = document.getElementById('modal-location');
+        this.modalCameraRow = document.getElementById('modal-camera-row');
+        this.modalCameraName = document.getElementById('modal-camera-name');
+        this.modalCameraIconDslr = document.getElementById('modal-camera-icon-dslr');
+        this.modalCameraIconMobile = document.getElementById('modal-camera-icon-mobile');
         this.modalTimestamp = document.getElementById('modal-timestamp');
         this.globeContainer = document.getElementById('modal-globe');
         this.closeBtn = document.getElementById('close-modal');
@@ -258,6 +262,21 @@ class Modal {
         this.modalDescription.textContent = image.description;
         this.modalLocation.textContent = image.location;
         this.modalTimestamp.textContent = this.imageService.formatTimestamp(image.timestamp);
+
+        const camera = (image.camera || '').trim();
+        if (camera && this.modalCameraRow && this.modalCameraName) {
+            this.modalCameraRow.classList.remove('hidden');
+            this.modalCameraName.textContent = camera;
+            const mobile = Modal.isMobileCameraName(camera);
+            if (this.modalCameraIconDslr) {
+                this.modalCameraIconDslr.classList.toggle('hidden', mobile);
+            }
+            if (this.modalCameraIconMobile) {
+                this.modalCameraIconMobile.classList.toggle('hidden', !mobile);
+            }
+        } else if (this.modalCameraRow) {
+            this.modalCameraRow.classList.add('hidden');
+        }
 
         this.updateGlobe({
             latitude: image.latitude,
@@ -746,6 +765,24 @@ class Modal {
                 }
             }
         });
+    }
+
+    /**
+     * Heuristic for icon: common phone / tablet device strings use the mobile glyph.
+     * @param {string} name - Camera or device name from metadata
+     * @returns {boolean} Whether to show the mobile icon
+     */
+    static isMobileCameraName(name) {
+        const n = (name || '').toLowerCase();
+        if (!n.trim()) {
+            return false;
+        }
+        const mobileHints = [
+            'iphone', 'ipad', 'ipod', 'pixel', 'galaxy', 'samsung', 'oneplus', 'one plus', '1+', 'xiaomi', 'huawei', 'oppo',
+            'vivo', 'motorola', 'lg-', 'nokia', 'mobile', 'phone', 'android', 'sm-', 'rmx', 'redmi', 'honor',
+            'realme', 'nothing phone', 'asus_z'
+        ];
+        return mobileHints.some((h) => n.includes(h));
     }
 }
 

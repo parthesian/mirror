@@ -13,6 +13,7 @@ class AdminUploadPage {
         this.photoLatitudeInput = document.getElementById('photo-latitude');
         this.photoLongitudeInput = document.getElementById('photo-longitude');
         this.photoCountryInput = document.getElementById('photo-country');
+        this.photoCameraInput = document.getElementById('photo-camera');
         this.previewImage = document.getElementById('preview-image');
         this.fileStatusIcon = document.getElementById('file-status-icon');
         this.submitUploadBtn = document.getElementById('submit-upload');
@@ -115,6 +116,7 @@ class AdminUploadPage {
         const latitudeValue = this.photoLatitudeInput.value.trim();
         const longitudeValue = this.photoLongitudeInput.value.trim();
         const countryValue = this.photoCountryInput.value.trim();
+        const cameraValue = this.photoCameraInput ? this.photoCameraInput.value.trim() : '';
 
         if (!file) {
             this.showUploadError('Please select a photo to upload.');
@@ -153,7 +155,7 @@ class AdminUploadPage {
             this.showUploadProgress();
             this.hideUploadError();
 
-            const result = await this.imageService.uploadPhoto(file, location, description, timestamp, coords);
+            const result = await this.imageService.uploadPhoto(file, location, description, timestamp, coords, cameraValue);
             this.hideUploadProgress();
             this.resetForm();
             this.showUploadSuccess(result.message || 'Photo uploaded successfully.');

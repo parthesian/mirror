@@ -71,6 +71,7 @@ export function mapPhotoRecord(record) {
         latitude: record.latitude ?? null,
         longitude: record.longitude ?? null,
         country: record.country || '',
+        camera: record.camera || '',
         storageKey: record.storage_key,
         image: {
             url: buildImageUrl(record.id, 'full'),

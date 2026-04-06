@@ -21,6 +21,7 @@ async function createPhoto(context) {
     const latitude = Number.parseFloat((formData.get('latitude') || '').toString().trim());
     const longitude = Number.parseFloat((formData.get('longitude') || '').toString().trim());
     const country = (formData.get('country') || '').toString().trim();
+    const camera = (formData.get('camera') || '').toString().trim();
 
     if (!(photo instanceof File)) {
         return errorResponse('A photo file is required.', 400);
@@ -67,8 +68,9 @@ async function createPhoto(context) {
             height,
             latitude,
             longitude,
-            country
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            country,
+            camera
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
         photoId,
         storageKey,
@@ -80,7 +82,8 @@ async function createPhoto(context) {
         Number.isFinite(height) ? height : null,
         normalizedLatitude,
         normalizedLongitude,
-        country
+        country,
+        camera
     ).run();
 
     return json({
@@ -98,7 +101,8 @@ async function createPhoto(context) {
             height: Number.isFinite(height) ? height : null,
             latitude: normalizedLatitude,
             longitude: normalizedLongitude,
-            country
+            country,
+            camera
         })
     }, { status: 201 });
 }

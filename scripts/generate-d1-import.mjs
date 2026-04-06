@@ -22,6 +22,7 @@ function normalizeMetadata(record) {
     const latitude = record.latitude ?? null;
     const longitude = record.longitude ?? null;
     const country = record.country || '';
+    const camera = record.camera || '';
 
     return {
         id,
@@ -34,7 +35,8 @@ function normalizeMetadata(record) {
         height: record.height ?? null,
         latitude: typeof latitude === 'number' && Number.isFinite(latitude) ? latitude : null,
         longitude: typeof longitude === 'number' && Number.isFinite(longitude) ? longitude : null,
-        country
+        country,
+        camera
     };
 }
 
@@ -68,7 +70,9 @@ async function main() {
         const longitude = record.longitude !== null ? record.longitude : 'NULL';
         const country = escapeSql(record.country);
 
-        return `INSERT INTO photos (id, storage_key, location, description, taken_at, uploaded_at, width, height, latitude, longitude, country) VALUES ('${escapeSql(record.id)}', '${escapeSql(record.storageKey)}', '${escapeSql(record.location)}', '${escapeSql(record.description)}', '${escapeSql(record.takenAt)}', '${escapeSql(record.uploadedAt)}', ${width}, ${height}, ${latitude}, ${longitude}, '${country}');`;
+        const camera = escapeSql(record.camera);
+
+        return `INSERT INTO photos (id, storage_key, location, description, taken_at, uploaded_at, width, height, latitude, longitude, country, camera) VALUES ('${escapeSql(record.id)}', '${escapeSql(record.storageKey)}', '${escapeSql(record.location)}', '${escapeSql(record.description)}', '${escapeSql(record.takenAt)}', '${escapeSql(record.uploadedAt)}', ${width}, ${height}, ${latitude}, ${longitude}, '${country}', '${camera}');`;
     });
 
     const copyManifest = normalized.map(record => ({

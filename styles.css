@@ -1290,6 +1290,23 @@ body.exposure-3 .scroll-loading p {
     text-align: right;
 }
 
+.modal-camera-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+.modal-camera-icon-wrap {
+    display: inline-flex;
+    flex-shrink: 0;
+    color: inherit;
+}
+
+.modal-camera-svg {
+    display: block;
+}
+
 /* Fix text visibility for exposure-0 */
 body.exposure-0 .modal-metadata {
     color: #333;
@@ -2320,6 +2337,10 @@ body.exposure-3 .btn-secondary {
     #modal-description,
     .modal-metadata {
         text-align: center;
+    }
+
+    .modal-camera-row {
+        justify-content: center;
     }
     
     /* Center globe container on mobile */
