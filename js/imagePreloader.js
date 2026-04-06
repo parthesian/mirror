@@ -104,6 +104,31 @@ class ImagePreloader {
     }
 
     /**
+     * Register that a URL is already being loaded by an external element (e.g.
+     * a visible <img> in the DOM) so the preloader won't create a duplicate
+     * request.
+     */
+    registerPending(url, loadPromise) {
+        if (this.loadedImages.has(url) || this.loadingPromises.has(url)) return;
+        this.loadingPromises.set(url, loadPromise);
+    }
+
+    /**
+     * Mark a URL as successfully loaded (from an external element).
+     */
+    markLoaded(url) {
+        this.loadedImages.set(url, true);
+        this.loadingPromises.delete(url);
+    }
+
+    /**
+     * Mark a URL load as failed (cleanup only).
+     */
+    markFailed(url) {
+        this.loadingPromises.delete(url);
+    }
+
+    /**
      * Check if an image is already cached.
      * @param {string} url - URL to check
      * @returns {boolean} Cache presence

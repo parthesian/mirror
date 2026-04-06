@@ -373,25 +373,30 @@ class Gallery {
 
         item.appendChild(img);
 
-        const cached = this.imagePreloader.isImageLoaded(image.thumbnailUrl);
+        const url = image.thumbnailUrl;
+        const cached = this.imagePreloader.isImageLoaded(url);
 
         if (cached) {
-            img.src = image.thumbnailUrl;
+            img.src = url;
             item.classList.add('loaded', 'instant');
         } else {
-            this.imagePreloader.preloadImage(image.thumbnailUrl).then(() => {
-                if (!item.isConnected) return;
-                img.src = image.thumbnailUrl;
+            const loadPromise = new Promise((resolve) => {
+                img.addEventListener('load', () => {
+                    this.imagePreloader.markLoaded(url);
+                    item.classList.add('loaded');
+                    resolve(img);
+                }, { once: true });
+
+                img.addEventListener('error', () => {
+                    this.imagePreloader.markFailed(url);
+                    img.src = this.getImageFallbackSrc();
+                    item.classList.add('loaded');
+                    resolve(null);
+                }, { once: true });
             });
 
-            img.addEventListener('load', () => {
-                item.classList.add('loaded');
-            }, { once: true });
-
-            img.addEventListener('error', () => {
-                img.src = this.getImageFallbackSrc();
-                item.classList.add('loaded');
-            }, { once: true });
+            this.imagePreloader.registerPending(url, loadPromise);
+            img.src = url;
         }
 
         item.addEventListener('click', () => this.openImageModal(image.id));
