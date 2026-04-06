@@ -41,9 +41,11 @@ export function decodeCursor(rawCursor) {
 }
 
 export function buildImageUrl(id, variant = 'full') {
-    const url = new URL(`/api/photos/${id}/image`, 'https://gallery.invalid');
-    url.searchParams.set('variant', variant);
-    return `${url.pathname}${url.search}`;
+    const basePath = `/api/photos/${encodeURIComponent(id)}/image`;
+    if (variant === 'thumb') {
+        return `/cdn-cgi/image/width=640,height=640,fit=inside,quality=82${basePath}`;
+    }
+    return basePath;
 }
 
 export function buildThumbnailStorageKey(storageKey = '') {

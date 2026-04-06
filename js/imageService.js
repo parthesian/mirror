@@ -44,14 +44,18 @@ class ImageService {
 
     /**
      * Public URL for a stored photo asset (thumbnail or full).
+     * Thumbnails use Cloudflare Image Transformations via the /cdn-cgi/image/ URL.
      * @param {string} id - Photo id
      * @param {'thumb'|'full'} variant - Derivative
      * @returns {string} Absolute or site-relative URL
      */
     buildPhotoAssetUrl(id, variant = 'full') {
         const safeId = encodeURIComponent(id);
-        const q = variant === 'thumb' ? '?variant=thumb' : '?variant=full';
-        return this.buildApiUrl(`/api/photos/${safeId}/image${q}`);
+        const basePath = `/api/photos/${safeId}/image`;
+        if (variant === 'thumb') {
+            return this.buildApiUrl(`/cdn-cgi/image/width=640,height=640,fit=inside,quality=82${basePath}`);
+        }
+        return this.buildApiUrl(basePath);
     }
 
     /**
