@@ -1,5 +1,5 @@
 import { errorResponse, handleOptions, json } from '../_lib/http.js';
-import { decodeCursor, encodeCursor, mapPhotoRecord, parseLimit } from '../_lib/photos.js';
+import { decodeCursor, encodeCursor, mapPhotoListRecord, parseLimit } from '../_lib/photos.js';
 
 async function listPhotos(context) {
     const { request, env } = context;
@@ -15,7 +15,7 @@ async function listPhotos(context) {
         return errorResponse('Invalid cursor supplied.', 400);
     }
 
-    const cols = 'id, storage_key, location, description, taken_at, uploaded_at, width, height, latitude, longitude, country, camera';
+    const cols = 'id, taken_at, uploaded_at';
     const clauses = [];
     const bindings = [];
 
@@ -56,7 +56,7 @@ async function listPhotos(context) {
     const rows = Array.isArray(results.results) ? results.results : [];
     const hasMore = rows.length > limit;
     const pageRows = hasMore ? rows.slice(0, limit) : rows;
-    const photos = pageRows.map(mapPhotoRecord);
+    const photos = pageRows.map(mapPhotoListRecord);
     const nextCursor = hasMore ? encodeCursor(pageRows[pageRows.length - 1]) : null;
 
     return json({

@@ -59,6 +59,18 @@ export function buildThumbnailStorageKey(storageKey = '') {
     return `${storageKey.slice(0, extensionIndex)}.thumb${storageKey.slice(extensionIndex)}`;
 }
 
+/**
+ * Minimal row for gallery list pagination: sorting keys + display date only.
+ * Thumbnail/full URLs are derived on the client from `id`.
+ */
+export function mapPhotoListRecord(record) {
+    return {
+        id: record.id,
+        takenAt: record.taken_at,
+        uploadedAt: record.uploaded_at
+    };
+}
+
 export function mapPhotoRecord(record) {
     return {
         id: record.id,

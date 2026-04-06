@@ -376,7 +376,8 @@ class Gallery {
 
         const img = document.createElement('img');
         img.className = 'gallery-item-image';
-        img.alt = image.description || 'Photo';
+        const dateLabel = this.imageService.formatTimestamp(image.timestamp);
+        img.alt = image.description ? image.description : `Photo from ${dateLabel}`;
         img.decoding = 'async';
 
         item.appendChild(img);
@@ -405,13 +406,34 @@ class Gallery {
         item.addEventListener('click', () => this.openImageModal(image.id));
         item.setAttribute('tabindex', '0');
         item.setAttribute('role', 'button');
-        item.setAttribute('aria-label', `View ${image.description || 'photo'} in fullscreen`);
+        item.setAttribute('aria-label', image.description
+            ? `View ${image.description} in fullscreen`
+            : `View photo from ${dateLabel} in fullscreen`);
         item.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
                 this.openImageModal(image.id);
             }
         });
+
+        let hoverPrefetchTimer = null;
+        const clearHoverPrefetch = () => {
+            if (hoverPrefetchTimer != null) {
+                window.clearTimeout(hoverPrefetchTimer);
+                hoverPrefetchTimer = null;
+            }
+        };
+        item.addEventListener('pointerenter', () => {
+            clearHoverPrefetch();
+            hoverPrefetchTimer = window.setTimeout(() => {
+                hoverPrefetchTimer = null;
+                if (image.url && image.thumbnailUrl !== image.url) {
+                    this.imagePreloader.prefetch([image.url], { concurrency: 1 });
+                }
+            }, 250);
+        });
+        item.addEventListener('pointerleave', clearHoverPrefetch);
+        item.addEventListener('pointercancel', clearHoverPrefetch);
 
         this.mountedItems.set(image.id, item);
         return item;

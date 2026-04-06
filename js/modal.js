@@ -160,7 +160,7 @@ class Modal {
         // Listen for custom events
         document.addEventListener('openModal', (e) => {
             console.log('Modal: Received openModal event for image:', e.detail.imageId);
-            this.open(e.detail.imageId);
+            void this.open(e.detail.imageId);
         });
 
         // Handle image load events
@@ -177,35 +177,46 @@ class Modal {
      * Open modal with specific image
      * @param {string} imageId - Image ID to display
      */
-    open(imageId) {
+    async open(imageId) {
         console.log('Modal: Opening modal for image:', imageId);
-        const image = this.imageService.getImageById(imageId);
-        console.log('Modal: Found image:', image);
-        if (!image) {
+        const base = this.imageService.getImageById(imageId);
+        if (!base) {
             console.error('Image not found:', imageId);
             return;
         }
 
+        try {
+            if (typeof this.imageService.ensurePhotoDetail === 'function') {
+                await this.imageService.ensurePhotoDetail(imageId);
+            }
+        } catch (err) {
+            console.error('Modal: failed to load photo metadata', err);
+            return;
+        }
+
+        const image = this.imageService.getImageById(imageId);
+        if (!image) {
+            console.error('Image not found after detail load:', imageId);
+            return;
+        }
+
+        console.log('Modal: Found image:', image);
         this.currentImageId = imageId;
         this.isOpen = true;
-        
+
         console.log('Modal: Adding active class to modal');
-        // Show modal
         this.modal.classList.remove('hidden');
         this.modal.classList.add('active');
-        document.body.style.overflow = 'hidden'; // Prevent background scrolling
-        
+        document.body.style.overflow = 'hidden';
+
         console.log('Modal: Modal classes after adding active:', this.modal.className);
-        
-        // Load image content
+
         this.loadImageContent(image);
-        
-        // Update navigation button states
+
         this.updateNavigationButtons();
-        
-        // Focus management for accessibility
+
         this.closeBtn.focus();
-        
+
         console.log('Modal: Modal should now be visible');
     }
 
@@ -246,13 +257,12 @@ class Modal {
             this.modalImage.style.opacity = '1';
             this.modalImage.src = image.thumbnailUrl;
 
-            const full = new Image();
-            full.src = image.url;
-            full.onload = () => {
-                if (this.currentImageId === image.id) {
+            this.imagePreloader.preloadImage(image.url).then((loaded) => {
+                if (this.currentImageId === image.id && loaded) {
                     this.modalImage.src = image.url;
+                    this.hideImageLoading();
                 }
-            };
+            });
         } else {
             this.showImageLoading();
             this.modalImage.src = image.url;
@@ -374,8 +384,12 @@ class Modal {
         try {
             const prevImage = await this.getAdjacentImage(this.currentImageId, 'previous');
             if (prevImage) {
-                this.currentImageId = prevImage.id;
-                this.loadImageContent(prevImage);
+                if (typeof this.imageService.ensurePhotoDetail === 'function') {
+                    await this.imageService.ensurePhotoDetail(prevImage.id);
+                }
+                const resolved = this.imageService.getImageById(prevImage.id) || prevImage;
+                this.currentImageId = resolved.id;
+                this.loadImageContent(resolved);
                 if (window.gallery && typeof window.gallery.refreshWindow === 'function') {
                     window.gallery.refreshWindow(true);
                 }
@@ -396,8 +410,12 @@ class Modal {
         try {
             const nextImage = await this.getAdjacentImage(this.currentImageId, 'next');
             if (nextImage) {
-                this.currentImageId = nextImage.id;
-                this.loadImageContent(nextImage);
+                if (typeof this.imageService.ensurePhotoDetail === 'function') {
+                    await this.imageService.ensurePhotoDetail(nextImage.id);
+                }
+                const resolved = this.imageService.getImageById(nextImage.id) || nextImage;
+                this.currentImageId = resolved.id;
+                this.loadImageContent(resolved);
                 if (window.gallery && typeof window.gallery.refreshWindow === 'function') {
                     window.gallery.refreshWindow(true);
                 }
@@ -428,11 +446,18 @@ class Modal {
         if (currentImage) {
             const prevImage = this.peekAdjacentImage(this.currentImageId, 'previous');
             const nextImage = this.peekAdjacentImage(this.currentImageId, 'next');
-            
-            this.prevBtn.setAttribute('aria-label', 
-                prevImage ? `Previous image: ${prevImage.description || 'Previous image'}` : 'Previous image');
-            this.nextBtn.setAttribute('aria-label', 
-                nextImage ? `Next image: ${nextImage.description || 'Next image'}` : 'Next image');
+
+            const label = (img) => {
+                if (!img) return 'image';
+                if (img.description) return img.description;
+                if (img.timestamp) return this.imageService.formatTimestamp(img.timestamp);
+                return 'image';
+            };
+
+            this.prevBtn.setAttribute('aria-label',
+                prevImage ? `Previous image: ${label(prevImage)}` : 'Previous image');
+            this.nextBtn.setAttribute('aria-label',
+                nextImage ? `Next image: ${label(nextImage)}` : 'Next image');
         }
     }
 
@@ -498,16 +523,20 @@ class Modal {
      * Navigate to specific image by ID
      * @param {string} imageId - Image ID to navigate to
      */
-    navigateToImage(imageId) {
+    async navigateToImage(imageId) {
         if (this.isOpen) {
             const image = this.imageService.getImageById(imageId);
             if (image) {
+                if (typeof this.imageService.ensurePhotoDetail === 'function') {
+                    await this.imageService.ensurePhotoDetail(imageId);
+                }
+                const resolved = this.imageService.getImageById(imageId) || image;
                 this.currentImageId = imageId;
-                this.loadImageContent(image);
+                this.loadImageContent(resolved);
                 this.updateNavigationButtons();
             }
         } else {
-            this.open(imageId);
+            await this.open(imageId);
         }
     }
 

@@ -17,6 +17,8 @@ class ImageService {
         this.locationFilter = null;
         this.takenFromFilter = null;
         this.takenToFilter = null;
+        /** @type {Map<string, Promise<Object>>} */
+        this._detailInFlight = new Map();
     }
 
     /**
@@ -38,6 +40,18 @@ class ImageService {
     buildApiUrl(path) {
         const normalizedPath = path.startsWith('/') ? path : `/${path}`;
         return this.apiBaseUrl ? `${this.apiBaseUrl}${normalizedPath}` : normalizedPath;
+    }
+
+    /**
+     * Public URL for a stored photo asset (thumbnail or full).
+     * @param {string} id - Photo id
+     * @param {'thumb'|'full'} variant - Derivative
+     * @returns {string} Absolute or site-relative URL
+     */
+    buildPhotoAssetUrl(id, variant = 'full') {
+        const safeId = encodeURIComponent(id);
+        const q = variant === 'thumb' ? '?variant=thumb' : '?variant=full';
+        return this.buildApiUrl(`/api/photos/${safeId}/image${q}`);
     }
 
     /**
@@ -68,15 +82,16 @@ class ImageService {
     mapPhoto(photo) {
         const width = photo.width || photo.image?.width || null;
         const height = photo.height || photo.image?.height || null;
+        const id = photo.id || photo.photoId || `img-${Date.now()}-${Math.random()}`;
 
         return {
-            id: photo.id || photo.photoId || `img-${Date.now()}-${Math.random()}`,
+            id,
             description: photo.description || '',
             location: photo.location || 'Unknown location',
             timestamp: photo.takenAt || photo.timestamp || photo.createdAt || new Date().toISOString(),
             uploadedAt: photo.uploadedAt || photo.timestamp || new Date().toISOString(),
-            url: photo.image?.url || photo.imageUrl || photo.url || '',
-            thumbnailUrl: photo.thumbnail?.url || photo.thumbnailUrl || photo.image?.url || photo.imageUrl || photo.url || '',
+            url: photo.image?.url || photo.imageUrl || photo.url || this.buildPhotoAssetUrl(id, 'full'),
+            thumbnailUrl: photo.thumbnail?.url || photo.thumbnailUrl || photo.image?.url || photo.imageUrl || photo.url || this.buildPhotoAssetUrl(id, 'thumb'),
             storageKey: photo.storageKey || photo.s3Key || photo.key || '',
             width,
             height,
@@ -84,7 +99,38 @@ class ImageService {
             latitude: photo.latitude ?? null,
             longitude: photo.longitude ?? null,
             country: photo.country || '',
-            camera: photo.camera || ''
+            camera: photo.camera || '',
+            detailLoaded: true
+        };
+    }
+
+    /**
+     * Map a list-feed photo (id + dates only). Image URLs are derived from id.
+     * @param {Object} photo - API list item
+     * @returns {Object} Normalized partial image
+     */
+    mapPhotoSummary(photo) {
+        const id = photo.id || photo.photoId || `img-${Date.now()}-${Math.random()}`;
+        const timestamp = photo.takenAt || photo.timestamp || photo.createdAt || new Date().toISOString();
+        const uploadedAt = photo.uploadedAt || timestamp;
+
+        return {
+            id,
+            description: '',
+            location: '',
+            timestamp,
+            uploadedAt,
+            url: this.buildPhotoAssetUrl(id, 'full'),
+            thumbnailUrl: this.buildPhotoAssetUrl(id, 'thumb'),
+            storageKey: '',
+            width: null,
+            height: null,
+            aspectRatio: 4 / 3,
+            latitude: null,
+            longitude: null,
+            country: '',
+            camera: '',
+            detailLoaded: false
         };
     }
 
@@ -97,6 +143,7 @@ class ImageService {
         this.orderedIds = [];
         this.hasMore = true;
         this.nextCursor = null;
+        this._detailInFlight.clear();
     }
 
     /**
@@ -185,7 +232,7 @@ class ImageService {
 
         const parsedData = await this.parseJsonResponse(response);
         const rawPhotos = Array.isArray(parsedData.photos) ? parsedData.photos : [];
-        const photos = rawPhotos.map((photo) => this.mapPhoto(photo));
+        const photos = rawPhotos.map((photo) => this.mapPhotoSummary(photo));
         const nextCursor = parsedData.nextCursor || null;
         const hasMore = parsedData.hasMore !== undefined ? parsedData.hasMore : Boolean(nextCursor);
 
@@ -374,6 +421,57 @@ class ImageService {
      */
     getImageById(id) {
         return this.imagesById.get(id) || null;
+    }
+
+    /**
+     * Load full metadata for one photo and merge into the in-memory gallery.
+     * @param {string} id - Photo id
+     * @returns {Promise<Object|null>} Merged image or null
+     */
+    async _fetchAndMergePhotoDetail(id) {
+        const response = await fetch(this.buildApiUrl(`/api/photos/${id}/metadata`), {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' },
+            mode: 'cors'
+        });
+
+        if (!response.ok) {
+            const err = new Error(`Failed to load photo metadata (${response.status})`);
+            err.status = response.status;
+            throw err;
+        }
+
+        const data = await this.parseJsonResponse(response);
+
+        if (!this.orderedIds.includes(id)) {
+            return null;
+        }
+
+        const photo = this.mapPhoto(data);
+        this.mergePhotos([photo], { replace: false });
+        return this.imagesById.get(id) || null;
+    }
+
+    /**
+     * Ensure full metadata is present for a photo (for modal and rich UI).
+     * @param {string} id - Photo id
+     * @returns {Promise<Object|null>} Gallery image with detailLoaded
+     */
+    async ensurePhotoDetail(id) {
+        const existing = this.imagesById.get(id);
+        if (existing?.detailLoaded) {
+            return existing;
+        }
+
+        let pending = this._detailInFlight.get(id);
+        if (!pending) {
+            pending = this._fetchAndMergePhotoDetail(id).finally(() => {
+                this._detailInFlight.delete(id);
+            });
+            this._detailInFlight.set(id, pending);
+        }
+
+        return pending;
     }
 
     /**
