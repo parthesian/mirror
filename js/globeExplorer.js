@@ -270,8 +270,10 @@ class GlobeExplorer {
         this.openBtn?.addEventListener('click', () => this.open());
         this.closeBtn?.addEventListener('click', () => this.close());
         this.overlay?.addEventListener('click', (e) => {
-            if (e.target === this.overlay) this.close();
-            this._hideIntersectPicker();
+            if (e.target === this.overlay) {
+                this._hideIntersectPicker();
+                this.close();
+            }
         });
         this.filterApplyBtn?.addEventListener('click', () => {
             if (this.selectedFilterValue) {
