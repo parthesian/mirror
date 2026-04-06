@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>आईना</title>
     <link rel="icon" type="image/svg+xml" href="mirror.svg">
-    <link rel="stylesheet" href="styles.css?v=20260406s">
+    <link rel="stylesheet" href="styles.css?v=20260406t">
 </head>
 <body class="exposure--2">
     <header class="header">
@@ -92,10 +92,12 @@
     <!-- Globe Explorer overlay -->
     <div id="globe-explorer" class="globe-explorer hidden">
         <div class="globe-explorer-content">
-            <button id="globe-explorer-close" class="close-btn">&times;</button>
-            <button id="globe-rotate-toggle" class="globe-rotate-btn" aria-label="Pause globe rotation" title="Pause rotation">
-                <span class="globe-rotate-icon">⟳</span>
-            </button>
+            <div class="globe-explorer-toolbar" role="toolbar" aria-label="Globe controls">
+                <button id="globe-rotate-toggle" class="globe-rotate-btn" aria-label="Pause globe rotation" title="Pause rotation">
+                    <span class="globe-rotate-icon">⟳</span>
+                </button>
+                <button id="globe-explorer-close" class="close-btn" aria-label="Close globe explorer">&times;</button>
+            </div>
             <div class="globe-explorer-scene" id="globe-explorer-scene"></div>
             <div id="globe-intersect-picker" class="globe-intersect-picker hidden" aria-label="Choose nearby location"></div>
             <div class="globe-explorer-panel" id="globe-explorer-panel">

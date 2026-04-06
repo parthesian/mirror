@@ -2260,8 +2260,8 @@ body.exposure-3 .btn-secondary {
         display: none !important;
     }
     
-    /* Mobile close button - fixed at top-right, always visible */
-    .close-btn {
+    /* Mobile close button - fixed at top-right, always visible (modal only; globe uses .globe-explorer-toolbar) */
+    .modal .close-btn {
         position: fixed;
         top: max(0.5rem, env(safe-area-inset-top, 0px)); /* Stay close to top edge, respect safe areas */
         right: max(0.5rem, env(safe-area-inset-right, 0px)); /* Stay close to right edge, respect safe areas */
@@ -3084,8 +3084,12 @@ body.exposure-3  { --leak-opacity: 0.35; }
     position: fixed;
     top: 0;
     left: 0;
-    width: 100vw;
+    width: 100%;
+    max-width: 100%;
     height: 100vh;
+    height: 100dvh;
+    box-sizing: border-box;
+    overflow-x: hidden;
     z-index: 1000;
     display: flex;
     align-items: center;
@@ -3129,8 +3133,13 @@ body.exposure-3  { --leak-opacity: 0.35; }
 }
 
 .globe-explorer-content {
-    width: 100vw;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     height: 100vh;
+    height: 100dvh;
+    box-sizing: border-box;
+    overflow-x: hidden;
     display: flex;
     flex-direction: row;
     align-items: stretch;
@@ -3138,12 +3147,39 @@ body.exposure-3  { --leak-opacity: 0.35; }
     z-index: 1;
 }
 
-.globe-rotate-btn {
+.globe-explorer-toolbar {
     position: absolute;
-    top: 2rem;
-    right: 5.2rem;
+    top: max(1rem, env(safe-area-inset-top, 0px));
+    right: max(1rem, env(safe-area-inset-right, 0px));
+    left: max(1rem, env(safe-area-inset-left, 0px));
+    z-index: 1002;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    box-sizing: border-box;
+    pointer-events: none;
+}
+
+.globe-explorer-toolbar > * {
+    pointer-events: auto;
+}
+
+.globe-explorer-toolbar .close-btn {
+    position: static;
+    top: auto;
+    right: auto;
+    margin: 0;
+}
+
+.globe-rotate-btn {
     width: 40px;
     height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    padding: 0;
+    flex-shrink: 0;
     border-radius: 50%;
     border: 1px solid currentColor;
     background: transparent;
@@ -3153,8 +3189,21 @@ body.exposure-3  { --leak-opacity: 0.35; }
     display: flex;
     align-items: center;
     justify-content: center;
+    box-sizing: border-box;
     transition: opacity 0.25s ease, transform 0.25s ease;
-    z-index: 1001;
+}
+
+.globe-explorer-toolbar .globe-rotate-btn,
+.globe-explorer-toolbar .close-btn {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    line-height: 1;
+}
+
+.globe-explorer-toolbar .close-btn {
+    font-size: 1.2rem;
 }
 
 .globe-rotate-btn:hover {
@@ -3555,27 +3604,45 @@ body.exposure-3 .country-filter-panel {
     .globe-explorer-scene {
         flex: 1;
         min-height: 50vh;
+        min-width: 0;
     }
 
-    .globe-rotate-btn {
-        top: 0.9rem;
-        right: 3.7rem;
-        width: 35px;
-        height: 35px;
+    .globe-explorer-toolbar {
+        top: max(0.5rem, env(safe-area-inset-top, 0px));
+        right: max(0.5rem, env(safe-area-inset-right, 0px));
+        left: max(0.5rem, env(safe-area-inset-left, 0px));
+        gap: 0.5rem;
+    }
+
+    .globe-explorer-toolbar .globe-rotate-btn,
+    .globe-explorer-toolbar .close-btn {
+        width: 44px;
+        height: 44px;
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    .globe-explorer-toolbar .close-btn {
+        font-size: 1.1rem;
     }
 
     .globe-intersect-picker {
-        right: 1rem;
-        left: 1rem;
-        top: 4.1rem;
+        right: max(0.75rem, env(safe-area-inset-right, 0px));
+        left: max(0.75rem, env(safe-area-inset-left, 0px));
+        top: calc(max(0.5rem, env(safe-area-inset-top, 0px)) + 44px + 0.65rem);
         width: auto;
-        max-height: 30vh;
+        max-height: min(30vh, 280px);
+        box-sizing: border-box;
     }
 
     .globe-explorer-panel {
         width: 100%;
+        max-width: 100%;
+        min-width: 0;
         max-height: 40vh;
         padding: 1rem;
+        box-sizing: border-box;
+        overflow-x: hidden;
     }
 
     .globe-explorer-panel-inner {
