@@ -13,6 +13,7 @@ class Timeline {
         this.monthElements = new Map();
         this.yearGroups = new Map();
         this.collapsedYears = new Set();
+        this.toggleAllBtn = null;
         this.enabledKeys = new Set();
         this.lockedKey = null;
 
@@ -86,6 +87,16 @@ class Timeline {
         line.className = 'timeline-line';
         list.appendChild(line);
 
+        const toggleAllWrap = document.createElement('div');
+        toggleAllWrap.className = 'timeline-toggle-all-wrap';
+        const toggleAllBtn = document.createElement('button');
+        toggleAllBtn.type = 'button';
+        toggleAllBtn.className = 'timeline-toggle-all';
+        toggleAllBtn.addEventListener('click', () => this.toggleAllYears());
+        toggleAllWrap.appendChild(toggleAllBtn);
+        list.appendChild(toggleAllWrap);
+        this.toggleAllBtn = toggleAllBtn;
+
         const byYear = new Map();
         for (const group of this.groups) {
             const year = Number(group.year);
@@ -158,6 +169,7 @@ class Timeline {
         }
 
         this.container.appendChild(list);
+        this.updateToggleAllUI();
         this.syncActiveFromScroll();
     }
 
@@ -169,6 +181,35 @@ class Timeline {
         state.groupEl.classList.toggle('collapsed', collapsed);
         state.toggleBtn.textContent = collapsed ? '▸' : '▾';
         state.toggleBtn.setAttribute('aria-label', collapsed ? `Expand ${year}` : `Collapse ${year}`);
+        this.updateToggleAllUI();
+    }
+
+    areAllYearsCollapsed() {
+        if (!this.yearGroups.size) return false;
+        return [...this.yearGroups.keys()].every((year) => this.collapsedYears.has(Number(year)));
+    }
+
+    updateToggleAllUI() {
+        if (!this.toggleAllBtn) return;
+        const allCollapsed = this.areAllYearsCollapsed();
+        this.toggleAllBtn.textContent = allCollapsed ? '▸' : '▾';
+        this.toggleAllBtn.setAttribute(
+            'aria-label',
+            allCollapsed ? 'Expand all timeline years' : 'Collapse all timeline years'
+        );
+        this.toggleAllBtn.setAttribute(
+            'title',
+            allCollapsed ? 'Expand all' : 'Collapse all'
+        );
+    }
+
+    toggleAllYears() {
+        if (!this.yearGroups.size) return;
+        const collapse = !this.areAllYearsCollapsed();
+        for (const year of this.yearGroups.keys()) {
+            this.setYearCollapsed(Number(year), collapse);
+        }
+        this.updateToggleAllUI();
     }
 
     getActiveFilters() {

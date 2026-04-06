@@ -1003,6 +1003,32 @@ body.exposure-3 .scroll-loading p {
     padding: 0 4px;
 }
 
+.timeline-toggle-all-wrap {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    margin: 2px 0 2px;
+    position: relative;
+    z-index: 2;
+}
+
+.timeline-toggle-all {
+    border: none;
+    background: transparent;
+    color: inherit;
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.6;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+}
+
+.timeline-toggle-all:hover {
+    opacity: 1;
+}
+
 .timeline-line {
     position: absolute;
     top: 0;

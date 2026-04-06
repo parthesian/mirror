@@ -759,12 +759,6 @@ class GlobeExplorer {
 
     _renderFilterMenu() {
         if (!this.filterTypeList || !this.filterOptionList) return;
-        const serviceType = this.imageService.locationFilter ? 'location' : (this.imageService.countryFilter ? 'country' : '');
-        const serviceValue = this.imageService.locationFilter || this.imageService.countryFilter || '';
-        if (serviceValue && (serviceType !== this.selectedFilterType || serviceValue !== this.selectedFilterValue)) {
-            this.selectedFilterType = serviceType;
-            this.selectedFilterValue = serviceValue;
-        }
         if (!this.selectedFilterType) {
             this.selectedFilterType = 'country';
         }
