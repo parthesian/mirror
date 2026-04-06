@@ -2913,29 +2913,98 @@ body::before {
     pointer-events: none;
     z-index: 0;
     mix-blend-mode: screen;
-    opacity: 0.65;
+    opacity: var(--leak-opacity, 0.65);
     background:
         radial-gradient(
-            ellipse at calc(12% + var(--scroll-ratio, 0) * 72%) 42%,
-            rgba(255, 170, 110, 0.26),
-            rgba(255, 120, 90, 0.12) 34%,
+            ellipse at calc(var(--leak-x1, 12%) + var(--scroll-ratio, 0) * var(--leak-dx1, 72%)) var(--leak-y1, 42%),
+            rgba(var(--leak-c1, 255, 170, 110), 0.26),
+            rgba(var(--leak-c2, 255, 120, 90), 0.12) 34%,
             transparent 72%
         ),
         radial-gradient(
-            ellipse at calc(85% - var(--scroll-ratio, 0) * 38%) 62%,
-            rgba(255, 205, 140, 0.18),
+            ellipse at calc(var(--leak-x2, 85%) + var(--scroll-ratio, 0) * var(--leak-dx2, -38%)) var(--leak-y2, 62%),
+            rgba(var(--leak-c3, 255, 205, 140), 0.18),
             transparent 68%
+        ),
+        radial-gradient(
+            ellipse at calc(var(--leak-x3, 52%) + var(--scroll-ratio, 0) * var(--leak-dx3, 18%)) var(--leak-y3, 24%),
+            rgba(var(--leak-c4, 120, 160, 255), 0.10),
+            transparent 60%
         );
     transition: opacity 0.5s ease;
 }
 
-body.exposure--3::before { opacity: 0.9; }
-body.exposure--2::before { opacity: 0.85; }
-body.exposure--1::before { opacity: 0.78; }
-body.exposure-0::before  { opacity: 0.68; }
-body.exposure-1::before  { opacity: 0.55; }
-body.exposure-2::before  { opacity: 0.45; }
-body.exposure-3::before  { opacity: 0.35; }
+body.exposure--3 { --leak-opacity: 0.9; }
+body.exposure--2 { --leak-opacity: 0.85; }
+body.exposure--1 { --leak-opacity: 0.78; }
+body.exposure-0  { --leak-opacity: 0.68; }
+body.exposure-1  { --leak-opacity: 0.55; }
+body.exposure-2  { --leak-opacity: 0.45; }
+body.exposure-3  { --leak-opacity: 0.35; }
+
+/* Light leak also visible in title/header section */
+.header::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    mix-blend-mode: screen;
+    opacity: calc(var(--leak-opacity, 0.65) * 0.95);
+    background:
+        radial-gradient(
+            ellipse at calc(var(--leak-x1, 12%) + var(--scroll-ratio, 0) * var(--leak-dx1, 72%)) var(--leak-y1, 42%),
+            rgba(var(--leak-c1, 255, 170, 110), 0.22),
+            transparent 70%
+        ),
+        radial-gradient(
+            ellipse at calc(var(--leak-x3, 52%) + var(--scroll-ratio, 0) * var(--leak-dx3, 18%)) var(--leak-y3, 24%),
+            rgba(var(--leak-c4, 120, 160, 255), 0.10),
+            transparent 58%
+        );
+}
+
+.header > * {
+    position: relative;
+    z-index: 1;
+}
+
+/* Light leak inside fullscreen photo modal background */
+.modal {
+    overflow: hidden;
+}
+
+.modal::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    mix-blend-mode: screen;
+    opacity: calc(var(--leak-opacity, 0.65) * 0.95);
+    background:
+        radial-gradient(
+            ellipse at calc(var(--leak-x1, 12%) + var(--scroll-ratio, 0) * var(--leak-dx1, 72%)) var(--leak-y1, 42%),
+            rgba(var(--leak-c1, 255, 170, 110), 0.24),
+            rgba(var(--leak-c2, 255, 120, 90), 0.10) 34%,
+            transparent 72%
+        ),
+        radial-gradient(
+            ellipse at calc(var(--leak-x2, 85%) + var(--scroll-ratio, 0) * var(--leak-dx2, -38%)) var(--leak-y2, 62%),
+            rgba(var(--leak-c3, 255, 205, 140), 0.14),
+            transparent 66%
+        ),
+        radial-gradient(
+            ellipse at calc(var(--leak-x3, 52%) + var(--scroll-ratio, 0) * var(--leak-dx3, 18%)) var(--leak-y3, 24%),
+            rgba(var(--leak-c4, 120, 160, 255), 0.10),
+            transparent 60%
+        );
+}
+
+.modal-content {
+    position: relative;
+    z-index: 1;
+}
 
 /* ============================================
    Globe Explorer Overlay
