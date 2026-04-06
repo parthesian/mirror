@@ -5,7 +5,7 @@
 
 class ExposureDial {
     constructor() {
-        this.currentExposure = 0; // Default exposure value
+        this.currentExposure = -2; // Default exposure value for first-time visitors
         this.exposureValues = [-3, -2, -1, 0, 1, 2, 3];
         
         this.init();
@@ -18,7 +18,7 @@ class ExposureDial {
         // Load saved preference first, or use default if none exists
         if (!this.loadExposurePreference()) {
             // Only set default if no preference was loaded
-            this.setExposure(0);
+            this.setExposure(-2);
         }
         
         // Add event listeners

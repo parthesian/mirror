@@ -13,6 +13,9 @@ class GlobeExplorer {
         this.closeBtn = document.getElementById('globe-explorer-close');
         this.rotateToggleBtn = document.getElementById('globe-rotate-toggle');
         this.filterPanel = document.getElementById('country-filter-panel');
+        this.filterToggleBtn = document.getElementById('country-filter-toggle');
+        this.filterToggleIcon = document.getElementById('country-filter-toggle-icon');
+        this.filterBody = document.getElementById('country-filter-body');
         this.filterActive = document.getElementById('country-filter-active');
         this.filterTypeList = document.getElementById('country-filter-kind-list');
         this.filterOptionList = document.getElementById('country-filter-option-list');
@@ -38,8 +41,15 @@ class GlobeExplorer {
         this.selectedFilterType = 'country';
         this.selectedFilterValue = '';
         this.clickCycleState = null;
+        this.lastManualRotateAt = 0;
+        this.locationGroupByKey = new Map();
+        this.countryPointIndices = new Map();
+        this.hoverHighlight = { type: null, key: null };
+        this.hoverCountryToleranceDeg = 30;
+        this.isFilterPanelExpanded = false;
 
         this._bindEvents();
+        this._setFilterPanelExpanded(false);
         this._warmup();
     }
 
@@ -72,6 +82,50 @@ class GlobeExplorer {
         return `photo:${String(loc?.id || '')}`;
     }
 
+    _setHoverHighlight(type, key) {
+        const nextType = type || null;
+        const nextKey = key || null;
+        if (this.hoverHighlight.type === nextType && this.hoverHighlight.key === nextKey) {
+            return;
+        }
+        this.hoverHighlight = { type: nextType, key: nextKey };
+        this._applyDotHighlight();
+    }
+
+    _applyDotHighlight() {
+        const s = this.threeState;
+        if (!s?.dotColors || !s?.dotsMesh?.geometry) return;
+
+        const colors = s.dotColors;
+        const base = [1.0, 1.0, 1.0];
+        const highlight = [1.0, 0.82, 0.18];
+        for (let i = 0; i < this.locations.length; i++) {
+            const p = i * 3;
+            colors[p] = base[0];
+            colors[p + 1] = base[1];
+            colors[p + 2] = base[2];
+        }
+
+        let indices = [];
+        if (this.hoverHighlight.type === 'location' && this.hoverHighlight.key) {
+            indices = this.locationGroupByKey.get(this.hoverHighlight.key)?.indices || [];
+        } else if (this.hoverHighlight.type === 'country' && this.hoverHighlight.key) {
+            indices = this.countryPointIndices.get(this.hoverHighlight.key) || [];
+        }
+
+        for (const idx of indices) {
+            const p = idx * 3;
+            colors[p] = highlight[0];
+            colors[p + 1] = highlight[1];
+            colors[p + 2] = highlight[2];
+        }
+
+        const colorAttr = s.dotsMesh.geometry.getAttribute('color');
+        if (colorAttr) {
+            colorAttr.needsUpdate = true;
+        }
+    }
+
     // ── event wiring ──
 
     _bindEvents() {
@@ -87,11 +141,39 @@ class GlobeExplorer {
             else this._clearFilter();
         });
         this.filterClearBtn?.addEventListener('click', () => this._clearFilter());
+        this.filterToggleBtn?.addEventListener('click', () => this._toggleFilterPanel());
         this.rotateToggleBtn?.addEventListener('click', () => this._toggleRotation());
 
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && this.isOpen) this.close();
         });
+    }
+
+    _setFilterPanelExpanded(expanded) {
+        this.isFilterPanelExpanded = Boolean(expanded);
+        this.filterPanel?.classList.toggle('expanded', this.isFilterPanelExpanded);
+        this.filterPanel?.classList.toggle('collapsed', !this.isFilterPanelExpanded);
+        if (this.filterBody) {
+            this.filterBody.hidden = !this.isFilterPanelExpanded;
+        }
+        if (this.filterToggleBtn) {
+            this.filterToggleBtn.setAttribute('aria-expanded', this.isFilterPanelExpanded ? 'true' : 'false');
+            this.filterToggleBtn.setAttribute(
+                'aria-label',
+                this.isFilterPanelExpanded ? 'Minimize filter panel' : 'Expand filter panel'
+            );
+            this.filterToggleBtn.setAttribute(
+                'title',
+                this.isFilterPanelExpanded ? 'Minimize filter panel' : 'Expand filter panel'
+            );
+        }
+        if (this.filterToggleIcon) {
+            this.filterToggleIcon.textContent = this.isFilterPanelExpanded ? '−' : '+';
+        }
+    }
+
+    _toggleFilterPanel() {
+        this._setFilterPanelExpanded(!this.isFilterPanelExpanded);
     }
 
     // ── open / close ──
@@ -117,6 +199,7 @@ class GlobeExplorer {
         if (!this.isOpen) return;
         this.isOpen = false;
         this.clickCycleState = null;
+        this._setHoverHighlight(null, null);
         this.overlay.classList.remove('active');
         this.overlay.classList.add('hidden');
         document.body.style.overflow = '';
@@ -315,6 +398,9 @@ class GlobeExplorer {
 
         const dotsMesh = this._buildDots(THREE, group);
         this._buildArcs(THREE, group);
+        const raycaster = new THREE.Raycaster();
+        raycaster.params.Points = { threshold: 0.06 };
+        const mouse = new THREE.Vector2();
 
         // Fallback drag-rotate (works even when OrbitControls fails to load).
         let drag = null;
@@ -338,11 +424,44 @@ class GlobeExplorer {
             const dy = e.clientY - drag.y;
             if (this.pointerGesture && ((dx * dx + dy * dy) > 36)) {
                 this.pointerGesture.dragged = true;
+                this.lastManualRotateAt = Date.now();
             }
             // Only apply fallback while controls are missing.
             if (!controls) {
                 group.rotation.y = drag.rotY + dx * 0.005;
                 group.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, drag.rotX + dy * 0.005));
+            }
+        });
+        renderer.domElement.addEventListener('mousemove', (e) => {
+            const rect = renderer.domElement.getBoundingClientRect();
+            const hoverMouse = new THREE.Vector2(
+                ((e.clientX - rect.left) / rect.width) * 2 - 1,
+                -((e.clientY - rect.top) / rect.height) * 2 + 1
+            );
+            raycaster.setFromCamera(hoverMouse, camera);
+            if (dotsMesh) {
+                const hits = raycaster.intersectObject(dotsMesh);
+                if (hits.length > 0) {
+                    const idx = hits[0].index;
+                    if (idx != null && idx < this.locations.length) {
+                        const key = this._locationKeyFor(this.locations[idx]);
+                        this._setHoverHighlight('location', key);
+                        return;
+                    }
+                }
+            }
+
+            const globeHits = raycaster.intersectObject(globe);
+            if (!globeHits.length) {
+                this._setHoverHighlight(null, null);
+                return;
+            }
+            const hoverDir = globeHits[0].point.clone().normalize();
+            const nearest = this._pickNearestCountryFromSurface(THREE, hoverDir, group, this.hoverCountryToleranceDeg);
+            if (nearest?.location?.country) {
+                this._setHoverHighlight('country', nearest.location.country);
+            } else {
+                this._setHoverHighlight(null, null);
             }
         });
         renderer.domElement.addEventListener('wheel', () => {
@@ -357,10 +476,9 @@ class GlobeExplorer {
         };
         renderer.domElement.addEventListener('pointerup', endDrag);
         renderer.domElement.addEventListener('pointerleave', endDrag);
-
-        const raycaster = new THREE.Raycaster();
-        raycaster.params.Points = { threshold: 0.06 };
-        const mouse = new THREE.Vector2();
+        renderer.domElement.addEventListener('mouseleave', () => {
+            this._setHoverHighlight(null, null);
+        });
 
         renderer.domElement.addEventListener('click', (e) => {
             const rect = renderer.domElement.getBoundingClientRect();
@@ -394,18 +512,37 @@ class GlobeExplorer {
                 return;
             }
 
-            const nearest = this._pickNearestCountryFromSurface(THREE, clickDir, group);
-            if (!nearest || !nearest.location?.country) {
+            const now = Date.now();
+            const rotatedRecently = (now - this.lastManualRotateAt) < 2200;
+            const centerDir = this._getGlobeCenterDirection(raycaster, camera, globe) || clickDir;
+            const nearestByClick = this._pickNearestCountryFromSurface(THREE, clickDir, group, 24);
+            const nearestByCenter = this._pickNearestCountryFromSurface(THREE, centerDir, group, 28);
+
+            let nearest = nearestByClick;
+            let inferenceDir = clickDir;
+            if (rotatedRecently && nearestByCenter) {
+                nearest = nearestByCenter;
+                inferenceDir = centerDir;
+            } else if (nearestByCenter && nearestByClick && nearestByCenter.angleDeg <= (nearestByClick.angleDeg + 4)) {
+                nearest = nearestByCenter;
+                inferenceDir = centerDir;
+            } else if (!nearest && nearestByCenter) {
+                nearest = nearestByCenter;
+                inferenceDir = centerDir;
+            }
+
+            if (!nearest || !nearest.location?.country || !nearest.key) {
                 return;
             }
-            const picked = this._resolveClusterClick(THREE, clickDir, group, nearest.key);
+            const picked = this._resolveClusterClick(THREE, inferenceDir, group, nearest.key);
             if (!picked || !picked.location?.country) return;
             this._showInferredCountryPanel(picked.location.country, picked.location, picked.angleDeg, picked);
         });
 
         const state = {
             renderer, scene, camera, group, globe, controls, geo, mat, tex,
-            rafId: null, disposed: false, onResize: null, dotsMesh
+            rafId: null, disposed: false, onResize: null, dotsMesh,
+            dotColors: dotsMesh?.geometry?.getAttribute('color')?.array || null
         };
 
         state.onResize = () => {
@@ -430,6 +567,7 @@ class GlobeExplorer {
         console.log('[GlobeExplorer] animation loop started');
 
         this.threeState = state;
+        this._applyDotHighlight();
     }
 
     _destroyScene() {
@@ -467,9 +605,12 @@ class GlobeExplorer {
         if (this.locations.length === 0) return null;
 
         const positions = new Float32Array(this.locations.length * 3);
+        const colors = new Float32Array(this.locations.length * 3);
         const radius = 1.01;
         this.locationUnitVectors = [];
         this.locationGroups = [];
+        this.locationGroupByKey = new Map();
+        this.countryPointIndices = new Map();
         const groupMap = new Map();
 
         for (let i = 0; i < this.locations.length; i++) {
@@ -477,10 +618,20 @@ class GlobeExplorer {
             positions[i * 3] = v.x;
             positions[i * 3 + 1] = v.y;
             positions[i * 3 + 2] = v.z;
+            colors[i * 3] = 1;
+            colors[i * 3 + 1] = 1;
+            colors[i * 3 + 2] = 1;
             this.locationUnitVectors.push(v.clone().normalize());
 
             const loc = this.locations[i];
             const key = this._locationKeyFor(loc);
+            const country = String(loc.country || '').trim();
+            if (country) {
+                if (!this.countryPointIndices.has(country)) {
+                    this.countryPointIndices.set(country, []);
+                }
+                this.countryPointIndices.get(country).push(i);
+            }
             if (!groupMap.has(key)) {
                 groupMap.set(key, {
                     key,
@@ -500,12 +651,16 @@ class GlobeExplorer {
             indices: entry.indices,
             unitVec: entry.sum.clone().normalize()
         }));
+        this.locationGroups.forEach((entry) => {
+            this.locationGroupByKey.set(entry.key, entry);
+        });
 
         const dotGeo = new THREE.BufferGeometry();
         dotGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        dotGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
         const dotMat = new THREE.PointsMaterial({
-            color: 0xffffff,
+            vertexColors: true,
             size: 0.06,
             sizeAttenuation: true,
             transparent: true,
@@ -643,9 +798,9 @@ class GlobeExplorer {
         });
     }
 
-    _pickNearestCountryFromSurface(THREE, clickDir, group) {
+    _pickNearestCountryFromSurface(THREE, clickDir, group, maxAngleDeg = 24) {
         const groupQuat = group.getWorldQuaternion(new THREE.Quaternion());
-        const maxAngle = THREE.MathUtils.degToRad(18);
+        const maxAngle = THREE.MathUtils.degToRad(maxAngleDeg);
         let bestGroup = null;
         let bestAngle = Infinity;
 
@@ -667,6 +822,13 @@ class GlobeExplorer {
             location: bestGroup.sample,
             angleDeg: THREE.MathUtils.radToDeg(bestAngle)
         };
+    }
+
+    _getGlobeCenterDirection(raycaster, camera, globe) {
+        raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+        const hits = raycaster.intersectObject(globe);
+        if (!hits.length) return null;
+        return hits[0].point.clone().normalize();
     }
 
     _resolveClusterClick(THREE, clickDir, group, preferredKey = '') {

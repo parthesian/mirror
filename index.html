@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>आईना</title>
     <link rel="icon" type="image/svg+xml" href="mirror.svg">
-    <link rel="stylesheet" href="styles.css?v=20260406l">
+    <link rel="stylesheet" href="styles.css?v=20260406m">
 </head>
-<body class="exposure-0">
+<body class="exposure--2">
     <header class="header">
         <h1>PARTH NAIN</h1>
         <nav class="nav">
@@ -29,7 +29,6 @@
             </div>
         </div>
         <div class="gallery-controls">
-            <a href="/admin/" id="upload-btn" class="upload-btn" aria-label="Open admin uploader"></a>
             <button id="globe-btn" class="zoom-btn" aria-label="Open globe explorer" title="Globe explorer">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="10"/>
@@ -47,21 +46,26 @@
     <aside id="timeline" class="timeline-sidebar"></aside>
 
     <div id="country-filter-panel" class="country-filter-panel">
-        <div class="country-filter-title">filter</div>
-        <div id="country-filter-active" class="country-filter-active">ALL</div>
-        <div id="country-filter-picker" class="country-filter-picker" aria-label="Choose filter">
-            <div class="country-filter-column">
-                <div class="country-filter-layer-title">type</div>
-                <div id="country-filter-kind-list" class="country-filter-list" role="listbox" aria-label="Filter type"></div>
+        <button id="country-filter-toggle" class="country-filter-toggle" type="button" aria-expanded="false" aria-label="Expand filter panel" title="Expand filter panel">
+            <span class="country-filter-toggle-label">FILTER</span>
+            <span id="country-filter-toggle-icon" class="country-filter-toggle-icon">+</span>
+        </button>
+        <div id="country-filter-body" class="country-filter-body">
+            <div id="country-filter-active" class="country-filter-active">ALL</div>
+            <div id="country-filter-picker" class="country-filter-picker" aria-label="Choose filter">
+                <div class="country-filter-column">
+                    <div class="country-filter-layer-title">type</div>
+                    <div id="country-filter-kind-list" class="country-filter-list" role="listbox" aria-label="Filter type"></div>
+                </div>
+                <div class="country-filter-column">
+                    <div id="country-filter-scope-title" class="country-filter-layer-title">countries</div>
+                    <div id="country-filter-option-list" class="country-filter-list" role="listbox" aria-label="Filter options"></div>
+                </div>
             </div>
-            <div class="country-filter-column">
-                <div id="country-filter-scope-title" class="country-filter-layer-title">countries</div>
-                <div id="country-filter-option-list" class="country-filter-list" role="listbox" aria-label="Filter options"></div>
+            <div class="country-filter-actions">
+                <button id="country-filter-apply" class="country-filter-btn">apply</button>
+                <button id="country-filter-clear" class="country-filter-btn">clear</button>
             </div>
-        </div>
-        <div class="country-filter-actions">
-            <button id="country-filter-apply" class="country-filter-btn">apply</button>
-            <button id="country-filter-clear" class="country-filter-btn">clear</button>
         </div>
     </div>
 
@@ -127,7 +131,7 @@
     </div>
 
     <script src="js/config.js?v=20260405c"></script>
-    <script src="js/exposureDial.js?v=20260405c"></script>
+    <script src="js/exposureDial.js?v=20260406a"></script>
     <script src="js/imageService.js?v=20260406h"></script>
     <script src="js/imagePreloader.js?v=20260405c"></script>
     <script src="js/gallery.js?v=20260405c"></script>
@@ -136,7 +140,7 @@
     <script src="js/timeline.js?v=20260406k"></script>
     <script src="js/modal.js?v=20260405c"></script>
     <script src="js/filmEffects.js?v=20260406d"></script>
-    <script src="js/globeExplorer.js?v=20260406l"></script>
+    <script src="js/globeExplorer.js?v=20260406o"></script>
     <script src="js/app.js?v=20260406c"></script>
 </body>
 </html>
