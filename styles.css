@@ -3172,6 +3172,61 @@ body.exposure-3  { --leak-opacity: 0.35; }
     display: inline-block;
 }
 
+.globe-intersect-picker {
+    position: absolute;
+    right: 22.5rem;
+    top: 1.15rem;
+    width: 220px;
+    max-height: min(44vh, 320px);
+    overflow-y: auto;
+    border: 1px solid currentColor;
+    background: rgba(0, 0, 0, 0.16);
+    backdrop-filter: blur(2px);
+    padding: 0.45rem;
+    z-index: 1001;
+}
+
+.globe-intersect-picker-title {
+    font-size: 0.6rem;
+    opacity: 0.62;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.4rem;
+}
+
+.globe-intersect-picker-item {
+    width: 100%;
+    border: 1px solid transparent;
+    background: transparent;
+    color: inherit;
+    padding: 0.34rem 0.38rem;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 0.14rem;
+    margin-bottom: 0.28rem;
+    transition: border-color 0.2s ease, opacity 0.2s ease;
+    opacity: 0.82;
+}
+
+.globe-intersect-picker-item:hover {
+    border-color: currentColor;
+    opacity: 1;
+}
+
+.globe-intersect-picker-label {
+    font-size: 0.74rem;
+    letter-spacing: 0.03em;
+}
+
+.globe-intersect-picker-country {
+    font-size: 0.6rem;
+    opacity: 0.62;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
 .globe-explorer-scene {
     flex: 1;
     display: flex;
@@ -3507,6 +3562,14 @@ body.exposure-3 .country-filter-panel {
         right: 3.7rem;
         width: 35px;
         height: 35px;
+    }
+
+    .globe-intersect-picker {
+        right: 1rem;
+        left: 1rem;
+        top: 4.1rem;
+        width: auto;
+        max-height: 30vh;
     }
 
     .globe-explorer-panel {

@@ -7,6 +7,7 @@ class GlobeExplorer {
         this.imageService = imageService;
         this.overlay = document.getElementById('globe-explorer');
         this.sceneContainer = document.getElementById('globe-explorer-scene');
+        this.intersectPicker = document.getElementById('globe-intersect-picker');
         this.panelContent = document.getElementById('globe-panel-content');
         this.hint = this.overlay?.querySelector('.globe-explorer-hint');
         this.openBtn = document.getElementById('globe-btn');
@@ -40,7 +41,6 @@ class GlobeExplorer {
         this.lastPointerGesture = null;
         this.selectedFilterType = 'country';
         this.selectedFilterValue = '';
-        this.clickCycleState = null;
         this.lastManualRotateAt = 0;
         this.locationGroupByKey = new Map();
         this.hoverHighlight = { type: null, key: null };
@@ -94,6 +94,43 @@ class GlobeExplorer {
         this.selectedFilterType = type;
         this.selectedFilterValue = value || '';
         this._renderFilterMenu();
+    }
+
+    _hideIntersectPicker() {
+        if (!this.intersectPicker) return;
+        this.intersectPicker.classList.add('hidden');
+        this.intersectPicker.innerHTML = '';
+    }
+
+    _showIntersectPicker(choices, onPick) {
+        if (!this.intersectPicker) return;
+        if (!Array.isArray(choices) || choices.length === 0) {
+            this._hideIntersectPicker();
+            return;
+        }
+
+        let html = '<div class="globe-intersect-picker-title">choose location</div>';
+        for (const choice of choices) {
+            const label = this._escapeHtml(choice.label || choice.key || 'unknown');
+            const country = this._escapeHtml(choice.country || '');
+            html += `<button class="globe-intersect-picker-item" data-key="${this._escapeHtml(choice.key)}">
+                <span class="globe-intersect-picker-label">${label}</span>
+                ${country ? `<span class="globe-intersect-picker-country">${country}</span>` : ''}
+            </button>`;
+        }
+        this.intersectPicker.innerHTML = html;
+        this.intersectPicker.classList.remove('hidden');
+
+        this.intersectPicker.querySelectorAll('.globe-intersect-picker-item').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const key = btn.getAttribute('data-key') || '';
+                const selected = choices.find((c) => c.key === key);
+                if (selected) {
+                    onPick(selected);
+                }
+                this._hideIntersectPicker();
+            });
+        });
     }
 
     _pickPrecisePointIndex(hits, pointerPx, camera, renderer, group, THREE, maxPixelDistance = 14) {
@@ -160,43 +197,6 @@ class GlobeExplorer {
             .map((x) => x.key);
     }
 
-    _resolveIntersectCycle(THREE, clickDir, intersectKeys, preferredKey = '') {
-        const keys = Array.isArray(intersectKeys) ? intersectKeys.filter(Boolean) : [];
-        if (!keys.length) {
-            return { key: preferredKey || '', position: 0, total: preferredKey ? 1 : 0 };
-        }
-
-        const now = Date.now();
-        const clusterKey = keys.join(',');
-        const anchorTolerance = THREE.MathUtils.degToRad(1.75);
-        const cycleTimeoutMs = 2000;
-        let position = keys.indexOf(preferredKey);
-        if (position === -1) position = 0;
-
-        const canCycle = Boolean(
-            this.clickCycleState
-            && this.clickCycleState.clusterKey === clusterKey
-            && (now - this.clickCycleState.timestamp) <= cycleTimeoutMs
-            && this.clickCycleState.anchorDir.dot(clickDir) >= Math.cos(anchorTolerance)
-        );
-        if (canCycle) {
-            position = (this.clickCycleState.position + 1) % keys.length;
-        }
-
-        this.clickCycleState = {
-            anchorDir: clickDir.clone(),
-            clusterKey,
-            position,
-            timestamp: now
-        };
-
-        return {
-            key: keys[position],
-            position,
-            total: keys.length
-        };
-    }
-
     _applyDotHighlight() {
         const s = this.threeState;
         if (!s?.dotColors || !s?.dotsMesh?.geometry) return;
@@ -236,6 +236,7 @@ class GlobeExplorer {
         this.closeBtn?.addEventListener('click', () => this.close());
         this.overlay?.addEventListener('click', (e) => {
             if (e.target === this.overlay) this.close();
+            this._hideIntersectPicker();
         });
         this.filterApplyBtn?.addEventListener('click', () => {
             if (this.selectedFilterValue) {
@@ -248,7 +249,10 @@ class GlobeExplorer {
         this.rotateToggleBtn?.addEventListener('click', () => this._toggleRotation());
 
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && this.isOpen) this.close();
+            if (e.key === 'Escape' && this.isOpen) {
+                this._hideIntersectPicker();
+                this.close();
+            }
         });
     }
 
@@ -301,8 +305,8 @@ class GlobeExplorer {
     close() {
         if (!this.isOpen) return;
         this.isOpen = false;
-        this.clickCycleState = null;
         this._setHoverHighlight(null, null);
+        this._hideIntersectPicker();
         this.overlay.classList.remove('active');
         this.overlay.classList.add('hidden');
         document.body.style.overflow = '';
@@ -617,31 +621,45 @@ class GlobeExplorer {
                         THREE,
                         15
                     );
-                    const cycle = this._resolveIntersectCycle(
-                        THREE,
-                        clickDir,
-                        intersectKeys.length ? intersectKeys : [preferredKey],
-                        preferredKey
-                    );
-                    const selectedKey = cycle.key || preferredKey;
-                    const selectedGroup = this.locationGroupByKey.get(selectedKey);
-                    const selectedForPanel = selectedGroup?.sample || selectedLocation;
-                    if (selectedForPanel?.country) {
+                    const candidateKeys = intersectKeys.length ? intersectKeys : [preferredKey];
+                    const uniqueKeys = [...new Set(candidateKeys)];
+                    const options = uniqueKeys
+                        .map((key) => {
+                            const groupEntry = this.locationGroupByKey.get(key);
+                            const sample = groupEntry?.sample;
+                            if (!sample) return null;
+                            return {
+                                key,
+                                label: sample.location || sample.country || 'Unknown',
+                                country: sample.country || '',
+                                sample
+                            };
+                        })
+                        .filter(Boolean);
+
+                    const applyPickedOption = (option) => {
+                        const selectedForPanel = option.sample || selectedLocation;
+                        if (!selectedForPanel?.country) return;
                         if (selectedForPanel.location) {
                             this._setPendingFilterSelection('location', selectedForPanel.location);
                         } else {
                             this._setPendingFilterSelection('country', selectedForPanel.country);
                         }
-                        this._showPointPanel(selectedForPanel, {
-                            clusterPosition: cycle.position,
-                            clusterTotal: cycle.total
-                        });
+                        this._showPointPanel(selectedForPanel, null);
+                    };
+
+                    if (options.length > 1) {
+                        this._showIntersectPicker(options, applyPickedOption);
+                    } else if (options.length === 1) {
+                        this._hideIntersectPicker();
+                        applyPickedOption(options[0]);
                     }
                     return;
                 }
             }
 
             // No country inference on miss; keep selection only for direct point hits.
+            this._hideIntersectPicker();
             return;
         });
 
@@ -824,9 +842,6 @@ class GlobeExplorer {
             html += `<p class="globe-panel-count">${placeEscaped}</p>`;
         }
         html += `<p class="globe-panel-count">${activeLocs.length} photo${activeLocs.length !== 1 ? 's' : ''}</p>`;
-        if (cycleInfo && cycleInfo.clusterTotal > 1) {
-            html += `<p class="globe-panel-count">nearby match ${cycleInfo.clusterPosition + 1}/${cycleInfo.clusterTotal}</p>`;
-        }
         html += '<div class="globe-panel-trips">';
 
         for (const trip of trips) {
