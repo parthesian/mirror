@@ -154,7 +154,7 @@ class GlobeExplorer {
         this.filterPanel?.classList.toggle('expanded', this.isFilterPanelExpanded);
         this.filterPanel?.classList.toggle('collapsed', !this.isFilterPanelExpanded);
         if (this.filterBody) {
-            this.filterBody.hidden = !this.isFilterPanelExpanded;
+            this.filterBody.setAttribute('aria-hidden', this.isFilterPanelExpanded ? 'false' : 'true');
         }
         if (this.filterToggleBtn) {
             this.filterToggleBtn.setAttribute('aria-expanded', this.isFilterPanelExpanded ? 'true' : 'false');
