@@ -3266,20 +3266,66 @@ body.exposure-3  .globe-explorer { background: rgba(255, 255, 255, 0.98); color:
     letter-spacing: 0.12em;
 }
 
-.country-filter-select {
-    width: 100%;
-    background: transparent;
-    color: inherit;
-    border: 1px solid currentColor;
-    padding: 0.32rem 0.35rem;
-    font-size: 0.66rem;
-    text-transform: uppercase;
+.country-filter-picker {
+    display: grid;
+    grid-template-columns: minmax(56px, 0.75fr) minmax(0, 1.25fr);
+    gap: 0.45rem;
     margin-bottom: 0.55rem;
-    outline: none;
 }
 
-.country-filter-select option {
-    color: #111;
+.country-filter-column {
+    min-width: 0;
+}
+
+.country-filter-layer-title {
+    font-size: 0.58rem;
+    opacity: 0.6;
+    margin-bottom: 0.25rem;
+}
+
+.country-filter-list {
+    border: 1px solid currentColor;
+    min-height: 112px;
+    max-height: 112px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 0.18rem;
+    padding: 0.2rem;
+}
+
+.country-filter-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.country-filter-list::-webkit-scrollbar-thumb {
+    background: currentColor;
+    opacity: 0.35;
+}
+
+.country-filter-option {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    color: inherit;
+    border: none;
+    padding: 0.2rem 0.25rem;
+    font-size: 0.6rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+    opacity: 0.75;
+    line-height: 1.2;
+}
+
+.country-filter-option:hover {
+    opacity: 1;
+}
+
+.country-filter-option.active {
+    outline: 1px solid currentColor;
+    opacity: 1;
 }
 
 .country-filter-actions {

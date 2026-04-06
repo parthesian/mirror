@@ -14,7 +14,9 @@ class GlobeExplorer {
         this.rotateToggleBtn = document.getElementById('globe-rotate-toggle');
         this.filterPanel = document.getElementById('country-filter-panel');
         this.filterActive = document.getElementById('country-filter-active');
-        this.filterSelect = document.getElementById('country-filter-select');
+        this.filterTypeList = document.getElementById('country-filter-kind-list');
+        this.filterOptionList = document.getElementById('country-filter-option-list');
+        this.filterScopeTitle = document.getElementById('country-filter-scope-title');
         this.filterApplyBtn = document.getElementById('country-filter-apply');
         this.filterClearBtn = document.getElementById('country-filter-clear');
 
@@ -29,6 +31,12 @@ class GlobeExplorer {
         this._geoPromise = null;
         this._geoFetchedOnce = false;
         this.autoRotateEnabled = true;
+        this.locationUnitVectors = [];
+        this.pointerGesture = null;
+        this.lastPointerGesture = null;
+        this.selectedFilterType = 'country';
+        this.selectedFilterValue = '';
+        this.clickCycleState = null;
 
         this._bindEvents();
         this._warmup();
@@ -50,17 +58,6 @@ class GlobeExplorer {
         return label ? `${base} · ${String(label).toUpperCase()}` : base;
     }
 
-    _parseFilterValue(raw) {
-        if (!raw) return null;
-        if (raw.startsWith('location:')) {
-            return { type: 'location', value: raw.slice('location:'.length) };
-        }
-        if (raw.startsWith('country:')) {
-            return { type: 'country', value: raw.slice('country:'.length) };
-        }
-        return { type: 'country', value: raw };
-    }
-
     // ── event wiring ──
 
     _bindEvents() {
@@ -70,21 +67,13 @@ class GlobeExplorer {
             if (e.target === this.overlay) this.close();
         });
         this.filterApplyBtn?.addEventListener('click', () => {
-            const raw = this.filterSelect?.value || '';
-            const parsed = this._parseFilterValue(raw);
-            if (parsed && parsed.value) this._applyFilter(parsed.type, parsed.value);
+            if (this.selectedFilterValue) {
+                this._applyFilter(this.selectedFilterType, this.selectedFilterValue);
+            }
             else this._clearFilter();
         });
         this.filterClearBtn?.addEventListener('click', () => this._clearFilter());
         this.rotateToggleBtn?.addEventListener('click', () => this._toggleRotation());
-        this.filterSelect?.addEventListener('change', () => {
-            const parsed = this._parseFilterValue(this.filterSelect.value);
-            if (this.filterActive) {
-                this.filterActive.textContent = parsed
-                    ? this._formatFilterLabel(parsed.type, parsed.value)
-                    : 'ALL';
-            }
-        });
 
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && this.isOpen) this.close();
@@ -113,6 +102,7 @@ class GlobeExplorer {
     close() {
         if (!this.isOpen) return;
         this.isOpen = false;
+        this.clickCycleState = null;
         this.overlay.classList.remove('active');
         this.overlay.classList.add('hidden');
         document.body.style.overflow = '';
@@ -308,6 +298,12 @@ class GlobeExplorer {
         // Fallback drag-rotate (works even when OrbitControls fails to load).
         let drag = null;
         renderer.domElement.addEventListener('pointerdown', (e) => {
+            this.pointerGesture = {
+                x: e.clientX,
+                y: e.clientY,
+                dragged: false,
+                hadWheel: false
+            };
             drag = {
                 x: e.clientX,
                 y: e.clientY,
@@ -319,13 +315,25 @@ class GlobeExplorer {
             if (!drag) return;
             const dx = e.clientX - drag.x;
             const dy = e.clientY - drag.y;
+            if (this.pointerGesture && ((dx * dx + dy * dy) > 36)) {
+                this.pointerGesture.dragged = true;
+            }
             // Only apply fallback while controls are missing.
             if (!controls) {
                 group.rotation.y = drag.rotY + dx * 0.005;
                 group.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, drag.rotX + dy * 0.005));
             }
         });
-        const endDrag = () => { drag = null; };
+        renderer.domElement.addEventListener('wheel', () => {
+            if (this.pointerGesture) {
+                this.pointerGesture.hadWheel = true;
+            }
+        }, { passive: true });
+        const endDrag = () => {
+            this.lastPointerGesture = this.pointerGesture;
+            this.pointerGesture = null;
+            drag = null;
+        };
         renderer.domElement.addEventListener('pointerup', endDrag);
         renderer.domElement.addEventListener('pointerleave', endDrag);
 
@@ -339,17 +347,37 @@ class GlobeExplorer {
             mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
             raycaster.setFromCamera(mouse, camera);
+            const globeHits = raycaster.intersectObject(globe);
+            if (!globeHits.length) {
+                return;
+            }
+            const clickDir = globeHits[0].point.clone().normalize();
             if (dotsMesh) {
                 const hits = raycaster.intersectObject(dotsMesh);
                 if (hits.length > 0) {
                     const idx = hits[0].index;
                     if (idx != null && idx < this.locations.length) {
-                        const selectedLocation = this.locations[idx];
-                        const country = selectedLocation?.country;
-                        if (country) this._showPointPanel(selectedLocation);
+                        const picked = this._resolveClusterClick(THREE, clickDir, group, idx);
+                        if (picked && picked.location?.country) {
+                            this._showPointPanel(picked.location, picked);
+                        }
+                        return;
                     }
                 }
             }
+
+            const gesture = this.lastPointerGesture || {};
+            if (gesture.dragged || gesture.hadWheel) {
+                return;
+            }
+
+            const nearest = this._pickNearestCountryFromSurface(THREE, clickDir, group);
+            if (!nearest || nearest.index == null || !nearest.location?.country) {
+                return;
+            }
+            const picked = this._resolveClusterClick(THREE, clickDir, group, nearest.index);
+            if (!picked || !picked.location?.country) return;
+            this._showInferredCountryPanel(picked.location.country, picked.location, picked.angleDeg, picked);
         });
 
         const state = {
@@ -417,12 +445,14 @@ class GlobeExplorer {
 
         const positions = new Float32Array(this.locations.length * 3);
         const radius = 1.01;
+        this.locationUnitVectors = [];
 
         for (let i = 0; i < this.locations.length; i++) {
             const v = this._latLonToVec3(this.locations[i].latitude, this.locations[i].longitude, radius, THREE);
             positions[i * 3] = v.x;
             positions[i * 3 + 1] = v.y;
             positions[i * 3 + 2] = v.z;
+            this.locationUnitVectors.push(v.clone().normalize());
         }
 
         const dotGeo = new THREE.BufferGeometry();
@@ -476,7 +506,7 @@ class GlobeExplorer {
 
     // ── panel ──
 
-    _showPointPanel(point) {
+    _showPointPanel(point, cycleInfo = null) {
         const country = point?.country || 'Unknown';
         const place = String(point?.location || '').trim();
         const countryLocs = this.locationsByCountry[country] || [];
@@ -495,6 +525,9 @@ class GlobeExplorer {
             html += `<p class="globe-panel-count">${placeEscaped}</p>`;
         }
         html += `<p class="globe-panel-count">${activeLocs.length} photo${activeLocs.length !== 1 ? 's' : ''}</p>`;
+        if (cycleInfo && cycleInfo.clusterTotal > 1) {
+            html += `<p class="globe-panel-count">nearby match ${cycleInfo.clusterPosition + 1}/${cycleInfo.clusterTotal}</p>`;
+        }
         html += '<div class="globe-panel-trips">';
 
         for (const trip of trips) {
@@ -537,6 +570,128 @@ class GlobeExplorer {
         });
     }
 
+    _showInferredCountryPanel(country, nearestLoc, angleDeg, cycleInfo = null) {
+        const countryLocs = this.locationsByCountry[country] || [];
+        if (!countryLocs.length) return;
+        const countryEscaped = this._escapeHtml(country);
+        const nearestPlace = String(nearestLoc?.location || '').trim();
+        const nearestPlaceEscaped = this._escapeHtml(nearestPlace);
+
+        let html = `<h3 class="globe-panel-country">${countryEscaped}</h3>`;
+        html += `<p class="globe-panel-count">${countryLocs.length} photo${countryLocs.length !== 1 ? 's' : ''}</p>`;
+        html += '<p class="globe-panel-count">inferred from nearest globe point</p>';
+        if (nearestPlace) {
+            html += `<p class="globe-panel-count">nearest place: ${nearestPlaceEscaped}</p>`;
+        }
+        if (cycleInfo && cycleInfo.clusterTotal > 1) {
+            html += `<p class="globe-panel-count">nearby match ${cycleInfo.clusterPosition + 1}/${cycleInfo.clusterTotal}</p>`;
+        }
+        html += `<p class="globe-panel-count">distance: ${Math.round(angleDeg)}°</p>`;
+        html += '<div class="globe-panel-actions">';
+        html += '<button class="globe-panel-filter-btn" id="globe-filter-country-inferred">show country photos</button>';
+        html += '</div>';
+
+        this.panelContent.innerHTML = html;
+        document.getElementById('globe-filter-country-inferred')?.addEventListener('click', () => {
+            this._applyFilter('country', country);
+        });
+    }
+
+    _pickNearestCountryFromSurface(THREE, clickDir, group) {
+        const groupQuat = group.getWorldQuaternion(new THREE.Quaternion());
+        const maxAngle = THREE.MathUtils.degToRad(18);
+        let bestIndex = -1;
+        let bestAngle = Infinity;
+
+        for (let i = 0; i < this.locationUnitVectors.length; i++) {
+            const loc = this.locations[i];
+            if (!loc || !loc.country) continue;
+            const worldDir = this.locationUnitVectors[i].clone().applyQuaternion(groupQuat).normalize();
+            const dot = THREE.MathUtils.clamp(clickDir.dot(worldDir), -1, 1);
+            const angle = Math.acos(dot);
+            if (angle < bestAngle) {
+                bestAngle = angle;
+                bestIndex = i;
+            }
+        }
+
+        if (bestIndex === -1 || bestAngle > maxAngle) return null;
+        return {
+            index: bestIndex,
+            location: this.locations[bestIndex],
+            angleDeg: THREE.MathUtils.radToDeg(bestAngle)
+        };
+    }
+
+    _resolveClusterClick(THREE, clickDir, group, preferredIndex) {
+        const cluster = this._buildClickCluster(THREE, clickDir, group);
+        if (!cluster.length) return null;
+
+        const now = Date.now();
+        const clusterKey = cluster.map((item) => item.index).join(',');
+        const anchorTolerance = THREE.MathUtils.degToRad(2.0);
+        const cycleTimeoutMs = 1800;
+        let position = cluster.findIndex((item) => item.index === preferredIndex);
+        if (position === -1) position = 0;
+
+        const canCycle = Boolean(
+            this.clickCycleState
+            && this.clickCycleState.clusterKey === clusterKey
+            && (now - this.clickCycleState.timestamp) <= cycleTimeoutMs
+            && this.clickCycleState.anchorDir.dot(clickDir) >= Math.cos(anchorTolerance)
+        );
+        if (canCycle) {
+            position = (this.clickCycleState.position + 1) % cluster.length;
+        }
+
+        this.clickCycleState = {
+            anchorDir: clickDir.clone(),
+            clusterKey,
+            position,
+            timestamp: now
+        };
+
+        const chosen = cluster[position];
+        return {
+            index: chosen.index,
+            location: chosen.location,
+            angleDeg: THREE.MathUtils.radToDeg(chosen.angle),
+            clusterPosition: position,
+            clusterTotal: cluster.length
+        };
+    }
+
+    _buildClickCluster(THREE, clickDir, group) {
+        const groupQuat = group.getWorldQuaternion(new THREE.Quaternion());
+        const clusterRadius = THREE.MathUtils.degToRad(5.0);
+        const cluster = [];
+
+        for (let i = 0; i < this.locationUnitVectors.length; i++) {
+            const loc = this.locations[i];
+            if (!loc || !loc.country) continue;
+            const worldDir = this.locationUnitVectors[i].clone().applyQuaternion(groupQuat).normalize();
+            const dot = THREE.MathUtils.clamp(clickDir.dot(worldDir), -1, 1);
+            const angle = Math.acos(dot);
+            if (angle <= clusterRadius) {
+                cluster.push({
+                    index: i,
+                    angle,
+                    location: loc
+                });
+            }
+        }
+
+        cluster.sort((a, b) => {
+            if (a.angle !== b.angle) return a.angle - b.angle;
+            const la = String(a.location.location || '');
+            const lb = String(b.location.location || '');
+            const byLoc = la.localeCompare(lb);
+            if (byLoc !== 0) return byLoc;
+            return String(a.location.takenAt || '').localeCompare(String(b.location.takenAt || ''));
+        });
+        return cluster;
+    }
+
     _groupTrips(locs) {
         const sorted = [...locs].sort((a, b) => new Date(a.takenAt) - new Date(b.takenAt));
         const trips = [];
@@ -557,38 +712,86 @@ class GlobeExplorer {
     // ── filtering ──
 
     _renderFilterMenu() {
-        if (!this.filterSelect) return;
-        const countries = Object.keys(this.locationsByCountry)
-            .filter((c) => c && c !== 'Unknown')
-            .sort((a, b) => a.localeCompare(b));
-        const places = Object.keys(this.locationsByPlace)
-            .filter(Boolean)
-            .sort((a, b) => a.localeCompare(b));
-
-        const currentType = this.imageService.locationFilter ? 'location' : (this.imageService.countryFilter ? 'country' : '');
+        if (!this.filterTypeList || !this.filterOptionList) return;
+        const currentType = this.imageService.locationFilter ? 'location' : (this.imageService.countryFilter ? 'country' : 'country');
         const currentValue = this.imageService.locationFilter || this.imageService.countryFilter || '';
-        const current = currentType && currentValue ? `${currentType}:${currentValue}` : '';
-        this.filterSelect.innerHTML = '<option value="">all places</option>';
-        for (const c of countries) {
-            const count = this.locationsByCountry[c]?.length || 0;
-            const option = document.createElement('option');
-            option.value = `country:${c}`;
-            option.textContent = `country: ${c} (${count})`;
-            this.filterSelect.appendChild(option);
+        this.selectedFilterType = currentType;
+        this.selectedFilterValue = currentValue;
+
+        this.filterTypeList.innerHTML = '';
+        const kinds = [
+            { type: 'country', label: 'country' },
+            { type: 'location', label: 'place' }
+        ];
+        for (const kind of kinds) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'country-filter-option';
+            btn.dataset.type = kind.type;
+            btn.textContent = kind.label;
+            btn.classList.toggle('active', this.selectedFilterType === kind.type);
+            btn.addEventListener('click', () => {
+                this.selectedFilterType = kind.type;
+                if (!this._isOptionValid(this.selectedFilterType, this.selectedFilterValue)) {
+                    this.selectedFilterValue = '';
+                }
+                this._renderFilterMenu();
+            });
+            this.filterTypeList.appendChild(btn);
         }
-        for (const place of places) {
-            const count = this.locationsByPlace[place]?.length || 0;
-            const option = document.createElement('option');
-            option.value = `location:${place}`;
-            option.textContent = `place: ${place} (${count})`;
-            this.filterSelect.appendChild(option);
+
+        const options = this._getOptionsForType(this.selectedFilterType);
+        this.filterOptionList.innerHTML = '';
+        for (const item of options) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'country-filter-option';
+            btn.dataset.type = this.selectedFilterType;
+            btn.dataset.value = item.value;
+            btn.textContent = `${item.label} (${item.count})`;
+            btn.classList.toggle('active', this.selectedFilterValue === item.value);
+            btn.addEventListener('click', () => {
+                this.selectedFilterValue = item.value;
+                this._renderFilterMenu();
+            });
+            this.filterOptionList.appendChild(btn);
         }
-        this.filterSelect.value = current;
+
+        if (this.filterScopeTitle) {
+            this.filterScopeTitle.textContent = this.selectedFilterType === 'location' ? 'places' : 'countries';
+        }
         if (this.filterActive) {
-            this.filterActive.textContent = currentType
-                ? this._formatFilterLabel(currentType, currentValue)
+            this.filterActive.textContent = this.selectedFilterValue
+                ? this._formatFilterLabel(this.selectedFilterType, this.selectedFilterValue)
                 : 'ALL';
         }
+    }
+
+    _getOptionsForType(type) {
+        if (type === 'location') {
+            return Object.keys(this.locationsByPlace)
+                .filter(Boolean)
+                .sort((a, b) => a.localeCompare(b))
+                .map((place) => ({
+                    value: place,
+                    label: place,
+                    count: this.locationsByPlace[place]?.length || 0
+                }));
+        }
+        return Object.keys(this.locationsByCountry)
+            .filter((c) => c && c !== 'Unknown')
+            .sort((a, b) => a.localeCompare(b))
+            .map((country) => ({
+                value: country,
+                label: country,
+                count: this.locationsByCountry[country]?.length || 0
+            }));
+    }
+
+    _isOptionValid(type, value) {
+        if (!value) return false;
+        if (type === 'location') return Boolean(this.locationsByPlace[value]?.length);
+        return Boolean(this.locationsByCountry[value]?.length);
     }
 
     async _applyFilter(filterType, filterValue, takenFrom = null, takenTo = null, label = '') {
@@ -596,7 +799,9 @@ class GlobeExplorer {
         if (this.filterActive) {
             this.filterActive.textContent = this._formatFilterLabel(filterType, filterValue, label);
         }
-        if (this.filterSelect) this.filterSelect.value = `${filterType}:${filterValue}`;
+        this.selectedFilterType = filterType;
+        this.selectedFilterValue = filterValue;
+        this._renderFilterMenu();
 
         if (filterType === 'location') {
             this.imageService.locationFilter = filterValue;
@@ -614,11 +819,13 @@ class GlobeExplorer {
 
     async _clearFilter() {
         if (this.filterActive) this.filterActive.textContent = 'ALL';
-        if (this.filterSelect) this.filterSelect.value = '';
+        this.selectedFilterType = 'country';
+        this.selectedFilterValue = '';
         this.imageService.countryFilter = null;
         this.imageService.locationFilter = null;
         this.imageService.takenFromFilter = null;
         this.imageService.takenToFilter = null;
+        this._renderFilterMenu();
         if (window.gallery) {
             await window.gallery.loadImages();
         }

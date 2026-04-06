@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>आईना</title>
     <link rel="icon" type="image/svg+xml" href="mirror.svg">
-    <link rel="stylesheet" href="styles.css?v=20260406g">
+    <link rel="stylesheet" href="styles.css?v=20260406h">
 </head>
 <body class="exposure-0">
     <header class="header">
@@ -49,9 +49,16 @@
     <div id="country-filter-panel" class="country-filter-panel">
         <div class="country-filter-title">filter</div>
         <div id="country-filter-active" class="country-filter-active">ALL</div>
-        <select id="country-filter-select" class="country-filter-select" aria-label="Choose country filter">
-            <option value="">all places</option>
-        </select>
+        <div id="country-filter-picker" class="country-filter-picker" aria-label="Choose filter">
+            <div class="country-filter-column">
+                <div class="country-filter-layer-title">type</div>
+                <div id="country-filter-kind-list" class="country-filter-list" role="listbox" aria-label="Filter type"></div>
+            </div>
+            <div class="country-filter-column">
+                <div id="country-filter-scope-title" class="country-filter-layer-title">countries</div>
+                <div id="country-filter-option-list" class="country-filter-list" role="listbox" aria-label="Filter options"></div>
+            </div>
+        </div>
         <div class="country-filter-actions">
             <button id="country-filter-apply" class="country-filter-btn">apply</button>
             <button id="country-filter-clear" class="country-filter-btn">clear</button>
@@ -129,7 +136,7 @@
     <script src="js/timeline.js?v=20260406h"></script>
     <script src="js/modal.js?v=20260405c"></script>
     <script src="js/filmEffects.js?v=20260406d"></script>
-    <script src="js/globeExplorer.js?v=20260406h"></script>
+    <script src="js/globeExplorer.js?v=20260406j"></script>
     <script src="js/app.js?v=20260406c"></script>
 </body>
 </html>
