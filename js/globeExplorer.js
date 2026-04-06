@@ -102,7 +102,7 @@ class GlobeExplorer {
         this.intersectPicker.innerHTML = '';
     }
 
-    _showIntersectPicker(choices, onPick) {
+    _showIntersectPicker(choices, onPick, anchorClient = null) {
         if (!this.intersectPicker) return;
         if (!Array.isArray(choices) || choices.length === 0) {
             this._hideIntersectPicker();
@@ -120,6 +120,9 @@ class GlobeExplorer {
         }
         this.intersectPicker.innerHTML = html;
         this.intersectPicker.classList.remove('hidden');
+        this.intersectPicker.style.left = '';
+        this.intersectPicker.style.top = '';
+        this.intersectPicker.style.right = '';
 
         this.intersectPicker.querySelectorAll('.globe-intersect-picker-item').forEach((btn) => {
             btn.addEventListener('click', () => {
@@ -131,6 +134,23 @@ class GlobeExplorer {
                 this._hideIntersectPicker();
             });
         });
+
+        if (anchorClient && this.intersectPicker.parentElement) {
+            const parentRect = this.intersectPicker.parentElement.getBoundingClientRect();
+            const desiredX = anchorClient.x - parentRect.left + 16;
+            const desiredY = anchorClient.y - parentRect.top - 12;
+            requestAnimationFrame(() => {
+                const panelW = this.intersectPicker.offsetWidth || 220;
+                const panelH = this.intersectPicker.offsetHeight || 180;
+                const minPad = 12;
+                const maxX = Math.max(minPad, parentRect.width - panelW - minPad);
+                const maxY = Math.max(minPad, parentRect.height - panelH - minPad);
+                const clampedX = Math.min(Math.max(minPad, desiredX), maxX);
+                const clampedY = Math.min(Math.max(minPad, desiredY), maxY);
+                this.intersectPicker.style.left = `${clampedX}px`;
+                this.intersectPicker.style.top = `${clampedY}px`;
+            });
+        }
     }
 
     _pickPrecisePointIndex(hits, pointerPx, camera, renderer, group, THREE, maxPixelDistance = 14) {
@@ -680,7 +700,7 @@ class GlobeExplorer {
                 };
 
                 if (options.length > 1) {
-                    this._showIntersectPicker(options, applyPickedOption);
+                    this._showIntersectPicker(options, applyPickedOption, { x: e.clientX, y: e.clientY });
                     return;
                 }
                 if (options.length === 1) {

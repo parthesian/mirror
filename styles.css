@@ -3174,8 +3174,8 @@ body.exposure-3  { --leak-opacity: 0.35; }
 
 .globe-intersect-picker {
     position: absolute;
-    right: 22.5rem;
-    top: 1.15rem;
+    left: 1rem;
+    top: 1rem;
     width: 220px;
     max-height: min(44vh, 320px);
     overflow-y: auto;
@@ -3183,7 +3183,7 @@ body.exposure-3  { --leak-opacity: 0.35; }
     background: rgba(0, 0, 0, 0.16);
     backdrop-filter: blur(2px);
     padding: 0.45rem;
-    z-index: 1001;
+    z-index: 1002;
 }
 
 .globe-intersect-picker-title {
