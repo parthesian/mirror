@@ -1020,7 +1020,7 @@ class GlobeExplorer {
                     options.unshift({
                         key: '__country__',
                         kind: 'country',
-                        label: `country: ${countryHit.feature.name}`,
+                        label: countryHit.feature.name,
                         country: '',
                         feature: countryHit.feature
                     });
