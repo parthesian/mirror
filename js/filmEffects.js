@@ -4,6 +4,10 @@
 class FilmEffects {
     constructor() {
         this.scrollRaf = null;
+        this.currentScrollRatio = 0;
+        this.targetScrollRatio = 0;
+        this.scrollSettleTimeout = null;
+        this.isAnimatingScroll = false;
         this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
         this._applyLeakSeed();
@@ -22,19 +26,26 @@ class FilmEffects {
             this._applyExposure(e.detail.exposure);
         });
 
-        let ticking = false;
         window.addEventListener('scroll', () => {
-            if (!ticking) {
-                ticking = true;
-                requestAnimationFrame(() => {
-                    this._updateScrollRatio();
-                    ticking = false;
-                });
-            }
+            this._updateTargetScrollRatio();
+            this._startSmoothScrollLoop();
+        }, { passive: true });
+
+        window.addEventListener('resize', () => {
+            this._updateTargetScrollRatio();
+            this._startSmoothScrollLoop();
         }, { passive: true });
 
         window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', (e) => {
             this.reducedMotion = e.matches;
+            this._updateTargetScrollRatio();
+            if (this.reducedMotion) {
+                this.currentScrollRatio = this.targetScrollRatio;
+                this._applyScrollRatio(this.currentScrollRatio);
+                this._stopSmoothScrollLoop();
+            } else {
+                this._startSmoothScrollLoop();
+            }
         });
     }
 
@@ -76,10 +87,62 @@ class FilmEffects {
         document.body.style.setProperty('--film-exposure', exp);
     }
 
-    _updateScrollRatio() {
+    _computeScrollRatio() {
         const docHeight = document.documentElement.scrollHeight - window.innerHeight;
-        const ratio = docHeight > 0 ? Math.min(1, window.scrollY / docHeight) : 0;
+        return docHeight > 0 ? Math.min(1, window.scrollY / docHeight) : 0;
+    }
+
+    _applyScrollRatio(ratio) {
         document.body.style.setProperty('--scroll-ratio', ratio);
+    }
+
+    _updateTargetScrollRatio() {
+        this.targetScrollRatio = this._computeScrollRatio();
+        if (this.scrollSettleTimeout) {
+            clearTimeout(this.scrollSettleTimeout);
+        }
+        this.scrollSettleTimeout = setTimeout(() => {
+            this.isAnimatingScroll = false;
+        }, 120);
+    }
+
+    _startSmoothScrollLoop() {
+        this.isAnimatingScroll = true;
+        if (this.scrollRaf != null) return;
+        const step = () => {
+            if (this.reducedMotion) {
+                this.currentScrollRatio = this.targetScrollRatio;
+            } else {
+                const delta = this.targetScrollRatio - this.currentScrollRatio;
+                this.currentScrollRatio += delta * 0.16;
+                if (Math.abs(delta) < 0.0006) {
+                    this.currentScrollRatio = this.targetScrollRatio;
+                }
+            }
+
+            this._applyScrollRatio(this.currentScrollRatio);
+
+            const stillMoving = Math.abs(this.targetScrollRatio - this.currentScrollRatio) > 0.0006;
+            if (this.isAnimatingScroll || stillMoving) {
+                this.scrollRaf = requestAnimationFrame(step);
+                return;
+            }
+            this._stopSmoothScrollLoop();
+        };
+        this.scrollRaf = requestAnimationFrame(step);
+    }
+
+    _stopSmoothScrollLoop() {
+        if (this.scrollRaf != null) {
+            cancelAnimationFrame(this.scrollRaf);
+            this.scrollRaf = null;
+        }
+    }
+
+    _updateScrollRatio() {
+        this.targetScrollRatio = this._computeScrollRatio();
+        this.currentScrollRatio = this.targetScrollRatio;
+        this._applyScrollRatio(this.currentScrollRatio);
     }
 }
 

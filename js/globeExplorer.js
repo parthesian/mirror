@@ -43,9 +43,7 @@ class GlobeExplorer {
         this.clickCycleState = null;
         this.lastManualRotateAt = 0;
         this.locationGroupByKey = new Map();
-        this.countryPointIndices = new Map();
         this.hoverHighlight = { type: null, key: null };
-        this.hoverCountryToleranceDeg = 30;
         this.isFilterPanelExpanded = false;
 
         this._bindEvents();
@@ -126,12 +124,85 @@ class GlobeExplorer {
         return bestIdx;
     }
 
+    _collectIntersectingLocationKeys(hits, pointerPx, camera, renderer, group, THREE, maxPixelDistance = 15) {
+        if (!Array.isArray(hits) || !hits.length) return [];
+        const width = renderer.domElement.clientWidth || 1;
+        const height = renderer.domElement.clientHeight || 1;
+        const worldQuat = group.getWorldQuaternion(new THREE.Quaternion());
+        const maxSq = maxPixelDistance * maxPixelDistance;
+        const byKey = new Map();
+
+        for (const hit of hits) {
+            const idx = hit.index;
+            if (idx == null || idx >= this.locationUnitVectors.length) continue;
+            const worldPos = this.locationUnitVectors[idx].clone().multiplyScalar(1.01).applyQuaternion(worldQuat);
+            const ndc = worldPos.clone().project(camera);
+            if (ndc.z < -1 || ndc.z > 1) continue;
+            const sx = (ndc.x * 0.5 + 0.5) * width;
+            const sy = (-ndc.y * 0.5 + 0.5) * height;
+            const dx = sx - pointerPx.x;
+            const dy = sy - pointerPx.y;
+            const d2 = dx * dx + dy * dy;
+            if (d2 > maxSq) continue;
+
+            const key = this._locationKeyFor(this.locations[idx]);
+            const prev = byKey.get(key);
+            if (!prev || d2 < prev.distSq) {
+                byKey.set(key, { key, distSq: d2 });
+            }
+        }
+
+        return Array.from(byKey.values())
+            .sort((a, b) => {
+                if (a.distSq !== b.distSq) return a.distSq - b.distSq;
+                return a.key.localeCompare(b.key);
+            })
+            .map((x) => x.key);
+    }
+
+    _resolveIntersectCycle(THREE, clickDir, intersectKeys, preferredKey = '') {
+        const keys = Array.isArray(intersectKeys) ? intersectKeys.filter(Boolean) : [];
+        if (!keys.length) {
+            return { key: preferredKey || '', position: 0, total: preferredKey ? 1 : 0 };
+        }
+
+        const now = Date.now();
+        const clusterKey = keys.join(',');
+        const anchorTolerance = THREE.MathUtils.degToRad(1.75);
+        const cycleTimeoutMs = 2000;
+        let position = keys.indexOf(preferredKey);
+        if (position === -1) position = 0;
+
+        const canCycle = Boolean(
+            this.clickCycleState
+            && this.clickCycleState.clusterKey === clusterKey
+            && (now - this.clickCycleState.timestamp) <= cycleTimeoutMs
+            && this.clickCycleState.anchorDir.dot(clickDir) >= Math.cos(anchorTolerance)
+        );
+        if (canCycle) {
+            position = (this.clickCycleState.position + 1) % keys.length;
+        }
+
+        this.clickCycleState = {
+            anchorDir: clickDir.clone(),
+            clusterKey,
+            position,
+            timestamp: now
+        };
+
+        return {
+            key: keys[position],
+            position,
+            total: keys.length
+        };
+    }
+
     _applyDotHighlight() {
         const s = this.threeState;
         if (!s?.dotColors || !s?.dotsMesh?.geometry) return;
 
         const colors = s.dotColors;
-        const base = [1.0, 1.0, 1.0];
+        const base = [0.74, 0.74, 0.74];
         const highlight = [1.0, 1.0, 1.0];
         for (let i = 0; i < this.locations.length; i++) {
             const p = i * 3;
@@ -143,8 +214,6 @@ class GlobeExplorer {
         let indices = [];
         if (this.hoverHighlight.type === 'location' && this.hoverHighlight.key) {
             indices = this.locationGroupByKey.get(this.hoverHighlight.key)?.indices || [];
-        } else if (this.hoverHighlight.type === 'country' && this.hoverHighlight.key) {
-            indices = this.countryPointIndices.get(this.hoverHighlight.key) || [];
         }
 
         for (const idx of indices) {
@@ -158,25 +227,6 @@ class GlobeExplorer {
         if (colorAttr) {
             colorAttr.needsUpdate = true;
         }
-        this._updateHighlightOutline(indices);
-    }
-
-    _updateHighlightOutline(indices) {
-        const s = this.threeState;
-        if (!s?.highlightOutlineMesh?.geometry) return;
-        const positions = new Float32Array(indices.length * 3);
-        const radius = 1.013;
-        for (let i = 0; i < indices.length; i++) {
-            const v = this.locationUnitVectors[indices[i]];
-            if (!v) continue;
-            positions[i * 3] = v.x * radius;
-            positions[i * 3 + 1] = v.y * radius;
-            positions[i * 3 + 2] = v.z * radius;
-        }
-        const geometry = s.highlightOutlineMesh.geometry;
-        geometry.setAttribute('position', new window.THREE.BufferAttribute(positions, 3));
-        geometry.attributes.position.needsUpdate = true;
-        geometry.computeBoundingSphere();
     }
 
     // ── event wiring ──
@@ -450,23 +500,6 @@ class GlobeExplorer {
         console.log('[GlobeExplorer] globe mesh added');
 
         const dotsMesh = this._buildDots(THREE, group);
-        let highlightOutlineMesh = null;
-        if (dotsMesh) {
-            const outlineGeo = new THREE.BufferGeometry();
-            outlineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
-            const outlineMat = new THREE.PointsMaterial({
-                color: 0x000000,
-                size: 0.095,
-                sizeAttenuation: true,
-                transparent: true,
-                opacity: 0.32,
-                depthWrite: false,
-                depthTest: true
-            });
-            highlightOutlineMesh = new THREE.Points(outlineGeo, outlineMat);
-            highlightOutlineMesh.renderOrder = 0;
-            group.add(highlightOutlineMesh);
-        }
         this._buildArcs(THREE, group);
         const raycaster = new THREE.Raycaster();
         raycaster.params.Points = { threshold: 0.034 };
@@ -532,13 +565,7 @@ class GlobeExplorer {
                 this._setHoverHighlight(null, null);
                 return;
             }
-            const hoverDir = globeHits[0].point.clone().normalize();
-            const nearest = this._pickNearestCountryFromSurface(THREE, hoverDir, group, this.hoverCountryToleranceDeg);
-            if (nearest?.location?.country) {
-                this._setHoverHighlight('country', nearest.location.country);
-            } else {
-                this._setHoverHighlight(null, null);
-            }
+            this._setHoverHighlight(null, null);
         });
         renderer.domElement.addEventListener('wheel', () => {
             if (this.pointerGesture) {
@@ -581,57 +608,47 @@ class GlobeExplorer {
                 if (preciseIdx != null && preciseIdx < this.locations.length) {
                     const selectedLocation = this.locations[preciseIdx];
                     const preferredKey = this._locationKeyFor(selectedLocation);
-                    const picked = this._resolveClusterClick(THREE, clickDir, group, preferredKey);
-                    if (picked && picked.location?.country) {
-                        if (picked.location.location) {
-                            this._setPendingFilterSelection('location', picked.location.location);
+                    const intersectKeys = this._collectIntersectingLocationKeys(
+                        hits,
+                        { x: e.clientX - rect.left, y: e.clientY - rect.top },
+                        camera,
+                        renderer,
+                        group,
+                        THREE,
+                        15
+                    );
+                    const cycle = this._resolveIntersectCycle(
+                        THREE,
+                        clickDir,
+                        intersectKeys.length ? intersectKeys : [preferredKey],
+                        preferredKey
+                    );
+                    const selectedKey = cycle.key || preferredKey;
+                    const selectedGroup = this.locationGroupByKey.get(selectedKey);
+                    const selectedForPanel = selectedGroup?.sample || selectedLocation;
+                    if (selectedForPanel?.country) {
+                        if (selectedForPanel.location) {
+                            this._setPendingFilterSelection('location', selectedForPanel.location);
                         } else {
-                            this._setPendingFilterSelection('country', picked.location.country);
+                            this._setPendingFilterSelection('country', selectedForPanel.country);
                         }
-                        this._showPointPanel(picked.location, picked);
+                        this._showPointPanel(selectedForPanel, {
+                            clusterPosition: cycle.position,
+                            clusterTotal: cycle.total
+                        });
                     }
                     return;
                 }
             }
 
-            const gesture = this.lastPointerGesture || {};
-            if (gesture.dragged || gesture.hadWheel) {
-                return;
-            }
-
-            const now = Date.now();
-            const rotatedRecently = (now - this.lastManualRotateAt) < 2200;
-            const centerDir = this._getGlobeCenterDirection(raycaster, camera, globe) || clickDir;
-            const nearestByClick = this._pickNearestCountryFromSurface(THREE, clickDir, group, 24);
-            const nearestByCenter = this._pickNearestCountryFromSurface(THREE, centerDir, group, 28);
-
-            let nearest = nearestByClick;
-            let inferenceDir = clickDir;
-            if (rotatedRecently && nearestByCenter) {
-                nearest = nearestByCenter;
-                inferenceDir = centerDir;
-            } else if (nearestByCenter && nearestByClick && nearestByCenter.angleDeg <= (nearestByClick.angleDeg + 4)) {
-                nearest = nearestByCenter;
-                inferenceDir = centerDir;
-            } else if (!nearest && nearestByCenter) {
-                nearest = nearestByCenter;
-                inferenceDir = centerDir;
-            }
-
-            if (!nearest || !nearest.location?.country || !nearest.key) {
-                return;
-            }
-            const picked = this._resolveClusterClick(THREE, inferenceDir, group, nearest.key);
-            if (!picked || !picked.location?.country) return;
-            this._setPendingFilterSelection('country', picked.location.country);
-            this._showInferredCountryPanel(picked.location.country, picked.location, picked.angleDeg, picked);
+            // No country inference on miss; keep selection only for direct point hits.
+            return;
         });
 
         const state = {
             renderer, scene, camera, group, globe, controls, geo, mat, tex,
             rafId: null, disposed: false, onResize: null, dotsMesh,
-            dotColors: dotsMesh?.geometry?.getAttribute('color')?.array || null,
-            highlightOutlineMesh
+            dotColors: dotsMesh?.geometry?.getAttribute('color')?.array || null
         };
 
         state.onResize = () => {
@@ -670,8 +687,6 @@ class GlobeExplorer {
             s.geo?.dispose();
             s.mat?.dispose();
             s.tex?.dispose();
-            s.highlightOutlineMesh?.geometry?.dispose();
-            s.highlightOutlineMesh?.material?.dispose();
             s.renderer?.dispose();
             if (s.renderer?.domElement?.parentNode) {
                 s.renderer.domElement.parentNode.removeChild(s.renderer.domElement);
@@ -701,7 +716,6 @@ class GlobeExplorer {
         this.locationUnitVectors = [];
         this.locationGroups = [];
         this.locationGroupByKey = new Map();
-        this.countryPointIndices = new Map();
         const groupMap = new Map();
 
         for (let i = 0; i < this.locations.length; i++) {
@@ -716,13 +730,6 @@ class GlobeExplorer {
 
             const loc = this.locations[i];
             const key = this._locationKeyFor(loc);
-            const country = String(loc.country || '').trim();
-            if (country) {
-                if (!this.countryPointIndices.has(country)) {
-                    this.countryPointIndices.set(country, []);
-                }
-                this.countryPointIndices.get(country).push(i);
-            }
             if (!groupMap.has(key)) {
                 groupMap.set(key, {
                     key,
