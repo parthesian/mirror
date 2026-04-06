@@ -202,8 +202,8 @@ class GlobeExplorer {
         if (!s?.dotColors || !s?.dotsMesh?.geometry) return;
 
         const colors = s.dotColors;
-        const base = [0.74, 0.74, 0.74];
-        const highlight = [1.0, 1.0, 1.0];
+        const base = [1.0, 1.0, 1.0];
+        const highlight = [0.3, 0.3, 0.3];
         for (let i = 0; i < this.locations.length; i++) {
             const p = i * 3;
             colors[p] = base[0];
@@ -780,8 +780,8 @@ class GlobeExplorer {
             size: 0.06,
             sizeAttenuation: true,
             transparent: true,
-            opacity: 0.9,
-            blending: THREE.AdditiveBlending,
+            opacity: 0.94,
+            blending: THREE.NormalBlending,
             depthWrite: false
         });
 

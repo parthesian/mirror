@@ -24,6 +24,8 @@ class Gallery {
             scrollDirection: 0,
             lastScrollTime: 0
         };
+        this.keyScrollRaf = null;
+        this.keyScrollDirection = 0;
 
         this.renderState = {
             startIndex: -1,
@@ -62,6 +64,7 @@ class Gallery {
                 return;
             }
             if (window.app && window.app.modal && window.app.modal.isModalOpen()) {
+                this.stopContinuousKeyScroll();
                 return;
             }
             switch (event.key) {
@@ -90,6 +93,7 @@ class Gallery {
         document.addEventListener('keyup', (event) => {
             if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
                 this.scrollState.isScrolling = false;
+                this.stopContinuousKeyScroll();
             }
         });
 
@@ -560,17 +564,39 @@ class Gallery {
     // ── keyboard scroll ──
 
     handleScrollKey(distance, isRepeat) {
-        const now = Date.now();
         if (!isRepeat) {
             this.scrollState.isScrolling = true;
             this.scrollState.scrollDirection = distance;
-            this.scrollState.lastScrollTime = now;
+            this.scrollState.lastScrollTime = Date.now();
+            this.stopContinuousKeyScroll();
             window.scrollBy({ top: distance, behavior: 'smooth' });
             return;
         }
-        if (now - this.scrollState.lastScrollTime > 16) {
-            window.scrollBy({ top: Math.sign(distance) * 50, behavior: 'auto' });
-            this.scrollState.lastScrollTime = now;
+        this.startContinuousKeyScroll(Math.sign(distance));
+    }
+
+    startContinuousKeyScroll(direction) {
+        if (!direction) return;
+        this.keyScrollDirection = direction;
+        if (this.keyScrollRaf != null) return;
+
+        let lastTs = performance.now();
+        const pxPerSecond = 900;
+        const step = (ts) => {
+            const dt = Math.min(40, ts - lastTs);
+            lastTs = ts;
+            const delta = this.keyScrollDirection * pxPerSecond * (dt / 1000);
+            window.scrollBy({ top: delta, behavior: 'auto' });
+            this.keyScrollRaf = requestAnimationFrame(step);
+        };
+
+        this.keyScrollRaf = requestAnimationFrame(step);
+    }
+
+    stopContinuousKeyScroll() {
+        if (this.keyScrollRaf != null) {
+            cancelAnimationFrame(this.keyScrollRaf);
+            this.keyScrollRaf = null;
         }
     }
 
