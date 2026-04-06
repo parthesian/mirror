@@ -197,6 +197,21 @@ class GlobeExplorer {
             .map((x) => x.key);
     }
 
+    _collectUniqueHitLocationKeys(hits) {
+        if (!Array.isArray(hits) || !hits.length) return [];
+        const seen = new Set();
+        const keys = [];
+        for (const hit of hits) {
+            const idx = hit.index;
+            if (idx == null || idx >= this.locations.length) continue;
+            const key = this._locationKeyFor(this.locations[idx]);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            keys.push(key);
+        }
+        return keys;
+    }
+
     _applyDotHighlight() {
         const s = this.threeState;
         if (!s?.dotColors || !s?.dotsMesh?.geometry) return;
@@ -619,9 +634,12 @@ class GlobeExplorer {
                         renderer,
                         group,
                         THREE,
-                        15
+                        22
                     );
-                    const candidateKeys = intersectKeys.length ? intersectKeys : [preferredKey];
+                    const rawHitKeys = this._collectUniqueHitLocationKeys(hits);
+                    const candidateKeys = intersectKeys.length > 1
+                        ? intersectKeys
+                        : (rawHitKeys.length > 1 ? rawHitKeys : [preferredKey]);
                     const uniqueKeys = [...new Set(candidateKeys)];
                     const options = uniqueKeys
                         .map((key) => {
