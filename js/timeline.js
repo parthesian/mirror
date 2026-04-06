@@ -11,6 +11,7 @@ class Timeline {
         this.groups = [];
         this.activeKey = null;
         this.monthElements = new Map();
+        this.lockedKey = null;
 
         if (!this.container) return;
 
@@ -21,6 +22,15 @@ class Timeline {
     bindEvents() {
         window.addEventListener('scroll', () => this.scheduleSync(), { passive: true });
         document.addEventListener('galleryUpdated', () => this.syncActiveFromScroll());
+
+        const unlock = () => { this.lockedKey = null; };
+        window.addEventListener('wheel', unlock, { passive: true });
+        window.addEventListener('touchstart', unlock, { passive: true });
+        window.addEventListener('keydown', (e) => {
+            if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(e.key)) {
+                unlock();
+            }
+        }, { passive: true });
     }
 
     scheduleSync() {
@@ -115,6 +125,10 @@ class Timeline {
         year = Number(year);
         month = Number(month);
 
+        const key = `${year}-${month}`;
+        this.lockedKey = key;
+        this.setActive(key);
+
         const findTarget = () => {
             return this.imageService.images.findIndex(img => {
                 const ym = this.imageYearMonth(img);
@@ -144,7 +158,23 @@ class Timeline {
         window.scrollTo({ top: Math.max(0, targetY - 80), behavior: 'smooth' });
     }
 
+    setActive(key) {
+        if (key === this.activeKey) return;
+        this.activeKey = key;
+
+        this.monthElements.forEach((el, k) => {
+            el.classList.toggle('active', k === key);
+        });
+
+        const activeEl = this.monthElements.get(key);
+        if (activeEl) {
+            activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+    }
+
     syncActiveFromScroll() {
+        if (this.lockedKey) return;
+
         const images = this.imageService.images;
         if (!images || images.length === 0 || this.monthElements.size === 0) return;
 
@@ -161,17 +191,7 @@ class Timeline {
         const ym = this.imageYearMonth(img);
         const key = `${ym.year}-${ym.month}`;
 
-        if (key === this.activeKey) return;
-        this.activeKey = key;
-
-        this.monthElements.forEach((el, k) => {
-            el.classList.toggle('active', k === key);
-        });
-
-        const activeEl = this.monthElements.get(key);
-        if (activeEl) {
-            activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        }
+        this.setActive(key);
     }
 }
 
