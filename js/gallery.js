@@ -311,12 +311,19 @@ class Gallery {
     }
 
     fullRebuild(images, startIndex, endIndex, layout) {
-        this.mountedItems.clear();
         const fragment = document.createDocumentFragment();
+        const activeIds = new Set();
 
         for (let i = startIndex; i < endIndex; i++) {
             const node = this.getOrCreateItem(images[i], i, layout);
             fragment.appendChild(node);
+            activeIds.add(images[i].id);
+        }
+
+        for (const [id] of this.mountedItems) {
+            if (!activeIds.has(id)) {
+                this.mountedItems.delete(id);
+            }
         }
 
         this.windowGrid.innerHTML = '';
