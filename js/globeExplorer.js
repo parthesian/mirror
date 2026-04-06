@@ -98,7 +98,7 @@ class GlobeExplorer {
 
         const colors = s.dotColors;
         const base = [1.0, 1.0, 1.0];
-        const highlight = [1.0, 0.82, 0.18];
+        const highlight = [1.0, 1.0, 1.0];
         for (let i = 0; i < this.locations.length; i++) {
             const p = i * 3;
             colors[p] = base[0];
@@ -124,6 +124,25 @@ class GlobeExplorer {
         if (colorAttr) {
             colorAttr.needsUpdate = true;
         }
+        this._updateHighlightOutline(indices);
+    }
+
+    _updateHighlightOutline(indices) {
+        const s = this.threeState;
+        if (!s?.highlightOutlineMesh?.geometry) return;
+        const positions = new Float32Array(indices.length * 3);
+        const radius = 1.013;
+        for (let i = 0; i < indices.length; i++) {
+            const v = this.locationUnitVectors[indices[i]];
+            if (!v) continue;
+            positions[i * 3] = v.x * radius;
+            positions[i * 3 + 1] = v.y * radius;
+            positions[i * 3 + 2] = v.z * radius;
+        }
+        const geometry = s.highlightOutlineMesh.geometry;
+        geometry.setAttribute('position', new window.THREE.BufferAttribute(positions, 3));
+        geometry.attributes.position.needsUpdate = true;
+        geometry.computeBoundingSphere();
     }
 
     // ── event wiring ──
@@ -397,6 +416,23 @@ class GlobeExplorer {
         console.log('[GlobeExplorer] globe mesh added');
 
         const dotsMesh = this._buildDots(THREE, group);
+        let highlightOutlineMesh = null;
+        if (dotsMesh) {
+            const outlineGeo = new THREE.BufferGeometry();
+            outlineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+            const outlineMat = new THREE.PointsMaterial({
+                color: 0x000000,
+                size: 0.12,
+                sizeAttenuation: true,
+                transparent: true,
+                opacity: 0.95,
+                depthWrite: false,
+                depthTest: false
+            });
+            highlightOutlineMesh = new THREE.Points(outlineGeo, outlineMat);
+            highlightOutlineMesh.renderOrder = 10;
+            group.add(highlightOutlineMesh);
+        }
         this._buildArcs(THREE, group);
         const raycaster = new THREE.Raycaster();
         raycaster.params.Points = { threshold: 0.06 };
@@ -542,7 +578,8 @@ class GlobeExplorer {
         const state = {
             renderer, scene, camera, group, globe, controls, geo, mat, tex,
             rafId: null, disposed: false, onResize: null, dotsMesh,
-            dotColors: dotsMesh?.geometry?.getAttribute('color')?.array || null
+            dotColors: dotsMesh?.geometry?.getAttribute('color')?.array || null,
+            highlightOutlineMesh
         };
 
         state.onResize = () => {
@@ -581,6 +618,8 @@ class GlobeExplorer {
             s.geo?.dispose();
             s.mat?.dispose();
             s.tex?.dispose();
+            s.highlightOutlineMesh?.geometry?.dispose();
+            s.highlightOutlineMesh?.material?.dispose();
             s.renderer?.dispose();
             if (s.renderer?.domElement?.parentNode) {
                 s.renderer.domElement.parentNode.removeChild(s.renderer.domElement);

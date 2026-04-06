@@ -115,19 +115,20 @@ body {
     height: 100%;
     border: 1px solid #999;
     border-radius: 50%;
-    background: linear-gradient(135deg, #f0f0f0 0%, #e0e0e0 50%, #d0d0d0 100%);
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(2px);
     position: relative;
     transition: all 0.3s ease;
     box-shadow: 
-        inset 0 1px 3px rgba(0, 0, 0, 0.1),
-        0 1px 2px rgba(0, 0, 0, 0.1);
+        inset 0 1px 2px rgba(255, 255, 255, 0.06),
+        0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
 .dial-face:hover {
     border-color: #333;
     box-shadow: 
-        inset 0 1px 3px rgba(0, 0, 0, 0.15),
-        0 2px 4px rgba(0, 0, 0, 0.15);
+        inset 0 1px 2px rgba(255, 255, 255, 0.08),
+        0 2px 6px rgba(0, 0, 0, 0.16);
 }
 
 .dial-markings {
@@ -238,7 +239,6 @@ body {
 
 /* Default dial colors (exposure-0) */
 body.exposure-0 .dial-face {
-    background: linear-gradient(135deg, #c8c8c8 0%, #b8b8b8 50%, #a8a8a8 100%);
     border-color: #999999;
 }
 
@@ -253,7 +253,6 @@ body.exposure-0 .dial-mark.active {
 
 /* Dial color themes for different exposures */
 body.exposure--3 .dial-face {
-    background: linear-gradient(135deg, #333333 0%, #222222 50%, #111111 100%);
     border-color: #666666;
 }
 
@@ -267,7 +266,6 @@ body.exposure--3 .dial-mark.active {
 }
 
 body.exposure--2 .dial-face {
-    background: linear-gradient(135deg, #555555 0%, #444444 50%, #333333 100%);
     border-color: #777777;
 }
 
@@ -281,7 +279,6 @@ body.exposure--2 .dial-mark.active {
 }
 
 body.exposure--1 .dial-face {
-    background: linear-gradient(135deg, #888888 0%, #777777 50%, #666666 100%);
     border-color: #999999;
 }
 
@@ -295,7 +292,6 @@ body.exposure--1 .dial-mark.active {
 }
 
 body.exposure-1 .dial-face {
-    background: linear-gradient(135deg, #dddddd 0%, #cccccc 50%, #bbbbbb 100%);
     border-color: #aaaaaa;
 }
 
@@ -309,7 +305,6 @@ body.exposure-1 .dial-mark.active {
 }
 
 body.exposure-2 .dial-face {
-    background: linear-gradient(135deg, #f5f5f5 0%, #eeeeee 50%, #e0e0e0 100%);
     border-color: #cccccc;
 }
 
@@ -323,7 +318,6 @@ body.exposure-2 .dial-mark.active {
 }
 
 body.exposure-3 .dial-face {
-    background: linear-gradient(135deg, #ffffff 0%, #f8f8f8 50%, #f0f0f0 100%);
     border-color: #dddddd;
 }
 
@@ -3148,8 +3142,8 @@ body.exposure-3  { --leak-opacity: 0.35; }
     position: absolute;
     top: 2rem;
     right: 5.2rem;
-    width: 34px;
-    height: 34px;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
     border: 1px solid currentColor;
     background: transparent;
@@ -3511,8 +3505,8 @@ body.exposure-3 .country-filter-panel {
     .globe-rotate-btn {
         top: 0.9rem;
         right: 3.7rem;
-        width: 30px;
-        height: 30px;
+        width: 35px;
+        height: 35px;
     }
 
     .globe-explorer-panel {
