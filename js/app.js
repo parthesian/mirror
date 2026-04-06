@@ -3,10 +3,13 @@
  */
 class PhotoGalleryApp {
     constructor() {
-        this.imageService = null;
+            this.imageService = null;
         this.gallery = null;
         this.modal = null;
         this.timeline = null;
+        this.filmEffects = null;
+        this.ambientParticles = null;
+        this.globeExplorer = null;
         
         this.init();
     }
@@ -42,6 +45,9 @@ class PhotoGalleryApp {
             this.gallery = new Gallery(this.imageService);
             this.modal = new Modal(this.imageService);
             this.timeline = new Timeline(this.imageService, this.gallery);
+            this.filmEffects = new FilmEffects();
+            this.ambientParticles = new AmbientParticles(this.gallery);
+            this.globeExplorer = new GlobeExplorer(this.imageService);
             
             // Set up global error handling
             this.setupErrorHandling();

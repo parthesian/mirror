@@ -6,20 +6,34 @@ async function listPhotos(context) {
     const url = new URL(request.url);
     const limit = parseLimit(url.searchParams.get('limit'));
     const cursor = decodeCursor(url.searchParams.get('cursor'));
+    const countryFilter = url.searchParams.get('country') || '';
 
     if (url.searchParams.get('cursor') && !cursor) {
         return errorResponse('Invalid cursor supplied.', 400);
     }
 
-    let statement = env.PHOTO_DB.prepare(`
-        SELECT id, storage_key, location, description, taken_at, uploaded_at, width, height, latitude, longitude, country
-        FROM photos
-    `);
+    const cols = 'id, storage_key, location, description, taken_at, uploaded_at, width, height, latitude, longitude, country';
+    let statement;
 
-    if (cursor) {
+    if (cursor && countryFilter) {
         statement = env.PHOTO_DB.prepare(`
-            SELECT id, storage_key, location, description, taken_at, uploaded_at, width, height, latitude, longitude, country
-            FROM photos
+            SELECT ${cols} FROM photos
+            WHERE country = ?
+              AND (taken_at < ?
+                   OR (taken_at = ? AND uploaded_at < ?)
+                   OR (taken_at = ? AND uploaded_at = ? AND id < ?))
+            ORDER BY taken_at DESC, uploaded_at DESC, id DESC
+            LIMIT ?
+        `).bind(
+            countryFilter,
+            cursor.takenAt,
+            cursor.takenAt, cursor.uploadedAt,
+            cursor.takenAt, cursor.uploadedAt, cursor.id,
+            limit + 1
+        );
+    } else if (cursor) {
+        statement = env.PHOTO_DB.prepare(`
+            SELECT ${cols} FROM photos
             WHERE taken_at < ?
                OR (taken_at = ? AND uploaded_at < ?)
                OR (taken_at = ? AND uploaded_at = ? AND id < ?)
@@ -31,10 +45,16 @@ async function listPhotos(context) {
             cursor.takenAt, cursor.uploadedAt, cursor.id,
             limit + 1
         );
+    } else if (countryFilter) {
+        statement = env.PHOTO_DB.prepare(`
+            SELECT ${cols} FROM photos
+            WHERE country = ?
+            ORDER BY taken_at DESC, uploaded_at DESC, id DESC
+            LIMIT ?
+        `).bind(countryFilter, limit + 1);
     } else {
         statement = env.PHOTO_DB.prepare(`
-            SELECT id, storage_key, location, description, taken_at, uploaded_at, width, height, latitude, longitude, country
-            FROM photos
+            SELECT ${cols} FROM photos
             ORDER BY taken_at DESC, uploaded_at DESC, id DESC
             LIMIT ?
         `).bind(limit + 1);

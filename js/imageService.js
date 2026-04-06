@@ -13,6 +13,7 @@ class ImageService {
         this.nextCursor = null;
         this.activeLoadPromise = null;
         this.activeLoadKind = null;
+        this.countryFilter = null;
     }
 
     /**
@@ -152,6 +153,9 @@ class ImageService {
         url.searchParams.set('limit', this.limit.toString());
         if (cursor) {
             url.searchParams.set('cursor', cursor);
+        }
+        if (this.countryFilter) {
+            url.searchParams.set('country', this.countryFilter);
         }
 
         const response = await fetch(url.toString(), {
@@ -717,6 +721,25 @@ class ImageService {
             month: 'long',
             day: 'numeric'
         });
+    }
+
+    /**
+     * Filter gallery by country. Re-fetches from page 1.
+     * @param {string} country - Country name to filter by
+     * @returns {Promise<Array>} Filtered photos
+     */
+    async setCountryFilter(country) {
+        this.countryFilter = country || null;
+        return this.fetchImages();
+    }
+
+    /**
+     * Clear any active country filter and reload unfiltered.
+     * @returns {Promise<Array>} All photos
+     */
+    async clearFilter() {
+        this.countryFilter = null;
+        return this.fetchImages();
     }
 
     /**

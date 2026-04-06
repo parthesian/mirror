@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Photo gallery application",
   "scripts": {
+    "dev": "npx wrangler pages dev . --live-reload",
     "build": "node build.js",
     "generate:d1-import": "node scripts/generate-d1-import.mjs"
   },
@@ -13,5 +14,8 @@
     "jose": "^6.2.2",
     "three": "^0.160.0",
     "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "wrangler": "^4.80.0"
   }
 }
