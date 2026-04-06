@@ -1,8 +1,7 @@
 /**
- * AmbientEffect - Seasonal heat-distortion ripple on the background.
- * Draws slow expanding concentric rings with a faint seasonal color tint.
- * Winter: icy white shimmer. Spring: soft green. Summer: warm amber.
- * Autumn: burnt orange / red.
+ * AmbientEffect - random ripple emitters + interference distortion.
+ * Ripples spawn at random points every N seconds and visually distort
+ * at intersections (collision zones).
  */
 class AmbientParticles {
     constructor(gallery) {
@@ -14,9 +13,14 @@ class AmbientParticles {
         this.season = null;
         this.targetSeason = null;
         this.blend = 1;
-        this.rafId = null;
-        this.time = 0;
         this.darkMode = false;
+
+        this.ripples = [];
+        this.maxRipples = 12;
+        this.lastSpawnMs = 0;
+        this.spawnAccumulator = 0;
+        this.nowMs = 0;
+        this.rafId = null;
 
         this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         if (this.reducedMotion) return;
@@ -62,9 +66,7 @@ class AmbientParticles {
         this.height = window.innerHeight;
         this.canvas.width = this.width;
         this.canvas.height = this.height;
-        this.cx = this.width / 2;
-        this.cy = this.height / 2;
-        this.maxRadius = Math.hypot(this.cx, this.cy);
+        this.maxRadius = Math.hypot(this.width, this.height);
     }
 
     _detectSeason() {
@@ -92,20 +94,43 @@ class AmbientParticles {
         }
     }
 
-    _seasonColor(season) {
+    _seasonProfile(season) {
+        // User-requested seasonal tint palette:
+        // green / red / orange / shiny white.
         switch (season) {
-            case 'winter': return { r: 200, g: 220, b: 255 };
-            case 'spring': return { r: 100, g: 200, b: 120 };
-            case 'summer': return { r: 255, g: 190, b: 100 };
-            case 'autumn': return { r: 220, g: 120, b: 60 };
-            default:       return { r: 180, g: 180, b: 180 };
+            case 'spring':
+                return { color: { r: 100, g: 220, b: 120 }, spawnMs: 1800, speed: 72 };
+            case 'summer':
+                return { color: { r: 255, g: 175, b: 90 }, spawnMs: 1300, speed: 92 };
+            case 'autumn':
+                return { color: { r: 220, g: 80, b: 70 }, spawnMs: 1600, speed: 80 };
+            case 'winter':
+                return { color: { r: 235, g: 240, b: 255 }, spawnMs: 2200, speed: 64 };
+            default:
+                return { color: { r: 200, g: 200, b: 200 }, spawnMs: 1800, speed: 75 };
+        }
+    }
+
+    _spawnRipple(profile) {
+        const margin = 30;
+        this.ripples.push({
+            x: margin + Math.random() * (this.width - margin * 2),
+            y: margin + Math.random() * (this.height - margin * 2),
+            radius: 0,
+            speed: profile.speed * (0.85 + Math.random() * 0.35),
+            width: 18 + Math.random() * 16,
+            strength: 0.7 + Math.random() * 0.6
+        });
+
+        if (this.ripples.length > this.maxRipples) {
+            this.ripples.shift();
         }
     }
 
     _startLoop() {
         if (this.rafId) return;
-        const tick = () => {
-            this._update();
+        const tick = (ts) => {
+            this._update(ts || performance.now());
             this._draw();
             this.rafId = requestAnimationFrame(tick);
         };
@@ -122,65 +147,119 @@ class AmbientParticles {
         }
     }
 
-    _update() {
-        this.time += 0.004;
+    _update(nowMs) {
+        const profile = this._seasonProfile(this.season || this.targetSeason);
+        const dt = this.nowMs ? (nowMs - this.nowMs) / 1000 : 0;
+        this.nowMs = nowMs;
 
         if (this.targetSeason !== this.season) {
-            this.blend += 0.008;
+            this.blend += dt * 0.7;
             if (this.blend >= 1) {
                 this.season = this.targetSeason;
                 this.blend = 1;
             }
         }
+
+        // Random emitter point every N seconds
+        this.spawnAccumulator += dt * 1000;
+        if (this.spawnAccumulator >= profile.spawnMs) {
+            this.spawnAccumulator = 0;
+            this._spawnRipple(profile);
+        }
+
+        for (let i = this.ripples.length - 1; i >= 0; i--) {
+            const r = this.ripples[i];
+            r.radius += r.speed * dt;
+            if (r.radius - r.width > this.maxRadius * 0.7) {
+                this.ripples.splice(i, 1);
+            }
+        }
+    }
+
+    _drawRipple(ripple, profile, baseAlpha) {
+        const c = profile.color;
+        const life = Math.min(1, ripple.radius / (this.maxRadius * 0.55));
+        const fade = Math.max(0, 1 - life);
+        const ringAlpha = baseAlpha * fade * ripple.strength;
+        if (ringAlpha < 0.002) return;
+
+        const inner = Math.max(0, ripple.radius - ripple.width * 0.5);
+        const outer = ripple.radius + ripple.width * 0.5;
+
+        const grad = this.ctx.createRadialGradient(
+            ripple.x, ripple.y, inner,
+            ripple.x, ripple.y, outer
+        );
+        grad.addColorStop(0, `rgba(${c.r}, ${c.g}, ${c.b}, 0)`);
+        grad.addColorStop(0.45, `rgba(${c.r}, ${c.g}, ${c.b}, ${ringAlpha})`);
+        grad.addColorStop(0.55, `rgba(${c.r}, ${c.g}, ${c.b}, ${ringAlpha})`);
+        grad.addColorStop(1, `rgba(${c.r}, ${c.g}, ${c.b}, 0)`);
+
+        this.ctx.fillStyle = grad;
+        this.ctx.fillRect(0, 0, this.width, this.height);
+    }
+
+    _drawCollisionDistortion(a, b, profile, baseAlpha) {
+        // Collision zone: wavefronts intersect -> local "distortion lens".
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        const waveGap = Math.abs((a.radius + b.radius) - d);
+        const threshold = (a.width + b.width) * 0.9;
+        if (waveGap > threshold) return;
+
+        const c = profile.color;
+        const t = 1 - (waveGap / Math.max(threshold, 1));
+        const alpha = baseAlpha * 0.8 * t;
+        if (alpha < 0.003) return;
+
+        const mx = (a.x + b.x) * 0.5;
+        const my = (a.y + b.y) * 0.5;
+        const lensR = 24 + t * 34;
+
+        const lens = this.ctx.createRadialGradient(mx, my, 0, mx, my, lensR);
+        lens.addColorStop(0, `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`);
+        lens.addColorStop(0.65, `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha * 0.45})`);
+        lens.addColorStop(1, `rgba(${c.r}, ${c.g}, ${c.b}, 0)`);
+
+        this.ctx.fillStyle = lens;
+        this.ctx.fillRect(mx - lensR, my - lensR, lensR * 2, lensR * 2);
+
+        // Distortion streak connecting colliding fronts.
+        const angle = Math.atan2(b.y - a.y, b.x - a.x);
+        const halfLen = 18 + t * 18;
+        const x1 = mx - Math.cos(angle) * halfLen;
+        const y1 = my - Math.sin(angle) * halfLen;
+        const x2 = mx + Math.cos(angle) * halfLen;
+        const y2 = my + Math.sin(angle) * halfLen;
+
+        this.ctx.strokeStyle = `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha * 0.7})`;
+        this.ctx.lineWidth = 1.1 + t * 1.2;
+        this.ctx.beginPath();
+        this.ctx.moveTo(x1, y1);
+        this.ctx.quadraticCurveTo(mx + Math.sin(angle) * 8, my - Math.cos(angle) * 8, x2, y2);
+        this.ctx.stroke();
     }
 
     _draw() {
         const ctx = this.ctx;
         ctx.clearRect(0, 0, this.width, this.height);
 
-        const season = this.season;
+        const season = this.season || this.targetSeason;
         if (!season) return;
+        const profile = this._seasonProfile(season);
 
-        const col = this._seasonColor(season);
-        const baseOpacity = this.darkMode ? 0.06 : 0.035;
-        const alpha = baseOpacity * this.blend;
+        const baseAlpha = (this.darkMode ? 0.07 : 0.045) * this.blend;
+        if (baseAlpha < 0.001) return;
 
-        const ringCount = 5;
-        const speed = this.time;
-        const period = this.maxRadius * 1.2;
+        // Rings
+        for (let i = 0; i < this.ripples.length; i++) {
+            this._drawRipple(this.ripples[i], profile, baseAlpha);
+        }
 
-        for (let i = 0; i < ringCount; i++) {
-            const phase = (i / ringCount) * period;
-            const rawRadius = ((speed * 80 + phase) % period);
-            const radius = rawRadius;
-
-            const life = radius / period;
-            const fadeIn = Math.min(1, life * 4);
-            const fadeOut = Math.max(0, 1 - life);
-            const ringAlpha = alpha * fadeIn * fadeOut;
-
-            if (ringAlpha < 0.001) continue;
-
-            const wobbleX = Math.sin(speed * 0.7 + i * 1.3) * 30;
-            const wobbleY = Math.cos(speed * 0.5 + i * 0.9) * 20;
-            const centerX = this.cx + wobbleX;
-            const centerY = this.cy + wobbleY;
-
-            const thickness = 40 + radius * 0.15;
-            const inner = Math.max(0, radius - thickness / 2);
-            const outer = radius + thickness / 2;
-
-            const grad = ctx.createRadialGradient(
-                centerX, centerY, inner,
-                centerX, centerY, outer
-            );
-            grad.addColorStop(0, `rgba(${col.r}, ${col.g}, ${col.b}, 0)`);
-            grad.addColorStop(0.4, `rgba(${col.r}, ${col.g}, ${col.b}, ${ringAlpha})`);
-            grad.addColorStop(0.6, `rgba(${col.r}, ${col.g}, ${col.b}, ${ringAlpha})`);
-            grad.addColorStop(1, `rgba(${col.r}, ${col.g}, ${col.b}, 0)`);
-
-            ctx.fillStyle = grad;
-            ctx.fillRect(0, 0, this.width, this.height);
+        // Interference/collision distortion
+        for (let i = 0; i < this.ripples.length; i++) {
+            for (let j = i + 1; j < this.ripples.length; j++) {
+                this._drawCollisionDistortion(this.ripples[i], this.ripples[j], profile, baseAlpha);
+            }
         }
     }
 }

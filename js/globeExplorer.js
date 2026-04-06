@@ -45,6 +45,7 @@ class GlobeExplorer {
 
     async open() {
         if (this.isOpen) return;
+        console.log('[GlobeExplorer] open() called');
         this.isOpen = true;
         this.overlay.classList.remove('hidden');
         this.overlay.classList.add('active');
@@ -54,7 +55,7 @@ class GlobeExplorer {
             await this._fetchLocations();
             await this._initScene();
         } catch (err) {
-            console.error('GlobeExplorer: failed to initialize', err);
+            console.error('[GlobeExplorer] failed to initialize', err);
         }
     }
 
@@ -74,10 +75,12 @@ class GlobeExplorer {
             const base = (window.CONFIG?.API_BASE_URL || '').replace(/\/$/, '');
             const url = base ? `${base}/api/photos/geo` : '/api/photos/geo';
             const res = await fetch(url);
+            console.log('[GlobeExplorer] geo fetch status:', res.status, res.statusText, 'url:', url);
             const data = await res.json();
             this.locations = Array.isArray(data.locations) ? data.locations : [];
+            console.log('[GlobeExplorer] geo locations loaded:', this.locations.length);
         } catch (err) {
-            console.error('GlobeExplorer: failed to fetch geo data', err);
+            console.error('[GlobeExplorer] failed to fetch geo data', err);
             this.locations = [];
         }
 
@@ -125,18 +128,25 @@ class GlobeExplorer {
         if (this.threeState) return;
 
         const THREE = await this._loadThree();
-        const OrbitControls = await this._loadOrbitControls(THREE);
+        let OrbitControls = null;
+        try {
+            OrbitControls = await this._loadOrbitControls(THREE);
+        } catch (err) {
+            console.warn('[GlobeExplorer] OrbitControls unavailable, continuing without controls', err);
+        }
 
         await new Promise(r => requestAnimationFrame(r));
         const rect = this.sceneContainer.getBoundingClientRect();
         const w = rect.width || 600;
         const h = rect.height || 600;
+        console.log('[GlobeExplorer] scene container size:', { width: w, height: h, rect });
 
         const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
         renderer.setSize(w, h);
         this.sceneContainer.innerHTML = '';
         this.sceneContainer.appendChild(renderer.domElement);
+        console.log('[GlobeExplorer] renderer canvas appended:', renderer.domElement.width, renderer.domElement.height);
 
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 1000);
@@ -150,27 +160,39 @@ class GlobeExplorer {
         front.position.set(0, 0, 5);
         scene.add(front);
 
-        const controls = new OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.08;
-        controls.enablePan = false;
-        controls.minDistance = 1.8;
-        controls.maxDistance = 6;
-        controls.rotateSpeed = 0.5;
-        if (window.innerWidth <= 768) {
-            controls.enableZoom = false;
+        let controls = null;
+        if (OrbitControls) {
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.08;
+            controls.enablePan = false;
+            controls.minDistance = 1.8;
+            controls.maxDistance = 6;
+            controls.rotateSpeed = 0.5;
+            if (window.innerWidth <= 768) {
+                controls.enableZoom = false;
+            }
         }
 
         const group = new THREE.Group();
         scene.add(group);
 
         const geo = new THREE.SphereGeometry(1, 64, 64);
-        const tex = await new THREE.TextureLoader().loadAsync('public/earth_atmos_2048.jpg');
-        tex.colorSpace = THREE.SRGBColorSpace;
-        const mat = new THREE.MeshPhongMaterial({ map: tex, shininess: 1, color: 0xcccccc });
+        let tex = null;
+        let mat = null;
+        try {
+            tex = await new THREE.TextureLoader().loadAsync('public/earth_atmos_2048.jpg');
+            tex.colorSpace = THREE.SRGBColorSpace;
+            mat = new THREE.MeshPhongMaterial({ map: tex, shininess: 1, color: 0xcccccc });
+            console.log('[GlobeExplorer] texture loaded successfully');
+        } catch (err) {
+            console.warn('[GlobeExplorer] texture load failed, using fallback material', err);
+            mat = new THREE.MeshPhongMaterial({ color: 0xbdbdbd, shininess: 1 });
+        }
         const globe = new THREE.Mesh(geo, mat);
         globe.rotation.y = -Math.PI / 2;
         group.add(globe);
+        console.log('[GlobeExplorer] globe mesh added');
 
         const dotsMesh = this._buildDots(THREE, group);
         this._buildArcs(THREE, group);
@@ -215,11 +237,12 @@ class GlobeExplorer {
 
         const animate = () => {
             if (state.disposed) return;
-            controls.update();
+            if (controls) controls.update();
             renderer.render(scene, camera);
             state.rafId = requestAnimationFrame(animate);
         };
         animate();
+        console.log('[GlobeExplorer] animation loop started');
 
         this.threeState = state;
     }
