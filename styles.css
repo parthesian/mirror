@@ -88,6 +88,8 @@ body {
 
 .timeline-reveal-btn {
     margin-top: 0.45rem;
+    margin-left: auto;
+    margin-right: auto;
     width: 22px;
     height: 22px;
     border: 1px solid #999;
@@ -1004,9 +1006,12 @@ body.exposure-3 .scroll-loading p {
 
 .timeline-sidebar.timeline-popout {
     left: 8px !important;
-    padding-left: 4px;
-    backdrop-filter: blur(4px);
-    background: rgba(255, 255, 255, 0.2);
+    padding-left: 6px;
+    padding-right: 6px;
+    padding-top: 0.65rem;
+    border: 1px solid currentColor;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.18);
 }
 
 .country-filter-chip {
@@ -3673,6 +3678,8 @@ body.exposure-0 .country-filter-panel {
 body.exposure--1 .country-filter-body,
 body.exposure-0 .country-filter-body {
     background: rgba(20, 20, 20, 0.78);
+    color: #f2f2f2;
+    border-color: rgba(255, 255, 255, 0.28);
     backdrop-filter: blur(12px);
 }
 
@@ -3688,6 +3695,61 @@ body.exposure-3 .country-filter-body {
     color: #141414;
     border-color: rgba(0, 0, 0, 0.15);
     backdrop-filter: blur(12px);
+}
+
+/* Timeline popout mirrors filter popup tone per exposure */
+body.exposure--3 .timeline-sidebar.timeline-popout,
+body.exposure--2 .timeline-sidebar.timeline-popout {
+    background: rgba(10, 10, 10, 0.82);
+    color: #f2f2f2;
+    border-color: rgba(255, 255, 255, 0.22);
+}
+
+body.exposure--1 .timeline-sidebar.timeline-popout,
+body.exposure-0 .timeline-sidebar.timeline-popout {
+    background: rgba(20, 20, 20, 0.78);
+    color: #f2f2f2;
+    border-color: rgba(255, 255, 255, 0.28);
+}
+
+body.exposure-1 .timeline-sidebar.timeline-popout,
+body.exposure-2 .timeline-sidebar.timeline-popout,
+body.exposure-3 .timeline-sidebar.timeline-popout {
+    background: rgba(245, 245, 245, 0.84);
+    color: #141414;
+    border-color: rgba(0, 0, 0, 0.15);
+}
+
+body.exposure--3 .timeline-sidebar.timeline-popout .timeline-line,
+body.exposure--2 .timeline-sidebar.timeline-popout .timeline-line,
+body.exposure--1 .timeline-sidebar.timeline-popout .timeline-line,
+body.exposure-0 .timeline-sidebar.timeline-popout .timeline-line {
+    background: rgba(255, 255, 255, 0.22);
+}
+
+body.exposure--3 .timeline-sidebar.timeline-popout .timeline-year,
+body.exposure--2 .timeline-sidebar.timeline-popout .timeline-year,
+body.exposure--1 .timeline-sidebar.timeline-popout .timeline-year,
+body.exposure-0 .timeline-sidebar.timeline-popout .timeline-year {
+    color: #e4e4e4;
+}
+
+body.exposure--3 .timeline-sidebar.timeline-popout .timeline-month,
+body.exposure--2 .timeline-sidebar.timeline-popout .timeline-month,
+body.exposure--1 .timeline-sidebar.timeline-popout .timeline-month,
+body.exposure-0 .timeline-sidebar.timeline-popout .timeline-month {
+    color: #bdbdbd;
+}
+
+body.exposure--3 .timeline-sidebar.timeline-popout .timeline-month:hover,
+body.exposure--2 .timeline-sidebar.timeline-popout .timeline-month:hover,
+body.exposure--1 .timeline-sidebar.timeline-popout .timeline-month:hover,
+body.exposure-0 .timeline-sidebar.timeline-popout .timeline-month:hover,
+body.exposure--3 .timeline-sidebar.timeline-popout .timeline-month.active,
+body.exposure--2 .timeline-sidebar.timeline-popout .timeline-month.active,
+body.exposure--1 .timeline-sidebar.timeline-popout .timeline-month.active,
+body.exposure-0 .timeline-sidebar.timeline-popout .timeline-month.active {
+    color: #ffffff;
 }
 
 /* Globe explorer responsive */
