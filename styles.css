@@ -519,6 +519,7 @@ body.exposure-3 .nav-link.active::after {
 /* Update button and control colors for different exposures */
 body.exposure--3 .upload-btn,
 body.exposure--3 .zoom-btn,
+body.exposure--3 .timeline-reveal-btn,
 body.exposure--3 .close-btn,
 body.exposure--3 .nav-btn {
     color: #cccccc;
@@ -527,14 +528,21 @@ body.exposure--3 .nav-btn {
 
 body.exposure--3 .upload-btn:hover,
 body.exposure--3 .zoom-btn:hover,
+body.exposure--3 .timeline-reveal-btn:hover,
 body.exposure--3 .close-btn:hover,
 body.exposure--3 .nav-btn:hover {
     color: #ffffff;
     border-color: #ffffff;
 }
 
+body.exposure--3 .timeline-reveal-btn.is-active {
+    color: #ffffff;
+    border-color: #ffffff;
+}
+
 body.exposure--2 .upload-btn,
 body.exposure--2 .zoom-btn,
+body.exposure--2 .timeline-reveal-btn,
 body.exposure--2 .close-btn,
 body.exposure--2 .nav-btn {
     color: #cccccc;
@@ -543,14 +551,21 @@ body.exposure--2 .nav-btn {
 
 body.exposure--2 .upload-btn:hover,
 body.exposure--2 .zoom-btn:hover,
+body.exposure--2 .timeline-reveal-btn:hover,
 body.exposure--2 .close-btn:hover,
 body.exposure--2 .nav-btn:hover {
     color: #ffffff;
     border-color: #ffffff;
 }
 
+body.exposure--2 .timeline-reveal-btn.is-active {
+    color: #ffffff;
+    border-color: #ffffff;
+}
+
 body.exposure--1 .upload-btn,
 body.exposure--1 .zoom-btn,
+body.exposure--1 .timeline-reveal-btn,
 body.exposure--1 .close-btn,
 body.exposure--1 .nav-btn {
     color: #333333;
@@ -559,8 +574,14 @@ body.exposure--1 .nav-btn {
 
 body.exposure--1 .upload-btn:hover,
 body.exposure--1 .zoom-btn:hover,
+body.exposure--1 .timeline-reveal-btn:hover,
 body.exposure--1 .close-btn:hover,
 body.exposure--1 .nav-btn:hover {
+    color: #000000;
+    border-color: #000000;
+}
+
+body.exposure--1 .timeline-reveal-btn.is-active {
     color: #000000;
     border-color: #000000;
 }
