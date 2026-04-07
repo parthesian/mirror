@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>आईना</title>
     <link rel="icon" type="image/svg+xml" href="mirror.svg">
-    <link rel="stylesheet" href="styles.css?v=20260406e">
+    <link rel="stylesheet" href="styles.css?v=20260406h">
     <script type="importmap">
     {
         "imports": {
@@ -35,6 +35,12 @@
                     </div>
                 </div>
             </div>
+            <button id="timeline-reveal-btn" class="timeline-reveal-btn hidden" type="button" aria-label="Show timeline" aria-expanded="false" title="Show timeline">
+                <svg class="timeline-reveal-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="12" r="8.5"></circle>
+                    <path d="M12 7.5V12L15.2 14"></path>
+                </svg>
+            </button>
         </div>
         <div class="gallery-controls">
             <button id="globe-btn" class="zoom-btn" aria-label="Open globe explorer" title="Globe explorer">
@@ -53,12 +59,12 @@
 
     <aside id="timeline" class="timeline-sidebar"></aside>
 
-    <div id="country-filter-panel" class="country-filter-panel">
+    <div id="country-filter-panel" class="country-filter-panel collapsed">
         <button id="country-filter-toggle" class="country-filter-toggle" type="button" aria-expanded="false" aria-label="Expand filter panel" title="Expand filter panel">
             <span class="country-filter-toggle-label">FILTER</span>
             <span id="country-filter-toggle-icon" class="country-filter-toggle-icon">+</span>
         </button>
-        <div id="country-filter-body" class="country-filter-body">
+        <div id="country-filter-body" class="country-filter-body" aria-hidden="true">
             <div id="country-filter-active" class="country-filter-active">ALL</div>
             <div id="country-filter-picker" class="country-filter-picker" aria-label="Choose filter">
                 <div class="country-filter-column">
@@ -155,10 +161,10 @@
     <script src="js/gallery.js?v=20260406e"></script>
     <script src="js/globeService.js?v=20260406e"></script>
     <script src="js/customCalendar.js?v=20260406e"></script>
-    <script src="js/timeline.js?v=20260406e"></script>
+    <script src="js/timeline.js?v=20260406h"></script>
     <script src="js/modal.js?v=20260406e"></script>
     <script src="js/filmEffects.js?v=20260406e"></script>
-    <script src="js/globeExplorer.js?v=20260406g"></script>
+    <script src="js/globeExplorer.js?v=20260406h"></script>
     <script src="js/app.js?v=20260406e"></script>
 </body>
 </html>

@@ -86,6 +86,45 @@ body {
     left: 2rem;
 }
 
+.timeline-reveal-btn {
+    margin-top: 0.45rem;
+    width: 22px;
+    height: 22px;
+    border: 1px solid #999;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.12);
+    color: #444;
+    cursor: pointer;
+    opacity: 0.8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+
+.timeline-reveal-btn:hover {
+    opacity: 1;
+    border-color: #333;
+    color: #111;
+    transform: scale(1.03);
+}
+
+.timeline-reveal-btn.is-active {
+    border-color: #333;
+    color: #111;
+    opacity: 1;
+}
+
+.timeline-reveal-icon {
+    width: 12px;
+    height: 12px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
 .dial-container {
     width: 48px;
     height: 48px;
@@ -951,7 +990,7 @@ body.exposure-3 .scroll-loading p {
 /* Timeline sidebar */
 .timeline-sidebar {
     position: fixed;
-    left: 0;
+    left: 26px;
     top: 8rem;
     bottom: 0;
     width: 60px;
@@ -961,6 +1000,13 @@ body.exposure-3 .scroll-loading p {
     padding-bottom: 2rem;
     -ms-overflow-style: none;
     scrollbar-width: none;
+}
+
+.timeline-sidebar.timeline-popout {
+    left: 8px !important;
+    padding-left: 4px;
+    backdrop-filter: blur(4px);
+    background: rgba(255, 255, 255, 0.2);
 }
 
 .country-filter-chip {

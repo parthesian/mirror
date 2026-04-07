@@ -8,6 +8,9 @@ class Timeline {
         this.imageService = imageService;
         this.gallery = gallery;
         this.container = document.getElementById('timeline');
+        this.mainContent = document.querySelector('.main-content');
+        this.exposureDial = document.getElementById('exposure-dial');
+        this.revealButton = document.getElementById('timeline-reveal-btn');
         this.groups = [];
         this.activeKey = null;
         this.monthElements = new Map();
@@ -16,18 +19,24 @@ class Timeline {
         this.toggleAllBtn = null;
         this.enabledKeys = new Set();
         this.lockedKey = null;
+        this.isAutoHidden = false;
+        this.isManualOpen = false;
 
         if (!this.container) return;
 
+        this.updateSidebarPosition();
         this.fetchTimeline();
         this.bindEvents();
     }
 
     bindEvents() {
         window.addEventListener('scroll', () => this.scheduleSync(), { passive: true });
+        window.addEventListener('resize', () => this.updateSidebarPosition(), { passive: true });
+        this.revealButton?.addEventListener('click', () => this.toggleAutoHiddenTimeline());
         document.addEventListener('galleryUpdated', async () => {
             await this.refreshEnabledMonths();
             this.syncActiveFromScroll();
+            this.updateSidebarPosition();
         });
 
         const unlock = () => { this.lockedKey = null; };
@@ -171,6 +180,88 @@ class Timeline {
         this.container.appendChild(list);
         this.updateToggleAllUI();
         this.syncActiveFromScroll();
+        this.updateSidebarPosition();
+    }
+
+    toggleAutoHiddenTimeline() {
+        if (!this.isAutoHidden) return;
+        this.isManualOpen = !this.isManualOpen;
+        this.updateSidebarPosition();
+    }
+
+    updateRevealButton() {
+        if (!this.revealButton) return;
+
+        if (!this.isAutoHidden) {
+            this.revealButton.classList.add('hidden');
+            this.revealButton.classList.remove('is-active');
+            this.revealButton.setAttribute('aria-expanded', 'false');
+            this.revealButton.setAttribute('aria-label', 'Show timeline');
+            this.revealButton.setAttribute('title', 'Show timeline');
+            return;
+        }
+
+        this.revealButton.classList.remove('hidden');
+        this.revealButton.classList.toggle('is-active', this.isManualOpen);
+        this.revealButton.setAttribute('aria-expanded', this.isManualOpen ? 'true' : 'false');
+        this.revealButton.setAttribute('aria-label', this.isManualOpen ? 'Hide timeline' : 'Show timeline');
+        this.revealButton.setAttribute('title', this.isManualOpen ? 'Hide timeline' : 'Show timeline');
+    }
+
+    updateSidebarPosition() {
+        if (!this.container) return;
+
+        if (window.innerWidth <= 768) {
+            this.isAutoHidden = false;
+            this.isManualOpen = false;
+            this.container.style.left = '';
+            this.container.style.display = '';
+            this.container.setAttribute('aria-hidden', 'true');
+            this.container.classList.remove('timeline-popout');
+            this.updateRevealButton();
+            return;
+        }
+
+        const timelineWidth = Math.round(
+            parseFloat(window.getComputedStyle(this.container).width) || this.container.offsetWidth || 60
+        );
+        const minimumGap = 16;
+        const mainLeft = this.mainContent?.getBoundingClientRect().left ?? 0;
+        const maxAllowedLeft = Math.floor(mainLeft - timelineWidth - minimumGap);
+
+        if (maxAllowedLeft < 0) {
+            this.isAutoHidden = true;
+            this.updateRevealButton();
+
+            if (this.isManualOpen) {
+                this.container.classList.add('timeline-popout');
+                this.container.style.left = '8px';
+                this.container.style.display = '';
+                this.container.setAttribute('aria-hidden', 'false');
+            } else {
+                this.container.classList.remove('timeline-popout');
+                this.container.style.left = '0px';
+                this.container.style.display = 'none';
+                this.container.setAttribute('aria-hidden', 'true');
+            }
+            return;
+        }
+
+        this.isAutoHidden = false;
+        this.isManualOpen = false;
+        this.updateRevealButton();
+
+        let preferredLeft = 0;
+        if (this.exposureDial) {
+            const dialRect = this.exposureDial.getBoundingClientRect();
+            preferredLeft = Math.round((dialRect.left + dialRect.width / 2) - timelineWidth / 2);
+        }
+
+        const clampedLeft = Math.max(0, Math.min(preferredLeft, maxAllowedLeft));
+        this.container.classList.remove('timeline-popout');
+        this.container.style.left = `${clampedLeft}px`;
+        this.container.style.display = '';
+        this.container.setAttribute('aria-hidden', 'false');
     }
 
     setYearCollapsed(year, collapsed) {
