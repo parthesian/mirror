@@ -45,6 +45,18 @@ class AdminUploadPage {
             event.preventDefault();
             await this.handleSubmit();
         });
+
+        const coordPasteHandler = (event) => {
+            const text = (event.clipboardData || window.clipboardData).getData('text');
+            const match = text.match(/^\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)\s*$/);
+            if (match) {
+                event.preventDefault();
+                this.photoLatitudeInput.value = match[1];
+                this.photoLongitudeInput.value = match[2];
+            }
+        };
+        this.photoLatitudeInput.addEventListener('paste', coordPasteHandler);
+        this.photoLongitudeInput.addEventListener('paste', coordPasteHandler);
     }
 
     async loadSession() {
