@@ -1197,11 +1197,32 @@ class GlobeExplorer {
             depthWrite: false
         });
 
+        const seenEdges = new Set();
         let prev = null;
+        let prevKey = '';
         for (const loc of this.locations) {
-            if (prev && prev.country !== loc.country) {
+            const lat = Number(loc?.latitude);
+            const lon = Number(loc?.longitude);
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+                continue;
+            }
+
+            const locKey = this._locationKeyFor(loc);
+            if (!prev) {
+                prev = loc;
+                prevKey = locKey;
+                continue;
+            }
+
+            if (locKey === prevKey) {
+                continue;
+            }
+
+            const edgeKey = [prevKey, locKey].sort().join('->');
+            if (!seenEdges.has(edgeKey)) {
+                seenEdges.add(edgeKey);
                 const start = this._latLonToVec3(prev.latitude, prev.longitude, radius, THREE);
-                const end = this._latLonToVec3(loc.latitude, loc.longitude, radius, THREE);
+                const end = this._latLonToVec3(lat, lon, radius, THREE);
 
                 const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
                 const dist = start.distanceTo(end);
@@ -1212,7 +1233,9 @@ class GlobeExplorer {
                 const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
                 group.add(new THREE.Line(lineGeo, arcMat));
             }
+
             prev = loc;
+            prevKey = locKey;
         }
     }
 

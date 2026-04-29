@@ -4,11 +4,11 @@ async function getGeoLocations(context) {
     const { env } = context;
 
     const statement = env.PHOTO_DB.prepare(`
-        SELECT id, latitude, longitude, country, location, taken_at
+        SELECT id, latitude, longitude, country, location, taken_at, uploaded_at
         FROM photos
         WHERE latitude IS NOT NULL
           AND longitude IS NOT NULL
-        ORDER BY taken_at ASC
+        ORDER BY taken_at ASC, uploaded_at ASC, id ASC
     `);
 
     const results = await statement.all();
