@@ -241,7 +241,10 @@ class Modal {
     formatLocationWithState(image) {
         const location = String(image?.location || '').trim();
         const state = String(image?.state || '').trim();
-        return state ? `${location}, ${state}` : location;
+        if (!state || state.toLowerCase() === location.toLowerCase()) {
+            return location;
+        }
+        return `${location}, ${state}`;
     }
 
     /**
