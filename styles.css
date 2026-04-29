@@ -2530,6 +2530,10 @@ body.exposure-3 .btn-secondary {
     align-self: flex-end; /* Position in bottom-right of modal info panel */
 }
 
+#modal-globe:not(.hidden) {
+    cursor: pointer;
+}
+
 /* Center globe on mobile */
 @media (max-width: 768px) {
     .globe-container {
@@ -3460,6 +3464,29 @@ body.exposure-3  { --leak-opacity: 0.35; }
     gap: 0.45rem;
 }
 
+.globe-panel-filter-scope {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 0.55rem;
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: lowercase;
+    opacity: 0.72;
+}
+
+.globe-panel-filter-scope select {
+    width: 100%;
+    border: 1px solid currentColor;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: lowercase;
+    padding: 0.42rem 0.5rem;
+    border-radius: 0;
+}
+
 .globe-panel-trip-link {
     display: flex;
     align-items: center;
@@ -3591,9 +3618,16 @@ body.exposure-3 .globe-explorer-panel {
 }
 
 .country-filter-active {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.18rem 0.5rem;
     font-size: 0.86rem;
     margin-bottom: 0.62rem;
     letter-spacing: 0.12em;
+}
+
+.country-filter-active-segment {
+    white-space: nowrap;
 }
 
 .country-filter-picker {

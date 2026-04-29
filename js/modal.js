@@ -10,6 +10,7 @@ class Modal {
         this.modalImage = document.getElementById('modal-image');
         this.modalDescription = document.getElementById('modal-description');
         this.modalLocation = document.getElementById('modal-location');
+        this.modalCountry = document.getElementById('modal-country');
         this.modalCameraRow = document.getElementById('modal-camera-row');
         this.modalCameraName = document.getElementById('modal-camera-name');
         this.modalCameraIconDslr = document.getElementById('modal-camera-icon-dslr');
@@ -92,6 +93,11 @@ class Modal {
 
         this.modal.querySelector('.modal-content').addEventListener('click', (e) => {
             e.stopPropagation();
+        });
+
+        this.globeContainer?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            void this.openCurrentImageInGlobeExplorer();
         });
 
         // Upload modal events
@@ -274,6 +280,15 @@ class Modal {
         this.modalLocation.textContent = this.formatLocationWithState(image);
         this.modalTimestamp.textContent = this.imageService.formatTimestamp(image.timestamp);
 
+        const country = String(image.country || '').trim();
+        if (country && this.modalCountry) {
+            this.modalCountry.classList.remove('hidden');
+            this.modalCountry.textContent = country;
+        } else if (this.modalCountry) {
+            this.modalCountry.classList.add('hidden');
+            this.modalCountry.textContent = '';
+        }
+
         const camera = (image.camera || '').trim();
         if (camera && this.modalCameraRow && this.modalCameraName) {
             this.modalCameraRow.classList.remove('hidden');
@@ -355,6 +370,7 @@ class Modal {
             if (!this.globeService || !this.globeContainer) return;
             
             this.globeContainer.classList.add('hidden');
+            this.globeContainer.removeAttribute('title');
 
             if (this.globeService.instances.has(this.globeContainer)) {
                 await this.globeService.createOrUpdate(this.globeContainer, locationOrOptions);
@@ -365,6 +381,8 @@ class Modal {
             // If unsupported or failed, container will likely be empty; keep hidden
             if (!this.globeContainer.firstChild) {
                 this.globeContainer.classList.add('hidden');
+            } else {
+                this.globeContainer.setAttribute('title', 'Open globe explorer at this location');
             }
         } catch (e) {
             console.warn('Modal.updateGlobe error:', e);
@@ -373,6 +391,22 @@ class Modal {
                 this.globeContainer.classList.add('hidden');
             }
         }
+    }
+
+    async openCurrentImageInGlobeExplorer() {
+        if (!this.currentImageId) return;
+        const image = this.imageService.getImageById(this.currentImageId);
+        if (!image || !window.app?.globeExplorer) return;
+
+        this.close();
+        await window.app.globeExplorer.open({
+            id: image.id,
+            latitude: image.latitude,
+            longitude: image.longitude,
+            country: image.country,
+            state: image.state,
+            location: image.location
+        });
     }
 
     /**

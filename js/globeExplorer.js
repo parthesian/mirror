@@ -71,7 +71,7 @@ class GlobeExplorer {
     _formatFilterLabel(filterType, filterValue, label = '') {
         const labels = {
             country: 'COUNTRY',
-            state: 'STATE',
+            state: 'REGION',
             location: 'PLACE'
         };
         const base = `${labels[filterType] || 'FILTER'}: ${String(filterValue || '').toUpperCase()}`;
@@ -80,12 +80,38 @@ class GlobeExplorer {
 
     _formatSelectedFiltersLabel() {
         const filters = this.selectedFilters || {};
-        const parts = [
+        const parts = this._getSelectedFilterLabels();
+        return parts.length ? parts.join(' · ') : 'ALL';
+    }
+
+    _getSelectedFilterLabels() {
+        const filters = this.selectedFilters || {};
+        return [
             filters.country ? this._formatFilterLabel('country', filters.country) : '',
             filters.state ? this._formatFilterLabel('state', filters.state) : '',
             filters.location ? this._formatFilterLabel('location', filters.location) : ''
         ].filter(Boolean);
-        return parts.length ? parts.join(' · ') : 'ALL';
+    }
+
+    _renderActiveFilterLabel(label = '') {
+        if (!this.filterActive) return;
+        if (label) {
+            this.filterActive.textContent = label;
+            return;
+        }
+
+        const parts = this._getSelectedFilterLabels();
+        this.filterActive.innerHTML = '';
+        if (!parts.length) {
+            this.filterActive.textContent = 'ALL';
+            return;
+        }
+        for (const part of parts) {
+            const span = document.createElement('span');
+            span.className = 'country-filter-active-segment';
+            span.textContent = part;
+            this.filterActive.appendChild(span);
+        }
     }
 
     _locationKeyFor(loc) {
@@ -99,6 +125,15 @@ class GlobeExplorer {
             return `coords:${lat.toFixed(3)},${lon.toFixed(3)}`;
         }
         return `photo:${String(loc?.id || '')}`;
+    }
+
+    _formatLocationWithRegion(loc) {
+        const location = String(loc?.location || '').trim();
+        const region = String(loc?.state || '').trim();
+        if (!region || region.toLowerCase() === location.toLowerCase()) {
+            return location;
+        }
+        return location ? `${location}, ${region}` : region;
     }
 
     _setHoverHighlight(type, key) {
@@ -445,13 +480,13 @@ class GlobeExplorer {
         let html = '<div class="globe-intersect-picker-title">choose location</div>';
         for (const choice of choices) {
             const label = this._escapeHtml(choice.label || choice.key || 'unknown');
-            const country = this._escapeHtml(choice.country || '');
+            const region = this._escapeHtml(choice.state || '');
             const classes = choice.kind === 'country'
                 ? 'globe-intersect-picker-item globe-intersect-picker-item-country'
                 : 'globe-intersect-picker-item';
             html += `<button class="${classes}" data-key="${this._escapeHtml(choice.key)}">
                 <span class="globe-intersect-picker-label">${label}</span>
-                ${country ? `<span class="globe-intersect-picker-country">${country}</span>` : ''}
+                ${region ? `<span class="globe-intersect-picker-country">${region}</span>` : ''}
             </button>`;
         }
         this.intersectPicker.innerHTML = html;
@@ -659,8 +694,13 @@ class GlobeExplorer {
 
     // ── open / close ──
 
-    async open() {
-        if (this.isOpen) return;
+    async open(focusLocation = null) {
+        if (this.isOpen) {
+            if (focusLocation) {
+                await this._focusLocation(focusLocation);
+            }
+            return;
+        }
         this.isOpen = true;
         this.overlay.classList.remove('hidden');
         this.overlay.classList.add('active');
@@ -669,6 +709,9 @@ class GlobeExplorer {
         try {
             await this._fetchLocations();
             await this._initScene();
+            if (focusLocation) {
+                await this._focusLocation(focusLocation);
+            }
             this._syncRotateToggleUI();
         } catch (err) {
             console.error('[GlobeExplorer] failed to initialize', err);
@@ -686,6 +729,69 @@ class GlobeExplorer {
         document.body.style.overflow = '';
         // Keep scene alive for faster subsequent opens.
         // this._destroyScene();
+    }
+
+    async _focusLocation(location) {
+        await this._fetchLocations();
+        if (!this.threeState) return;
+
+        const match = this._findLocationMatch(location) || location;
+        if (!match) return;
+
+        this._rotateToLocation(match);
+        const place = String(match.location || '').trim();
+        if (place) {
+            this._setPendingFilterSelection('location', place, match);
+        } else if (match.state) {
+            this._setPendingFilterSelection('state', match.state, match);
+        } else if (match.country) {
+            this._setPendingFilterSelection('country', match.country, match);
+        }
+        const key = this._locationKeyFor(match);
+        if (this.locationGroupByKey.has(key)) {
+            this._setHoverHighlight('location', key);
+        }
+        this._showPointPanel(match, null);
+    }
+
+    _findLocationMatch(location) {
+        if (!location) return null;
+        const id = String(location.id || '').trim();
+        if (id) {
+            const byId = this.locations.find((loc) => String(loc.id || '') === id);
+            if (byId) return byId;
+        }
+
+        const lat = Number(location.latitude);
+        const lon = Number(location.longitude);
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+            const byCoords = this.locations.find((loc) => (
+                Math.abs(Number(loc.latitude) - lat) < 0.000001 &&
+                Math.abs(Number(loc.longitude) - lon) < 0.000001
+            ));
+            if (byCoords) return byCoords;
+        }
+
+        const key = this._locationKeyFor(location);
+        return this.locationGroupByKey.get(key)?.sample || null;
+    }
+
+    _rotateToLocation(location) {
+        const THREE = window.THREE;
+        const s = this.threeState;
+        const lat = Number(location?.latitude);
+        const lon = Number(location?.longitude);
+        if (!THREE || !s?.group || !Number.isFinite(lat) || !Number.isFinite(lon)) return;
+
+        this.autoRotateEnabled = false;
+        if (s.controls) {
+            s.controls.autoRotate = false;
+            s.controls.reset?.();
+        }
+        s.group.rotation.x = THREE.MathUtils.degToRad(lat);
+        s.group.rotation.y = -Math.PI / 2 - THREE.MathUtils.degToRad(lon);
+        this.lastManualRotateAt = Date.now();
+        this._syncRotateToggleUI();
     }
 
     _warmup() {
@@ -1043,6 +1149,7 @@ class GlobeExplorer {
                             key,
                             label: sample.location || sample.country || 'Unknown',
                             country: sample.country || '',
+                            state: sample.state || '',
                             sample
                         };
                     })
@@ -1333,17 +1440,10 @@ class GlobeExplorer {
         if (!activeLocs.length) return;
 
         const trips = this._groupTrips(activeLocs);
-        const countryEscaped = this._escapeHtml(country);
-        const stateEscaped = this._escapeHtml(state);
-        const placeEscaped = this._escapeHtml(place);
+        const title = this._formatLocationWithRegion(point) || country;
+        const titleEscaped = this._escapeHtml(title);
 
-        let html = `<h3 class="globe-panel-country">${countryEscaped}</h3>`;
-        if (state) {
-            html += `<p class="globe-panel-count">${stateEscaped}</p>`;
-        }
-        if (place) {
-            html += `<p class="globe-panel-count">${placeEscaped}</p>`;
-        }
+        let html = `<h3 class="globe-panel-country">${titleEscaped}</h3>`;
         html += `<p class="globe-panel-count">${activeLocs.length} photo${activeLocs.length !== 1 ? 's' : ''}</p>`;
         html += '<div class="globe-panel-trips">';
 
@@ -1360,26 +1460,36 @@ class GlobeExplorer {
         }
 
         html += '</div>';
+        const placeAndRegionMatch = place && state && place.toLowerCase() === state.toLowerCase();
+        const filterScopes = [
+            place ? { type: 'location', value: place, label: placeAndRegionMatch ? `${place} (place)` : place } : null,
+            state ? { type: 'state', value: state, label: placeAndRegionMatch ? `${state} (region)` : state } : null,
+            country ? { type: 'country', value: country, label: country } : null
+        ].filter(Boolean);
         html += '<div class="globe-panel-actions">';
-        html += `<button class="globe-panel-filter-btn" id="globe-filter-country">show country photos</button>`;
-        if (state) {
-            html += `<button class="globe-panel-filter-btn" id="globe-filter-state">show state photos</button>`;
+        if (filterScopes.length > 1) {
+            html += '<label class="globe-panel-filter-scope">';
+            html += '<span>filter by</span>';
+            html += '<select id="globe-filter-scope-select">';
+            for (const scope of filterScopes) {
+                html += `<option value="${scope.type}" ${scope.type === defaultType ? 'selected' : ''}>${this._escapeHtml(scope.label)}</option>`;
+            }
+            html += '</select>';
+            html += '</label>';
         }
-        if (place) {
-            html += `<button class="globe-panel-filter-btn" id="globe-filter-place">show place photos</button>`;
-        }
+        html += '<button class="globe-panel-filter-btn" id="globe-filter-selected">show photos</button>';
         html += '</div>';
 
         this.panelContent.innerHTML = html;
 
-        document.getElementById('globe-filter-country')?.addEventListener('click', () => {
-            this._applyFilter('country', country);
-        });
-        document.getElementById('globe-filter-state')?.addEventListener('click', () => {
-            this._applyFilter('state', state);
-        });
-        document.getElementById('globe-filter-place')?.addEventListener('click', () => {
-            this._applyFilter('location', place);
+        document.getElementById('globe-filter-selected')?.addEventListener('click', () => {
+            const selectedType = document.getElementById('globe-filter-scope-select')?.value || defaultType;
+            const selectedScope = filterScopes.find((scope) => scope.type === selectedType)
+                || filterScopes.find((scope) => scope.type === defaultType)
+                || filterScopes[0];
+            if (selectedScope) {
+                this._applyFilter(selectedScope.type, selectedScope.value);
+            }
         });
         this.panelContent.querySelectorAll('.globe-panel-trip-link').forEach((el) => {
             el.addEventListener('click', () => {
@@ -1551,7 +1661,7 @@ class GlobeExplorer {
         this.filterTypeList.innerHTML = '';
         const kinds = [
             { type: 'country', label: 'country' },
-            { type: 'state', label: 'state' },
+            { type: 'state', label: 'region' },
             { type: 'location', label: 'place' }
         ];
         for (const kind of kinds) {
@@ -1580,7 +1690,11 @@ class GlobeExplorer {
             btn.textContent = `${item.label} (${item.count})`;
             btn.classList.toggle('active', this.selectedFilters?.[this.selectedFilterType] === item.value);
             btn.addEventListener('click', () => {
-                this._setFilterSelection(this.selectedFilterType, item.value, false);
+                if (this.selectedFilters?.[this.selectedFilterType] === item.value) {
+                    this._clearFilterSelection(this.selectedFilterType, false);
+                } else {
+                    this._setFilterSelection(this.selectedFilterType, item.value, false);
+                }
                 this._renderFilterMenu();
             });
             this.filterOptionList.appendChild(btn);
@@ -1589,13 +1703,13 @@ class GlobeExplorer {
         if (this.filterScopeTitle) {
             const titles = {
                 country: 'countries',
-                state: 'states',
+                state: 'regions',
                 location: 'places'
             };
             this.filterScopeTitle.textContent = titles[this.selectedFilterType] || 'options';
         }
         if (this.filterActive) {
-            this.filterActive.textContent = this._formatSelectedFiltersLabel();
+            this._renderActiveFilterLabel();
         }
     }
 
@@ -1687,6 +1801,24 @@ class GlobeExplorer {
         if (render) this._renderFilterMenu();
     }
 
+    _clearFilterSelection(type, render = true) {
+        if (!this.selectedFilters) {
+            this.selectedFilters = { country: '', state: '', location: '' };
+        }
+        if (type === 'country') {
+            this.selectedFilters.country = '';
+            this.selectedFilters.state = '';
+            this.selectedFilters.location = '';
+        } else if (type === 'state') {
+            this.selectedFilters.state = '';
+            this.selectedFilters.location = '';
+        } else if (type === 'location') {
+            this.selectedFilters.location = '';
+        }
+        this._syncSelectedFilterValue();
+        if (render) this._renderFilterMenu();
+    }
+
     _getMostSpecificFilterSelection() {
         const filters = this.selectedFilters || {};
         if (filters.location) return { type: 'location', value: filters.location };
@@ -1708,9 +1840,7 @@ class GlobeExplorer {
         this._setFilterSelection(filterType, filterValue, false);
         this._renderFilterMenu();
         if (this.filterActive) {
-            this.filterActive.textContent = label
-                ? this._formatFilterLabel(filterType, filterValue, label)
-                : this._formatSelectedFiltersLabel();
+            this._renderActiveFilterLabel(label ? this._formatFilterLabel(filterType, filterValue, label) : '');
         }
 
         this.imageService.countryFilter = null;
