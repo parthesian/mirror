@@ -504,6 +504,25 @@ class GlobeExplorer {
         this.intersectPicker.innerHTML = '';
     }
 
+    _showClickPulse(clientX, clientY) {
+        if (!this.sceneContainer) return;
+        const rect = this.sceneContainer.getBoundingClientRect();
+        const pulse = document.createElement('span');
+        pulse.className = 'globe-click-pulse';
+        pulse.style.left = `${clientX - rect.left}px`;
+        pulse.style.top = `${clientY - rect.top}px`;
+        pulse.setAttribute('aria-hidden', 'true');
+        for (let i = 0; i < 3; i++) {
+            const ring = document.createElement('span');
+            ring.className = 'globe-click-pulse-ring';
+            pulse.appendChild(ring);
+        }
+        this.sceneContainer.appendChild(pulse);
+        pulse.addEventListener('animationend', (event) => {
+            if (event.target === pulse) pulse.remove();
+        }, { once: true });
+    }
+
     _showIntersectPicker(choices, onPick, anchorClient = null) {
         if (!this.intersectPicker) return;
         if (!Array.isArray(choices) || choices.length === 0) {
@@ -1136,6 +1155,10 @@ class GlobeExplorer {
         });
 
         renderer.domElement.addEventListener('click', (e) => {
+            const gesture = this.lastPointerGesture;
+            if (gesture?.dragged || gesture?.hadWheel) {
+                return;
+            }
             const rect = renderer.domElement.getBoundingClientRect();
             mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
             mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -1145,6 +1168,7 @@ class GlobeExplorer {
             if (!globeHits.length) {
                 return;
             }
+            this._showClickPulse(e.clientX, e.clientY);
             const clickDir = globeHits[0].point.clone().normalize();
             const countryHit = this._findCountryFromDirection(THREE, clickDir, group);
             const applyCountryChoice = () => {
