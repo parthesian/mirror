@@ -36,6 +36,7 @@ class GlobeExplorer {
         this._geoFetchedOnce = false;
         this.autoRotateEnabled = true;
         this.locationUnitVectors = [];
+        this.renderedPointLocations = [];
         this.locationGroups = [];
         this.pointerGesture = null;
         this.lastPointerGesture = null;
@@ -520,7 +521,7 @@ class GlobeExplorer {
             const d2 = dx * dx + dy * dy;
             if (d2 > maxSq) continue;
 
-            const key = this._locationKeyFor(this.locations[idx]);
+            const key = this._locationKeyFor(this.renderedPointLocations[idx]);
             const prev = byKey.get(key);
             if (!prev || d2 < prev.distSq) {
                 byKey.set(key, { key, distSq: d2 });
@@ -541,8 +542,8 @@ class GlobeExplorer {
         const keys = [];
         for (const hit of hits) {
             const idx = hit.index;
-            if (idx == null || idx >= this.locations.length) continue;
-            const key = this._locationKeyFor(this.locations[idx]);
+            if (idx == null || idx >= this.renderedPointLocations.length) continue;
+            const key = this._locationKeyFor(this.renderedPointLocations[idx]);
             if (seen.has(key)) continue;
             seen.add(key);
             keys.push(key);
@@ -557,7 +558,7 @@ class GlobeExplorer {
         const colors = s.dotColors;
         const base = [1.0, 1.0, 1.0];
         const highlight = [0.3, 0.3, 0.3];
-        for (let i = 0; i < this.locations.length; i++) {
+        for (let i = 0; i < this.renderedPointLocations.length; i++) {
             const p = i * 3;
             colors[p] = base[0];
             colors[p + 1] = base[1];
@@ -841,7 +842,7 @@ class GlobeExplorer {
         await this._ensureCountryBoundariesLoaded();
 
         const dotsMesh = this._buildDots(THREE, group);
-        this._buildArcs(THREE, group);
+        const arcLines = this._buildArcs(THREE, group);
         const raycaster = new THREE.Raycaster();
         raycaster.params.Points = { threshold: 0.034 };
         const mouse = new THREE.Vector2();
@@ -901,8 +902,8 @@ class GlobeExplorer {
                     THREE,
                     13
                 );
-                if (preciseIdx != null && preciseIdx < this.locations.length) {
-                    const key = this._locationKeyFor(this.locations[preciseIdx]);
+                if (preciseIdx != null && preciseIdx < this.renderedPointLocations.length) {
+                    const key = this._locationKeyFor(this.renderedPointLocations[preciseIdx]);
                     this._setHoverHighlight('location', key);
                     this._clearCountryBorderHighlight();
                     return;
@@ -973,8 +974,8 @@ class GlobeExplorer {
                     THREE,
                     15
                 );
-                const selectedLocation = (preciseIdx != null && preciseIdx < this.locations.length)
-                    ? this.locations[preciseIdx]
+                const selectedLocation = (preciseIdx != null && preciseIdx < this.renderedPointLocations.length)
+                    ? this.renderedPointLocations[preciseIdx]
                     : null;
                 const preferredKey = selectedLocation
                     ? this._locationKeyFor(selectedLocation)
@@ -1060,7 +1061,7 @@ class GlobeExplorer {
 
         const state = {
             renderer, scene, camera, group, globe, controls, geo, mat, tex,
-            rafId: null, disposed: false, onResize: null, dotsMesh,
+            rafId: null, disposed: false, onResize: null, dotsMesh, arcLines,
             dotColors: dotsMesh?.geometry?.getAttribute('color')?.array || null
         };
 
@@ -1100,6 +1101,10 @@ class GlobeExplorer {
             s.geo?.dispose();
             s.mat?.dispose();
             s.tex?.dispose();
+            s.dotsMesh?.geometry?.dispose();
+            s.dotsMesh?.material?.dispose();
+            s.arcLines?.geometry?.dispose();
+            s.arcLines?.material?.dispose();
             s.renderer?.dispose();
             if (s.renderer?.domElement?.parentNode) {
                 s.renderer.domElement.parentNode.removeChild(s.renderer.domElement);
@@ -1123,46 +1128,61 @@ class GlobeExplorer {
     _buildDots(THREE, group) {
         if (this.locations.length === 0) return null;
 
-        const positions = new Float32Array(this.locations.length * 3);
-        const colors = new Float32Array(this.locations.length * 3);
         const radius = 1.01;
         this.locationUnitVectors = [];
+        this.renderedPointLocations = [];
         this.locationGroups = [];
         this.locationGroupByKey = new Map();
         const groupMap = new Map();
 
         for (let i = 0; i < this.locations.length; i++) {
-            const v = this._latLonToVec3(this.locations[i].latitude, this.locations[i].longitude, radius, THREE);
-            positions[i * 3] = v.x;
-            positions[i * 3 + 1] = v.y;
-            positions[i * 3 + 2] = v.z;
-            colors[i * 3] = 1;
-            colors[i * 3 + 1] = 1;
-            colors[i * 3 + 2] = 1;
-            this.locationUnitVectors.push(v.clone().normalize());
-
             const loc = this.locations[i];
+            const lat = Number(loc?.latitude);
+            const lon = Number(loc?.longitude);
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+
+            const v = this._latLonToVec3(lat, lon, radius, THREE);
             const key = this._locationKeyFor(loc);
             if (!groupMap.has(key)) {
                 groupMap.set(key, {
                     key,
                     sample: loc,
-                    indices: [],
-                    sum: new THREE.Vector3()
+                    photoIndices: [],
+                    sum: new THREE.Vector3(),
+                    count: 0
                 });
             }
             const entry = groupMap.get(key);
-            entry.indices.push(i);
+            entry.photoIndices.push(i);
             entry.sum.add(v.clone().normalize());
+            entry.count += 1;
         }
 
-        this.locationGroups = Array.from(groupMap.values()).map((entry) => ({
-            key: entry.key,
-            sample: entry.sample,
-            indices: entry.indices,
-            unitVec: entry.sum.clone().normalize()
-        }));
-        this.locationGroups.forEach((entry) => {
+        this.locationGroups = Array.from(groupMap.values()).map((entry, index) => {
+            const unitVec = entry.sum.clone().normalize();
+            return {
+                key: entry.key,
+                sample: entry.sample,
+                indices: [index],
+                photoIndices: entry.photoIndices,
+                unitVec,
+                count: entry.count
+            };
+        });
+        if (this.locationGroups.length === 0) return null;
+
+        const positions = new Float32Array(this.locationGroups.length * 3);
+        const colors = new Float32Array(this.locationGroups.length * 3);
+        this.locationGroups.forEach((entry, index) => {
+            const v = entry.unitVec.clone().multiplyScalar(radius);
+            positions[index * 3] = v.x;
+            positions[index * 3 + 1] = v.y;
+            positions[index * 3 + 2] = v.z;
+            colors[index * 3] = 1;
+            colors[index * 3 + 1] = 1;
+            colors[index * 3 + 2] = 1;
+            this.locationUnitVectors.push(entry.unitVec.clone());
+            this.renderedPointLocations.push(entry.sample);
             this.locationGroupByKey.set(entry.key, entry);
         });
 
@@ -1181,14 +1201,16 @@ class GlobeExplorer {
         });
 
         const dots = new THREE.Points(dotGeo, dotMat);
+        dots.renderOrder = 2;
         group.add(dots);
         return dots;
     }
 
     _buildArcs(THREE, group) {
-        if (this.locations.length < 2) return;
+        if (this.locations.length < 2) return null;
 
         const radius = 1.01;
+        const minArcAngle = THREE.MathUtils.degToRad(1.0);
         const arcMat = new THREE.LineBasicMaterial({
             color: 0xffffff,
             transparent: true,
@@ -1198,8 +1220,10 @@ class GlobeExplorer {
         });
 
         const seenEdges = new Set();
+        const arcs = [];
         let prev = null;
         let prevKey = '';
+        let sequence = 0;
         for (const loc of this.locations) {
             const lat = Number(loc?.latitude);
             const lon = Number(loc?.longitude);
@@ -1220,23 +1244,47 @@ class GlobeExplorer {
 
             const edgeKey = [prevKey, locKey].sort().join('->');
             if (!seenEdges.has(edgeKey)) {
-                seenEdges.add(edgeKey);
                 const start = this._latLonToVec3(prev.latitude, prev.longitude, radius, THREE);
                 const end = this._latLonToVec3(lat, lon, radius, THREE);
-
-                const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
-                const dist = start.distanceTo(end);
-                mid.normalize().multiplyScalar(radius + dist * 0.3);
-
-                const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
-                const points = curve.getPoints(32);
-                const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
-                group.add(new THREE.Line(lineGeo, arcMat));
+                const angle = start.clone().normalize().angleTo(end.clone().normalize());
+                if (angle >= minArcAngle) {
+                    seenEdges.add(edgeKey);
+                    arcs.push({ start, end, angle, sequence });
+                    sequence += 1;
+                }
             }
 
             prev = loc;
             prevKey = locKey;
         }
+
+        if (!arcs.length) return null;
+
+        arcs.sort((a, b) => {
+            if (b.angle !== a.angle) return b.angle - a.angle;
+            return a.sequence - b.sequence;
+        });
+
+        const segmentPoints = [];
+        for (const arc of arcs) {
+            const mid = new THREE.Vector3().addVectors(arc.start, arc.end).multiplyScalar(0.5);
+            const dist = arc.start.distanceTo(arc.end);
+            mid.normalize().multiplyScalar(radius + dist * 0.3);
+
+            const curve = new THREE.QuadraticBezierCurve3(arc.start, mid, arc.end);
+            const angleDeg = THREE.MathUtils.radToDeg(arc.angle);
+            const segments = Math.max(8, Math.min(32, Math.ceil(angleDeg / 4)));
+            const points = curve.getPoints(segments);
+            for (let i = 1; i < points.length; i++) {
+                segmentPoints.push(points[i - 1], points[i]);
+            }
+        }
+
+        const lineGeo = new THREE.BufferGeometry().setFromPoints(segmentPoints);
+        const arcLines = new THREE.LineSegments(lineGeo, arcMat);
+        arcLines.renderOrder = 1;
+        group.add(arcLines);
+        return arcLines;
     }
 
     // ── panel ──
