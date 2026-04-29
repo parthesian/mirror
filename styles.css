@@ -1026,7 +1026,6 @@ body.exposure-3 .scroll-loading p {
 }
 
 .timeline-sidebar.timeline-popout {
-    left: 8px !important;
     padding-left: 6px;
     padding-right: 6px;
     padding-top: 0.65rem;

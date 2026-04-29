@@ -235,8 +235,8 @@ class Timeline {
 
             if (this.isManualOpen) {
                 this.container.classList.add('timeline-popout');
-                this.container.style.left = '8px';
                 this.container.style.display = '';
+                this.container.style.left = `${this.getAnchoredLeft()}px`;
                 this.container.setAttribute('aria-hidden', 'false');
             } else {
                 this.container.classList.remove('timeline-popout');
@@ -262,6 +262,20 @@ class Timeline {
         this.container.style.left = `${clampedLeft}px`;
         this.container.style.display = '';
         this.container.setAttribute('aria-hidden', 'false');
+    }
+
+    getAnchoredLeft() {
+        const anchor = this.revealButton || this.exposureDial;
+        const anchorRect = anchor?.getBoundingClientRect();
+        const timelineWidth = Math.round(this.container.offsetWidth || 60);
+
+        if (!anchorRect) return 8;
+
+        const viewportPadding = 8;
+        const preferredLeft = Math.round((anchorRect.left + anchorRect.width / 2) - timelineWidth / 2);
+        const maxLeft = Math.max(viewportPadding, window.innerWidth - timelineWidth - viewportPadding);
+
+        return Math.max(viewportPadding, Math.min(preferredLeft, maxLeft));
     }
 
     setYearCollapsed(year, collapsed) {
