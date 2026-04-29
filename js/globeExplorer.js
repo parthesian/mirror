@@ -619,6 +619,18 @@ class GlobeExplorer {
         }
     }
 
+    _getCameraFacingDirection(THREE, camera, group) {
+        const cameraPos = camera.getWorldPosition(new THREE.Vector3());
+        const groupPos = group.getWorldPosition(new THREE.Vector3());
+        return cameraPos.sub(groupPos).normalize();
+    }
+
+    _isLocationPointFacingCamera(idx, worldQuat, cameraDir) {
+        if (idx == null || idx >= this.locationUnitVectors.length) return false;
+        const worldNormal = this.locationUnitVectors[idx].clone().applyQuaternion(worldQuat).normalize();
+        return worldNormal.dot(cameraDir) > 0.015;
+    }
+
     _showIntersectPicker(choices, onPick, anchorClient = null) {
         if (!this.intersectPicker) return;
         if (!Array.isArray(choices) || choices.length === 0) {
@@ -678,6 +690,7 @@ class GlobeExplorer {
         const width = renderer.domElement.clientWidth || 1;
         const height = renderer.domElement.clientHeight || 1;
         const worldQuat = group.getWorldQuaternion(new THREE.Quaternion());
+        const cameraDir = this._getCameraFacingDirection(THREE, camera, group);
         let bestIdx = null;
         let bestDistSq = Infinity;
         const maxSq = maxPixelDistance * maxPixelDistance;
@@ -685,6 +698,7 @@ class GlobeExplorer {
         for (const hit of hits) {
             const idx = hit.index;
             if (idx == null || idx >= this.locationUnitVectors.length) continue;
+            if (!this._isLocationPointFacingCamera(idx, worldQuat, cameraDir)) continue;
             const worldPos = this.locationUnitVectors[idx].clone().multiplyScalar(1.01).applyQuaternion(worldQuat);
             const ndc = worldPos.clone().project(camera);
             if (ndc.z < -1 || ndc.z > 1) continue;
@@ -706,12 +720,14 @@ class GlobeExplorer {
         const width = renderer.domElement.clientWidth || 1;
         const height = renderer.domElement.clientHeight || 1;
         const worldQuat = group.getWorldQuaternion(new THREE.Quaternion());
+        const cameraDir = this._getCameraFacingDirection(THREE, camera, group);
         const maxSq = maxPixelDistance * maxPixelDistance;
         const byKey = new Map();
 
         for (const hit of hits) {
             const idx = hit.index;
             if (idx == null || idx >= this.locationUnitVectors.length) continue;
+            if (!this._isLocationPointFacingCamera(idx, worldQuat, cameraDir)) continue;
             const worldPos = this.locationUnitVectors[idx].clone().multiplyScalar(1.01).applyQuaternion(worldQuat);
             const ndc = worldPos.clone().project(camera);
             if (ndc.z < -1 || ndc.z > 1) continue;
@@ -737,13 +753,16 @@ class GlobeExplorer {
             .map((x) => x.key);
     }
 
-    _collectUniqueHitLocationKeys(hits) {
+    _collectUniqueHitLocationKeys(hits, camera, group, THREE) {
         if (!Array.isArray(hits) || !hits.length) return [];
+        const worldQuat = group.getWorldQuaternion(new THREE.Quaternion());
+        const cameraDir = this._getCameraFacingDirection(THREE, camera, group);
         const seen = new Set();
         const keys = [];
         for (const hit of hits) {
             const idx = hit.index;
             if (idx == null || idx >= this.renderedPointLocations.length) continue;
+            if (!this._isLocationPointFacingCamera(idx, worldQuat, cameraDir)) continue;
             const key = this._locationKeyFor(this.renderedPointLocations[idx]);
             if (seen.has(key)) continue;
             seen.add(key);
@@ -1309,7 +1328,7 @@ class GlobeExplorer {
                 const expandedHits = raycaster.intersectObject(dotsMesh);
                 raycaster.params.Points.threshold = previousThreshold;
 
-                const rawHitKeys = this._collectUniqueHitLocationKeys(expandedHits);
+                const rawHitKeys = this._collectUniqueHitLocationKeys(expandedHits, camera, group, THREE);
                 let candidateKeys = [];
                 if (intersectKeys.length > 1) candidateKeys = intersectKeys;
                 else if (rawHitKeys.length > 1) candidateKeys = rawHitKeys;
