@@ -14,6 +14,7 @@ class ImageService {
         this.activeLoadPromise = null;
         this.activeLoadKind = null;
         this.countryFilter = null;
+        this.stateFilter = null;
         this.locationFilter = null;
         this.takenFromFilter = null;
         this.takenToFilter = null;
@@ -103,6 +104,7 @@ class ImageService {
             latitude: photo.latitude ?? null,
             longitude: photo.longitude ?? null,
             country: photo.country || '',
+            state: photo.state || '',
             camera: photo.camera || '',
             detailLoaded: true
         };
@@ -133,6 +135,7 @@ class ImageService {
             latitude: null,
             longitude: null,
             country: '',
+            state: '',
             camera: '',
             detailLoaded: false
         };
@@ -211,6 +214,9 @@ class ImageService {
         }
         if (this.countryFilter) {
             url.searchParams.set('country', this.countryFilter);
+        }
+        if (this.stateFilter) {
+            url.searchParams.set('state', this.stateFilter);
         }
         if (this.locationFilter) {
             url.searchParams.set('location', this.locationFilter);
@@ -603,6 +609,9 @@ class ImageService {
                 if (coords.country) {
                     formData.append('country', coords.country);
                 }
+                if (coords.state) {
+                    formData.append('state', coords.state);
+                }
             }
 
             const cameraTrimmed = (camera || '').toString().trim();
@@ -814,6 +823,21 @@ class ImageService {
      */
     async setCountryFilter(country, takenFrom = null, takenTo = null) {
         this.countryFilter = country || null;
+        this.stateFilter = null;
+        this.locationFilter = null;
+        this.takenFromFilter = takenFrom || null;
+        this.takenToFilter = takenTo || null;
+        return this.fetchImages();
+    }
+
+    /**
+     * Filter gallery by exact state string. Re-fetches from page 1.
+     * @param {string} state - State / region label to filter by
+     * @returns {Promise<Array>} Filtered photos
+     */
+    async setStateFilter(state, takenFrom = null, takenTo = null) {
+        this.stateFilter = state || null;
+        this.countryFilter = null;
         this.locationFilter = null;
         this.takenFromFilter = takenFrom || null;
         this.takenToFilter = takenTo || null;
@@ -828,6 +852,7 @@ class ImageService {
     async setLocationFilter(location, takenFrom = null, takenTo = null) {
         this.locationFilter = location || null;
         this.countryFilter = null;
+        this.stateFilter = null;
         this.takenFromFilter = takenFrom || null;
         this.takenToFilter = takenTo || null;
         return this.fetchImages();
@@ -839,6 +864,7 @@ class ImageService {
      */
     async clearFilter() {
         this.countryFilter = null;
+        this.stateFilter = null;
         this.locationFilter = null;
         this.takenFromFilter = null;
         this.takenToFilter = null;

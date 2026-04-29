@@ -85,6 +85,7 @@ export function mapPhotoRecord(record) {
         latitude: record.latitude ?? null,
         longitude: record.longitude ?? null,
         country: record.country || '',
+        state: record.state || '',
         camera: record.camera || '',
         storageKey: record.storage_key,
         image: {

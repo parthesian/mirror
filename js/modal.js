@@ -238,6 +238,12 @@ class Modal {
         }, 300); // Match CSS transition duration
     }
 
+    formatLocationWithState(image) {
+        const location = String(image?.location || '').trim();
+        const state = String(image?.state || '').trim();
+        return state ? `${location}, ${state}` : location;
+    }
+
     /**
      * Load image content into modal
      * @param {Object} image - Image object
@@ -262,7 +268,7 @@ class Modal {
 
         // Set text content
         this.modalDescription.textContent = image.description;
-        this.modalLocation.textContent = image.location;
+        this.modalLocation.textContent = this.formatLocationWithState(image);
         this.modalTimestamp.textContent = this.imageService.formatTimestamp(image.timestamp);
 
         const camera = (image.camera || '').trim();

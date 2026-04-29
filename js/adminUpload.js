@@ -13,6 +13,7 @@ class AdminUploadPage {
         this.photoLatitudeInput = document.getElementById('photo-latitude');
         this.photoLongitudeInput = document.getElementById('photo-longitude');
         this.photoCountryInput = document.getElementById('photo-country');
+        this.photoStateInput = document.getElementById('photo-state');
         this.photoCameraInput = document.getElementById('photo-camera');
         this.previewImage = document.getElementById('preview-image');
         this.fileStatusIcon = document.getElementById('file-status-icon');
@@ -128,6 +129,7 @@ class AdminUploadPage {
         const latitudeValue = this.photoLatitudeInput.value.trim();
         const longitudeValue = this.photoLongitudeInput.value.trim();
         const countryValue = this.photoCountryInput.value.trim();
+        const stateValue = this.photoStateInput ? this.photoStateInput.value.trim() : '';
         const cameraValue = this.photoCameraInput ? this.photoCameraInput.value.trim() : '';
 
         if (!file) {
@@ -161,6 +163,9 @@ class AdminUploadPage {
         }
         if (countryValue) {
             coords.country = countryValue;
+        }
+        if (stateValue) {
+            coords.state = stateValue;
         }
 
         try {

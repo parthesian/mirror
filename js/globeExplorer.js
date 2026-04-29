@@ -28,6 +28,7 @@ class GlobeExplorer {
         this.threeState = null;
         this.locations = [];
         this.locationsByCountry = {};
+        this.locationsByState = {};
         this.locationsByPlace = {};
         this.orbitControls = null;
         this._threePromise = null;
@@ -42,6 +43,7 @@ class GlobeExplorer {
         this.lastPointerGesture = null;
         this.selectedFilterType = 'country';
         this.selectedFilterValue = '';
+        this.selectedFilters = { country: '', state: '', location: '' };
         this.lastManualRotateAt = 0;
         this.locationGroupByKey = new Map();
         this.hoverHighlight = { type: null, key: null };
@@ -67,10 +69,23 @@ class GlobeExplorer {
     }
 
     _formatFilterLabel(filterType, filterValue, label = '') {
-        const base = filterType === 'location'
-            ? `PLACE: ${String(filterValue || '').toUpperCase()}`
-            : `COUNTRY: ${String(filterValue || '').toUpperCase()}`;
+        const labels = {
+            country: 'COUNTRY',
+            state: 'STATE',
+            location: 'PLACE'
+        };
+        const base = `${labels[filterType] || 'FILTER'}: ${String(filterValue || '').toUpperCase()}`;
         return label ? `${base} · ${String(label).toUpperCase()}` : base;
+    }
+
+    _formatSelectedFiltersLabel() {
+        const filters = this.selectedFilters || {};
+        const parts = [
+            filters.country ? this._formatFilterLabel('country', filters.country) : '',
+            filters.state ? this._formatFilterLabel('state', filters.state) : '',
+            filters.location ? this._formatFilterLabel('location', filters.location) : ''
+        ].filter(Boolean);
+        return parts.length ? parts.join(' · ') : 'ALL';
     }
 
     _locationKeyFor(loc) {
@@ -96,9 +111,11 @@ class GlobeExplorer {
         this._applyDotHighlight();
     }
 
-    _setPendingFilterSelection(type, value) {
+    _setPendingFilterSelection(type, value, loc = null) {
         this.selectedFilterType = type;
-        this.selectedFilterValue = value || '';
+        if (loc?.country) this.selectedFilters.country = loc.country;
+        if (loc?.state) this.selectedFilters.state = loc.state;
+        this._setFilterSelection(type, value, false);
         this._renderFilterMenu();
     }
 
@@ -595,8 +612,9 @@ class GlobeExplorer {
             }
         });
         this.filterApplyBtn?.addEventListener('click', () => {
-            if (this.selectedFilterValue) {
-                this._applyFilter(this.selectedFilterType, this.selectedFilterValue);
+            const selected = this._getMostSpecificFilterSelection();
+            if (selected) {
+                this._applyFilter(selected.type, selected.value);
             }
             else this._clearFilter();
         });
@@ -726,12 +744,22 @@ class GlobeExplorer {
         }
 
         this.locationsByCountry = {};
+        const stateBuckets = new Map();
         const placeBuckets = new Map();
+        this.locationsByState = {};
         this.locationsByPlace = {};
         for (const loc of this.locations) {
             const c = loc.country || 'Unknown';
             if (!this.locationsByCountry[c]) this.locationsByCountry[c] = [];
             this.locationsByCountry[c].push(loc);
+            const stateRaw = String(loc.state || '').trim();
+            if (stateRaw) {
+                const stateKey = stateRaw.toLowerCase();
+                if (!stateBuckets.has(stateKey)) {
+                    stateBuckets.set(stateKey, { label: stateRaw, items: [] });
+                }
+                stateBuckets.get(stateKey).items.push(loc);
+            }
             const placeRaw = String(loc.location || '').trim();
             if (placeRaw) {
                 const placeKey = placeRaw.toLowerCase();
@@ -740,6 +768,9 @@ class GlobeExplorer {
                 }
                 placeBuckets.get(placeKey).items.push(loc);
             }
+        }
+        for (const bucket of stateBuckets.values()) {
+            this.locationsByState[bucket.label] = bucket.items;
         }
         for (const bucket of placeBuckets.values()) {
             this.locationsByPlace[bucket.label] = bucket.items;
@@ -1035,9 +1066,9 @@ class GlobeExplorer {
                     const selectedForPanel = option.sample || selectedLocation;
                     if (!selectedForPanel?.country) return;
                     if (selectedForPanel.location) {
-                        this._setPendingFilterSelection('location', selectedForPanel.location);
+                        this._setPendingFilterSelection('location', selectedForPanel.location, selectedForPanel);
                     } else {
-                        this._setPendingFilterSelection('country', selectedForPanel.country);
+                        this._setPendingFilterSelection('country', selectedForPanel.country, selectedForPanel);
                     }
                     this._showPointPanel(selectedForPanel, null);
                 };
@@ -1291,19 +1322,25 @@ class GlobeExplorer {
 
     _showPointPanel(point, cycleInfo = null) {
         const country = point?.country || 'Unknown';
+        const state = String(point?.state || '').trim();
         const place = String(point?.location || '').trim();
         const countryLocs = this.locationsByCountry[country] || [];
+        const stateLocs = state ? (this.locationsByState[state] || []) : [];
         const placeLocs = place ? (this.locationsByPlace[place] || []) : [];
-        const defaultType = placeLocs.length > 0 ? 'location' : 'country';
-        const defaultValue = defaultType === 'location' ? place : country;
-        const activeLocs = defaultType === 'location' ? placeLocs : countryLocs;
+        const defaultType = placeLocs.length > 0 ? 'location' : (stateLocs.length > 0 ? 'state' : 'country');
+        const defaultValue = defaultType === 'location' ? place : (defaultType === 'state' ? state : country);
+        const activeLocs = defaultType === 'location' ? placeLocs : (defaultType === 'state' ? stateLocs : countryLocs);
         if (!activeLocs.length) return;
 
         const trips = this._groupTrips(activeLocs);
         const countryEscaped = this._escapeHtml(country);
+        const stateEscaped = this._escapeHtml(state);
         const placeEscaped = this._escapeHtml(place);
 
         let html = `<h3 class="globe-panel-country">${countryEscaped}</h3>`;
+        if (state) {
+            html += `<p class="globe-panel-count">${stateEscaped}</p>`;
+        }
         if (place) {
             html += `<p class="globe-panel-count">${placeEscaped}</p>`;
         }
@@ -1325,6 +1362,9 @@ class GlobeExplorer {
         html += '</div>';
         html += '<div class="globe-panel-actions">';
         html += `<button class="globe-panel-filter-btn" id="globe-filter-country">show country photos</button>`;
+        if (state) {
+            html += `<button class="globe-panel-filter-btn" id="globe-filter-state">show state photos</button>`;
+        }
         if (place) {
             html += `<button class="globe-panel-filter-btn" id="globe-filter-place">show place photos</button>`;
         }
@@ -1334,6 +1374,9 @@ class GlobeExplorer {
 
         document.getElementById('globe-filter-country')?.addEventListener('click', () => {
             this._applyFilter('country', country);
+        });
+        document.getElementById('globe-filter-state')?.addEventListener('click', () => {
+            this._applyFilter('state', state);
         });
         document.getElementById('globe-filter-place')?.addEventListener('click', () => {
             this._applyFilter('location', place);
@@ -1503,13 +1546,12 @@ class GlobeExplorer {
         if (!this.selectedFilterType) {
             this.selectedFilterType = 'country';
         }
-        if (this.selectedFilterValue && !this._isOptionValid(this.selectedFilterType, this.selectedFilterValue)) {
-            this.selectedFilterValue = '';
-        }
+        this._normalizeFilterSelections();
 
         this.filterTypeList.innerHTML = '';
         const kinds = [
             { type: 'country', label: 'country' },
+            { type: 'state', label: 'state' },
             { type: 'location', label: 'place' }
         ];
         for (const kind of kinds) {
@@ -1521,9 +1563,7 @@ class GlobeExplorer {
             btn.classList.toggle('active', this.selectedFilterType === kind.type);
             btn.addEventListener('click', () => {
                 this.selectedFilterType = kind.type;
-                if (!this._isOptionValid(this.selectedFilterType, this.selectedFilterValue)) {
-                    this.selectedFilterValue = '';
-                }
+                this._syncSelectedFilterValue();
                 this._renderFilterMenu();
             });
             this.filterTypeList.appendChild(btn);
@@ -1538,66 +1578,153 @@ class GlobeExplorer {
             btn.dataset.type = this.selectedFilterType;
             btn.dataset.value = item.value;
             btn.textContent = `${item.label} (${item.count})`;
-            btn.classList.toggle('active', this.selectedFilterValue === item.value);
+            btn.classList.toggle('active', this.selectedFilters?.[this.selectedFilterType] === item.value);
             btn.addEventListener('click', () => {
-                this.selectedFilterValue = item.value;
+                this._setFilterSelection(this.selectedFilterType, item.value, false);
                 this._renderFilterMenu();
             });
             this.filterOptionList.appendChild(btn);
         }
 
         if (this.filterScopeTitle) {
-            this.filterScopeTitle.textContent = this.selectedFilterType === 'location' ? 'places' : 'countries';
+            const titles = {
+                country: 'countries',
+                state: 'states',
+                location: 'places'
+            };
+            this.filterScopeTitle.textContent = titles[this.selectedFilterType] || 'options';
         }
         if (this.filterActive) {
-            this.filterActive.textContent = this.selectedFilterValue
-                ? this._formatFilterLabel(this.selectedFilterType, this.selectedFilterValue)
-                : 'ALL';
+            this.filterActive.textContent = this._formatSelectedFiltersLabel();
         }
     }
 
     _getOptionsForType(type) {
-        if (type === 'location') {
-            return Object.keys(this.locationsByPlace)
-                .filter(Boolean)
-                .sort((a, b) => a.localeCompare(b))
-                .map((place) => ({
-                    value: place,
-                    label: place,
-                    count: this.locationsByPlace[place]?.length || 0
-                }));
+        if (type === 'country') {
+            return this._buildFilterOptions(this.locations, 'country', { excludeUnknown: true });
         }
-        return Object.keys(this.locationsByCountry)
-            .filter((c) => c && c !== 'Unknown')
-            .sort((a, b) => a.localeCompare(b))
-            .map((country) => ({
-                value: country,
-                label: country,
-                count: this.locationsByCountry[country]?.length || 0
-            }));
+        if (type === 'state') {
+            return this._buildFilterOptions(this._getLocationsForFilterScope('state'), 'state');
+        }
+        return this._buildFilterOptions(this._getLocationsForFilterScope('location'), 'location');
     }
 
     _isOptionValid(type, value) {
         if (!value) return false;
-        if (type === 'location') return Boolean(this.locationsByPlace[value]?.length);
-        return Boolean(this.locationsByCountry[value]?.length);
+        return this._getOptionsForType(type).some((option) => option.value === value);
+    }
+
+    _buildFilterOptions(locations, field, options = {}) {
+        const buckets = new Map();
+        for (const loc of Array.isArray(locations) ? locations : []) {
+            const raw = String(loc?.[field] || '').trim();
+            if (!raw || (options.excludeUnknown && raw === 'Unknown')) continue;
+            const key = raw.toLowerCase();
+            if (!buckets.has(key)) {
+                buckets.set(key, { label: raw, count: 0 });
+            }
+            buckets.get(key).count += 1;
+        }
+        return [...buckets.values()]
+            .sort((a, b) => a.label.localeCompare(b.label))
+            .map((item) => ({
+                value: item.label,
+                label: item.label,
+                count: item.count
+            }));
+    }
+
+    _getLocationsForFilterScope(type) {
+        const filters = this.selectedFilters || {};
+        return (this.locations || []).filter((loc) => {
+            if (type !== 'country' && filters.country && loc.country !== filters.country) {
+                return false;
+            }
+            if (type === 'location' && filters.state) {
+                return String(loc.state || '').trim().toLowerCase() === filters.state.toLowerCase();
+            }
+            return true;
+        });
+    }
+
+    _syncSelectedFilterValue() {
+        this.selectedFilterValue = this.selectedFilters?.[this.selectedFilterType] || '';
+    }
+
+    _normalizeFilterSelections() {
+        if (!this.selectedFilters) {
+            this.selectedFilters = { country: '', state: '', location: '' };
+        }
+        if (this.selectedFilters.country && !this._isOptionValid('country', this.selectedFilters.country)) {
+            this.selectedFilters.country = '';
+        }
+        if (this.selectedFilters.state && !this._isOptionValid('state', this.selectedFilters.state)) {
+            this.selectedFilters.state = '';
+        }
+        if (this.selectedFilters.location && !this._isOptionValid('location', this.selectedFilters.location)) {
+            this.selectedFilters.location = '';
+        }
+        this._syncSelectedFilterValue();
+    }
+
+    _setFilterSelection(type, value, render = true) {
+        if (!this.selectedFilters) {
+            this.selectedFilters = { country: '', state: '', location: '' };
+        }
+        this.selectedFilters[type] = value || '';
+        if (type === 'country') {
+            if (this.selectedFilters.state && !this._isOptionValid('state', this.selectedFilters.state)) {
+                this.selectedFilters.state = '';
+            }
+            if (this.selectedFilters.location && !this._isOptionValid('location', this.selectedFilters.location)) {
+                this.selectedFilters.location = '';
+            }
+        }
+        if (type === 'state' && this.selectedFilters.location && !this._isOptionValid('location', this.selectedFilters.location)) {
+            this.selectedFilters.location = '';
+        }
+        this._syncSelectedFilterValue();
+        if (render) this._renderFilterMenu();
+    }
+
+    _getMostSpecificFilterSelection() {
+        const filters = this.selectedFilters || {};
+        if (filters.location) return { type: 'location', value: filters.location };
+        if (filters.state) return { type: 'state', value: filters.state };
+        if (filters.country) return { type: 'country', value: filters.country };
+        return null;
     }
 
     async _applyFilter(filterType, filterValue, takenFrom = null, takenTo = null, label = '') {
         this.close();
-        if (this.filterActive) {
-            this.filterActive.textContent = this._formatFilterLabel(filterType, filterValue, label);
-        }
         this.selectedFilterType = filterType;
-        this.selectedFilterValue = filterValue;
+        if (filterType === 'country') {
+            this.selectedFilters.state = '';
+            this.selectedFilters.location = '';
+        }
+        if (filterType === 'state') {
+            this.selectedFilters.location = '';
+        }
+        this._setFilterSelection(filterType, filterValue, false);
         this._renderFilterMenu();
+        if (this.filterActive) {
+            this.filterActive.textContent = label
+                ? this._formatFilterLabel(filterType, filterValue, label)
+                : this._formatSelectedFiltersLabel();
+        }
 
+        this.imageService.countryFilter = null;
+        this.imageService.stateFilter = null;
+        this.imageService.locationFilter = null;
         if (filterType === 'location') {
+            this.imageService.countryFilter = this.selectedFilters.country || null;
+            this.imageService.stateFilter = this.selectedFilters.state || null;
             this.imageService.locationFilter = filterValue;
-            this.imageService.countryFilter = null;
+        } else if (filterType === 'state') {
+            this.imageService.countryFilter = this.selectedFilters.country || null;
+            this.imageService.stateFilter = filterValue;
         } else {
             this.imageService.countryFilter = filterValue;
-            this.imageService.locationFilter = null;
         }
         this.imageService.takenFromFilter = takenFrom || null;
         this.imageService.takenToFilter = takenTo || null;
@@ -1610,7 +1737,9 @@ class GlobeExplorer {
         if (this.filterActive) this.filterActive.textContent = 'ALL';
         this.selectedFilterType = 'country';
         this.selectedFilterValue = '';
+        this.selectedFilters = { country: '', state: '', location: '' };
         this.imageService.countryFilter = null;
+        this.imageService.stateFilter = null;
         this.imageService.locationFilter = null;
         this.imageService.takenFromFilter = null;
         this.imageService.takenToFilter = null;

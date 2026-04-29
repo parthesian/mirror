@@ -7,7 +7,7 @@ async function getPhotoMetadata(context) {
 
     const result = await env.PHOTO_DB.prepare(`
         SELECT id, storage_key, location, description, taken_at, uploaded_at, width, height,
-               latitude, longitude, country, camera
+               latitude, longitude, country, state, camera
         FROM photos
         WHERE id = ?
         LIMIT 1

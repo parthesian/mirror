@@ -320,6 +320,7 @@ class Timeline {
     getActiveFilters() {
         return {
             country: this.imageService.countryFilter || '',
+            state: this.imageService.stateFilter || '',
             location: this.imageService.locationFilter || '',
             takenFrom: this.imageService.takenFromFilter || '',
             takenTo: this.imageService.takenToFilter || ''
@@ -328,7 +329,7 @@ class Timeline {
 
     hasActiveFilters() {
         const f = this.getActiveFilters();
-        return Boolean(f.country || f.location || f.takenFrom || f.takenTo);
+        return Boolean(f.country || f.state || f.location || f.takenFrom || f.takenTo);
     }
 
     async fetchTimelineForFilters() {
@@ -336,6 +337,7 @@ class Timeline {
         const baseUrl = this.imageService.apiBaseUrl;
         const url = new URL(baseUrl ? `${baseUrl}/api/photos/timeline` : '/api/photos/timeline', window.location.origin);
         if (f.country) url.searchParams.set('country', f.country);
+        if (f.state) url.searchParams.set('state', f.state);
         if (f.location) url.searchParams.set('location', f.location);
         if (f.takenFrom) url.searchParams.set('takenFrom', f.takenFrom);
         if (f.takenTo) url.searchParams.set('takenTo', f.takenTo);
