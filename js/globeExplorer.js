@@ -504,23 +504,119 @@ class GlobeExplorer {
         this.intersectPicker.innerHTML = '';
     }
 
-    _showClickPulse(clientX, clientY) {
-        if (!this.sceneContainer) return;
-        const rect = this.sceneContainer.getBoundingClientRect();
-        const pulse = document.createElement('span');
-        pulse.className = 'globe-click-pulse';
-        pulse.style.left = `${clientX - rect.left}px`;
-        pulse.style.top = `${clientY - rect.top}px`;
-        pulse.setAttribute('aria-hidden', 'true');
+    _showClickPulse(THREE, group, worldDirection) {
+        const s = this.threeState;
+        if (!s || !THREE || !group || !worldDirection) return;
+
+        const localDir = worldDirection.clone().normalize();
+        const worldQuat = group.getWorldQuaternion(new THREE.Quaternion());
+        localDir.applyQuaternion(worldQuat.invert()).normalize();
+
+        const axisSeed = Math.abs(localDir.y) < 0.92
+            ? new THREE.Vector3(0, 1, 0)
+            : new THREE.Vector3(1, 0, 0);
+        const tangentA = new THREE.Vector3().crossVectors(axisSeed, localDir).normalize();
+        const tangentB = new THREE.Vector3().crossVectors(localDir, tangentA).normalize();
+        const pulse = {
+            startedAt: performance.now(),
+            duration: 580,
+            delay: 130,
+            minAngle: THREE.MathUtils.degToRad(0.4),
+            maxAngle: THREE.MathUtils.degToRad(3.7),
+            radius: 1.018,
+            centerDir: localDir,
+            tangentA,
+            tangentB,
+            rings: []
+        };
+
         for (let i = 0; i < 3; i++) {
-            const ring = document.createElement('span');
-            ring.className = 'globe-click-pulse-ring';
-            pulse.appendChild(ring);
+            const positions = new Float32Array(96 * 3);
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            const material = new THREE.LineBasicMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+            const line = new THREE.LineLoop(geometry, material);
+            line.renderOrder = 4;
+            group.add(line);
+            pulse.rings.push({
+                line,
+                geometry,
+                material,
+                positions,
+                delay: i * pulse.delay
+            });
         }
-        this.sceneContainer.appendChild(pulse);
-        pulse.addEventListener('animationend', (event) => {
-            if (event.target === pulse) pulse.remove();
-        }, { once: true });
+
+        s.clickPulses.push(pulse);
+    }
+
+    _setClickPulseRingPositions(pulse, ring, angle) {
+        const sinAngle = Math.sin(angle);
+        const cosAngle = Math.cos(angle);
+        const { centerDir, tangentA, tangentB, radius } = pulse;
+        const positions = ring.positions;
+        const count = positions.length / 3;
+
+        for (let i = 0; i < count; i++) {
+            const theta = (i / count) * Math.PI * 2;
+            const ringX = Math.cos(theta) * sinAngle;
+            const ringY = Math.sin(theta) * sinAngle;
+            const point = centerDir.clone().multiplyScalar(cosAngle)
+                .add(tangentA.clone().multiplyScalar(ringX))
+                .add(tangentB.clone().multiplyScalar(ringY))
+                .normalize()
+                .multiplyScalar(radius);
+            const offset = i * 3;
+            positions[offset] = point.x;
+            positions[offset + 1] = point.y;
+            positions[offset + 2] = point.z;
+        }
+        ring.geometry.getAttribute('position').needsUpdate = true;
+    }
+
+    _updateClickPulses(now) {
+        const s = this.threeState;
+        if (!s?.clickPulses?.length) return;
+
+        for (let i = s.clickPulses.length - 1; i >= 0; i--) {
+            const pulse = s.clickPulses[i];
+            let isComplete = true;
+
+            for (const ring of pulse.rings) {
+                const progress = (now - pulse.startedAt - ring.delay) / pulse.duration;
+                if (progress < 0) {
+                    ring.material.opacity = 0;
+                    isComplete = false;
+                    continue;
+                }
+                if (progress >= 1) {
+                    ring.material.opacity = 0;
+                    continue;
+                }
+
+                isComplete = false;
+                const eased = 1 - Math.pow(1 - progress, 3);
+                const angle = pulse.minAngle + (pulse.maxAngle - pulse.minAngle) * eased;
+                this._setClickPulseRingPositions(pulse, ring, angle);
+                const fadeIn = Math.min(progress / 0.12, 1);
+                ring.material.opacity = 0.52 * fadeIn * Math.pow(1 - progress, 1.35);
+            }
+
+            if (isComplete) {
+                for (const ring of pulse.rings) {
+                    s.group.remove(ring.line);
+                    ring.geometry.dispose();
+                    ring.material.dispose();
+                }
+                s.clickPulses.splice(i, 1);
+            }
+        }
     }
 
     _showIntersectPicker(choices, onPick, anchorClient = null) {
@@ -1168,8 +1264,8 @@ class GlobeExplorer {
             if (!globeHits.length) {
                 return;
             }
-            this._showClickPulse(e.clientX, e.clientY);
             const clickDir = globeHits[0].point.clone().normalize();
+            this._showClickPulse(THREE, group, clickDir);
             const countryHit = this._findCountryFromDirection(THREE, clickDir, group);
             const applyCountryChoice = () => {
                 if (!countryHit?.feature) return;
@@ -1281,7 +1377,8 @@ class GlobeExplorer {
         const state = {
             renderer, scene, camera, group, globe, controls, geo, mat, tex,
             rafId: null, disposed: false, onResize: null, dotsMesh, arcLines,
-            dotColors: dotsMesh?.geometry?.getAttribute('color')?.array || null
+            dotColors: dotsMesh?.geometry?.getAttribute('color')?.array || null,
+            clickPulses: []
         };
 
         state.onResize = () => {
@@ -1299,6 +1396,7 @@ class GlobeExplorer {
             if (state.disposed) return;
             if (controls) controls.update();
             else if (this.autoRotateEnabled) group.rotation.y += 0.001;
+            this._updateClickPulses(performance.now());
             renderer.render(scene, camera);
             state.rafId = requestAnimationFrame(animate);
         };
@@ -1324,6 +1422,12 @@ class GlobeExplorer {
             s.dotsMesh?.material?.dispose();
             s.arcLines?.geometry?.dispose();
             s.arcLines?.material?.dispose();
+            for (const pulse of s.clickPulses || []) {
+                for (const ring of pulse.rings || []) {
+                    ring.geometry?.dispose();
+                    ring.material?.dispose();
+                }
+            }
             s.renderer?.dispose();
             if (s.renderer?.domElement?.parentNode) {
                 s.renderer.domElement.parentNode.removeChild(s.renderer.domElement);
