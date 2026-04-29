@@ -21,15 +21,15 @@ async function listPhotos(context) {
     const bindings = [];
 
     if (countryFilter) {
-        clauses.push('country = ?');
+        clauses.push('LOWER(TRIM(country)) = LOWER(TRIM(?))');
         bindings.push(countryFilter);
     }
     if (stateFilter) {
-        clauses.push('LOWER(state) = LOWER(?)');
+        clauses.push('LOWER(TRIM(state)) = LOWER(TRIM(?))');
         bindings.push(stateFilter);
     }
     if (locationFilter) {
-        clauses.push('LOWER(location) = LOWER(?)');
+        clauses.push('LOWER(TRIM(location)) = LOWER(TRIM(?))');
         bindings.push(locationFilter);
     }
     if (takenFrom) {

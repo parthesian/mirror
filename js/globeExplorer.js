@@ -29,7 +29,9 @@ class GlobeExplorer {
         this.locations = [];
         this.locationsByCountry = {};
         this.locationsByState = {};
+        this.locationsByStateKey = {};
         this.locationsByPlace = {};
+        this.locationsByPlaceKey = {};
         this.orbitControls = null;
         this._threePromise = null;
         this._orbitPromise = null;
@@ -47,12 +49,15 @@ class GlobeExplorer {
         this.lastManualRotateAt = 0;
         this.locationGroupByKey = new Map();
         this.hoverHighlight = { type: null, key: null };
+        this.highlightedDotIndices = [];
         this.isFilterPanelExpanded = false;
         this._countryBoundaryPromise = null;
         this.countryBoundaryFeatures = [];
         this.countryBoundaryAliasMap = new Map();
         this.countryFilterAliasMap = new Map();
         this.countryBoundaryBorder = null;
+        this.countryBorderHighlightKey = '';
+        this.filterOptionCache = new Map();
 
         this._bindEvents();
         this._setFilterPanelExpanded(false);
@@ -114,10 +119,28 @@ class GlobeExplorer {
         }
     }
 
+    _normalizeLocationPart(value) {
+        return String(value || '')
+            .normalize('NFKD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .trim()
+            .replace(/\s+/g, ' ');
+    }
+
+    _stateKeyForLoc(loc) {
+        const state = this._normalizeLocationPart(loc?.state);
+        if (!state) return '';
+        const country = this._normalizeLocationPart(loc?.country);
+        return `state:${state}|country:${country}`;
+    }
+
     _locationKeyFor(loc) {
         const place = String(loc?.location || '').trim();
         if (place) {
-            return `place:${place.toLowerCase()}`;
+            const state = this._normalizeLocationPart(loc?.state);
+            const country = this._normalizeLocationPart(loc?.country);
+            return `place:${this._normalizeLocationPart(place)}|state:${state}|country:${country}`;
         }
         const lat = Number(loc?.latitude);
         const lon = Number(loc?.longitude);
@@ -209,8 +232,8 @@ class GlobeExplorer {
         for (const candidate of candidates) {
             const key = this._normalizeCountryName(candidate);
             const mapped = this.countryFilterAliasMap.get(key);
-            if (mapped && this.locationsByCountry[mapped]?.length >= 0) return mapped;
-            if (candidate && this.locationsByCountry[candidate]?.length >= 0) return candidate;
+            if (mapped && this.locationsByCountry[mapped]?.length > 0) return mapped;
+            if (candidate && this.locationsByCountry[candidate]?.length > 0) return candidate;
         }
         return countryName || '';
     }
@@ -402,7 +425,13 @@ class GlobeExplorer {
         return null;
     }
 
+    _countryFeatureKey(featureRef) {
+        if (!featureRef) return '';
+        return featureRef.iso3 || featureRef.iso2 || featureRef.name || '';
+    }
+
     _clearCountryBorderHighlight() {
+        this.countryBorderHighlightKey = '';
         const s = this.threeState;
         if (!s?.group || !this.countryBoundaryBorder) return;
         s.group.remove(this.countryBoundaryBorder);
@@ -418,7 +447,12 @@ class GlobeExplorer {
             this._clearCountryBorderHighlight();
             return;
         }
+        const featureKey = this._countryFeatureKey(featureRef);
+        if (featureKey && featureKey === this.countryBorderHighlightKey && this.countryBoundaryBorder) {
+            return;
+        }
         this._clearCountryBorderHighlight();
+        this.countryBorderHighlightKey = featureKey;
         const borderGroup = new THREE.Group();
         const radius = 1.012;
         const lineMaterial = new THREE.LineBasicMaterial({
@@ -610,7 +644,8 @@ class GlobeExplorer {
         const colors = s.dotColors;
         const base = [1.0, 1.0, 1.0];
         const highlight = [0.3, 0.3, 0.3];
-        for (let i = 0; i < this.renderedPointLocations.length; i++) {
+        for (const i of this.highlightedDotIndices || []) {
+            if (i < 0 || i >= this.renderedPointLocations.length) continue;
             const p = i * 3;
             colors[p] = base[0];
             colors[p + 1] = base[1];
@@ -628,6 +663,7 @@ class GlobeExplorer {
             colors[p + 1] = highlight[1];
             colors[p + 2] = highlight[2];
         }
+        this.highlightedDotIndices = [...indices];
 
         const colorAttr = s.dotsMesh.geometry.getAttribute('color');
         if (colorAttr) {
@@ -853,14 +889,16 @@ class GlobeExplorer {
         const stateBuckets = new Map();
         const placeBuckets = new Map();
         this.locationsByState = {};
+        this.locationsByStateKey = {};
         this.locationsByPlace = {};
+        this.locationsByPlaceKey = {};
         for (const loc of this.locations) {
             const c = loc.country || 'Unknown';
             if (!this.locationsByCountry[c]) this.locationsByCountry[c] = [];
             this.locationsByCountry[c].push(loc);
             const stateRaw = String(loc.state || '').trim();
             if (stateRaw) {
-                const stateKey = stateRaw.toLowerCase();
+                const stateKey = this._stateKeyForLoc(loc);
                 if (!stateBuckets.has(stateKey)) {
                     stateBuckets.set(stateKey, { label: stateRaw, items: [] });
                 }
@@ -868,19 +906,22 @@ class GlobeExplorer {
             }
             const placeRaw = String(loc.location || '').trim();
             if (placeRaw) {
-                const placeKey = placeRaw.toLowerCase();
+                const placeKey = this._locationKeyFor(loc);
                 if (!placeBuckets.has(placeKey)) {
                     placeBuckets.set(placeKey, { label: placeRaw, items: [] });
                 }
                 placeBuckets.get(placeKey).items.push(loc);
             }
         }
-        for (const bucket of stateBuckets.values()) {
+        for (const [key, bucket] of stateBuckets.entries()) {
             this.locationsByState[bucket.label] = bucket.items;
+            this.locationsByStateKey[key] = bucket.items;
         }
-        for (const bucket of placeBuckets.values()) {
+        for (const [key, bucket] of placeBuckets.entries()) {
             this.locationsByPlace[bucket.label] = bucket.items;
+            this.locationsByPlaceKey[key] = bucket.items;
         }
+        this.filterOptionCache.clear();
         this._seedCountryAliasesFromLocations();
         this._renderFilterMenu();
     }
@@ -1021,7 +1062,9 @@ class GlobeExplorer {
                 group.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, drag.rotX + dy * 0.005));
             }
         });
-        renderer.domElement.addEventListener('mousemove', (e) => {
+        let pendingHoverPointer = null;
+        let hoverRafId = null;
+        const processHoverPointer = (e) => {
             const rect = renderer.domElement.getBoundingClientRect();
             const hoverMouse = new THREE.Vector2(
                 ((e.clientX - rect.left) / rect.width) * 2 - 1,
@@ -1061,6 +1104,20 @@ class GlobeExplorer {
             } else {
                 this._clearCountryBorderHighlight();
             }
+        };
+        renderer.domElement.addEventListener('mousemove', (e) => {
+            pendingHoverPointer = { clientX: e.clientX, clientY: e.clientY };
+            if (hoverRafId != null) {
+                return;
+            }
+            hoverRafId = requestAnimationFrame(() => {
+                hoverRafId = null;
+                const nextPointer = pendingHoverPointer;
+                pendingHoverPointer = null;
+                if (nextPointer) {
+                    processHoverPointer(nextPointer);
+                }
+            });
         });
         renderer.domElement.addEventListener('wheel', () => {
             if (this.pointerGesture) {
@@ -1271,6 +1328,7 @@ class GlobeExplorer {
         this.renderedPointLocations = [];
         this.locationGroups = [];
         this.locationGroupByKey = new Map();
+        this.highlightedDotIndices = [];
         const groupMap = new Map();
 
         for (let i = 0; i < this.locations.length; i++) {
@@ -1432,8 +1490,8 @@ class GlobeExplorer {
         const state = String(point?.state || '').trim();
         const place = String(point?.location || '').trim();
         const countryLocs = this.locationsByCountry[country] || [];
-        const stateLocs = state ? (this.locationsByState[state] || []) : [];
-        const placeLocs = place ? (this.locationsByPlace[place] || []) : [];
+        const stateLocs = state ? (this.locationsByStateKey[this._stateKeyForLoc(point)] || this.locationsByState[state] || []) : [];
+        const placeLocs = place ? (this.locationsByPlaceKey[this._locationKeyFor(point)] || this.locationsByPlace[place] || []) : [];
         const defaultType = placeLocs.length > 0 ? 'location' : (stateLocs.length > 0 ? 'state' : 'country');
         const defaultValue = defaultType === 'location' ? place : (defaultType === 'state' ? state : country);
         const activeLocs = defaultType === 'location' ? placeLocs : (defaultType === 'state' ? stateLocs : countryLocs);
@@ -1493,8 +1551,12 @@ class GlobeExplorer {
         });
         this.panelContent.querySelectorAll('.globe-panel-trip-link').forEach((el) => {
             el.addEventListener('click', () => {
-                const type = el.getAttribute('data-filter-type') || defaultType;
-                const value = el.getAttribute('data-filter-value') || defaultValue;
+                const selectedType = document.getElementById('globe-filter-scope-select')?.value || el.getAttribute('data-filter-type') || defaultType;
+                const selectedScope = filterScopes.find((scope) => scope.type === selectedType)
+                    || filterScopes.find((scope) => scope.type === defaultType)
+                    || filterScopes[0];
+                const type = selectedScope?.type || defaultType;
+                const value = selectedScope?.value || defaultValue;
                 const from = el.getAttribute('data-from');
                 const to = el.getAttribute('data-to');
                 const label = el.querySelector('.trip-date')?.textContent || '';
@@ -1714,13 +1776,26 @@ class GlobeExplorer {
     }
 
     _getOptionsForType(type) {
+        const filters = this.selectedFilters || {};
+        const cacheKey = [
+            type,
+            type !== 'country' ? (filters.country || '') : '',
+            type === 'location' ? (filters.state || '') : ''
+        ].join('\u0001');
+        if (this.filterOptionCache.has(cacheKey)) {
+            return this.filterOptionCache.get(cacheKey);
+        }
+
+        let options;
         if (type === 'country') {
-            return this._buildFilterOptions(this.locations, 'country', { excludeUnknown: true });
+            options = this._buildFilterOptions(this.locations, 'country', { excludeUnknown: true });
+        } else if (type === 'state') {
+            options = this._buildFilterOptions(this._getLocationsForFilterScope('state'), 'state', { includeCountryContext: true });
+        } else {
+            options = this._buildFilterOptions(this._getLocationsForFilterScope('location'), 'location', { includePlaceContext: true });
         }
-        if (type === 'state') {
-            return this._buildFilterOptions(this._getLocationsForFilterScope('state'), 'state', { includeCountryContext: true });
-        }
-        return this._buildFilterOptions(this._getLocationsForFilterScope('location'), 'location', { includePlaceContext: true });
+        this.filterOptionCache.set(cacheKey, options);
+        return options;
     }
 
     _isOptionValid(type, value) {
