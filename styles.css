@@ -3478,13 +3478,28 @@ body.exposure-3  { --leak-opacity: 0.35; }
 .globe-panel-filter-scope select {
     width: 100%;
     border: 1px solid currentColor;
-    background: transparent;
-    color: inherit;
+    background: rgba(18, 18, 18, 0.82);
+    color: #ffffff;
     font: inherit;
     letter-spacing: inherit;
     text-transform: lowercase;
     padding: 0.42rem 0.5rem;
     border-radius: 0;
+    outline: none;
+}
+
+.globe-panel-filter-scope select:focus {
+    border-color: #ffffff;
+}
+
+.globe-panel-filter-scope select option {
+    background: rgba(18, 18, 18, 0.98);
+    color: #ffffff;
+}
+
+.globe-panel-filter-scope select option:checked {
+    background: rgba(255, 255, 255, 0.24);
+    color: #ffffff;
 }
 
 .globe-panel-trip-link {

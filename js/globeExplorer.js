@@ -455,7 +455,7 @@ class GlobeExplorer {
             html += '<p class="globe-panel-count">no photos in this country yet</p>';
         }
         html += '<div class="globe-panel-actions">';
-        html += `<button class="globe-panel-filter-btn" id="globe-filter-country-boundary" ${photos.length ? '' : 'disabled'}>show country photos</button>`;
+        html += `<button class="globe-panel-filter-btn" id="globe-filter-country-boundary" ${photos.length ? '' : 'disabled'}>show photos</button>`;
         html += '</div>';
         this.panelContent.innerHTML = html;
         document.getElementById('globe-filter-country-boundary')?.addEventListener('click', () => {
@@ -1521,7 +1521,7 @@ class GlobeExplorer {
         }
         html += `<p class="globe-panel-count">distance: ${Math.round(angleDeg)}°</p>`;
         html += '<div class="globe-panel-actions">';
-        html += '<button class="globe-panel-filter-btn" id="globe-filter-country-inferred">show country photos</button>';
+        html += '<button class="globe-panel-filter-btn" id="globe-filter-country-inferred">show photos</button>';
         html += '</div>';
 
         this.panelContent.innerHTML = html;
@@ -1688,12 +1688,12 @@ class GlobeExplorer {
             btn.dataset.type = this.selectedFilterType;
             btn.dataset.value = item.value;
             btn.textContent = `${item.label} (${item.count})`;
-            btn.classList.toggle('active', this.selectedFilters?.[this.selectedFilterType] === item.value);
+            btn.classList.toggle('active', this._isFilterOptionActive(this.selectedFilterType, item));
             btn.addEventListener('click', () => {
-                if (this.selectedFilters?.[this.selectedFilterType] === item.value) {
+                if (this._isFilterOptionActive(this.selectedFilterType, item)) {
                     this._clearFilterSelection(this.selectedFilterType, false);
                 } else {
-                    this._setFilterSelection(this.selectedFilterType, item.value, false);
+                    this._setFilterSelectionFromOption(this.selectedFilterType, item, false);
                 }
                 this._renderFilterMenu();
             });
@@ -1718,9 +1718,9 @@ class GlobeExplorer {
             return this._buildFilterOptions(this.locations, 'country', { excludeUnknown: true });
         }
         if (type === 'state') {
-            return this._buildFilterOptions(this._getLocationsForFilterScope('state'), 'state');
+            return this._buildFilterOptions(this._getLocationsForFilterScope('state'), 'state', { includeCountryContext: true });
         }
-        return this._buildFilterOptions(this._getLocationsForFilterScope('location'), 'location');
+        return this._buildFilterOptions(this._getLocationsForFilterScope('location'), 'location', { includePlaceContext: true });
     }
 
     _isOptionValid(type, value) {
@@ -1730,22 +1730,58 @@ class GlobeExplorer {
 
     _buildFilterOptions(locations, field, options = {}) {
         const buckets = new Map();
+        const labelContexts = new Map();
         for (const loc of Array.isArray(locations) ? locations : []) {
             const raw = String(loc?.[field] || '').trim();
             if (!raw || (options.excludeUnknown && raw === 'Unknown')) continue;
-            const key = raw.toLowerCase();
+            const country = String(loc?.country || '').trim();
+            const state = String(loc?.state || '').trim();
+            const contextParts = [];
+            if (options.includePlaceContext) {
+                if (state) contextParts.push(state);
+                if (country) contextParts.push(country);
+            } else if (options.includeCountryContext && country) {
+                contextParts.push(country);
+            }
+            const key = [raw, ...contextParts].join('\u0001').toLowerCase();
             if (!buckets.has(key)) {
-                buckets.set(key, { label: raw, count: 0 });
+                buckets.set(key, {
+                    value: raw,
+                    label: raw,
+                    count: 0,
+                    country: country || '',
+                    state: state || ''
+                });
             }
             buckets.get(key).count += 1;
+
+            const labelKey = raw.toLowerCase();
+            if (!labelContexts.has(labelKey)) {
+                labelContexts.set(labelKey, new Set());
+            }
+            labelContexts.get(labelKey).add(contextParts.join('\u0001').toLowerCase());
         }
         return [...buckets.values()]
-            .sort((a, b) => a.label.localeCompare(b.label))
+            .sort((a, b) => {
+                const byLabel = a.label.localeCompare(b.label);
+                if (byLabel !== 0) return byLabel;
+                const byState = String(a.state || '').localeCompare(String(b.state || ''));
+                if (byState !== 0) return byState;
+                return String(a.country || '').localeCompare(String(b.country || ''));
+            })
             .map((item) => ({
-                value: item.label,
-                label: item.label,
-                count: item.count
+                value: item.value,
+                label: this._formatFilterOptionLabel(item, labelContexts.get(item.value.toLowerCase())?.size > 1),
+                count: item.count,
+                country: item.country,
+                state: item.state
             }));
+    }
+
+    _formatFilterOptionLabel(item, includeContext) {
+        if (!includeContext) return item.label;
+        const context = [item.state, item.country].filter(Boolean);
+        return context.length ? `${item.label}, ${context.join(', ')}` : item.label;
     }
 
     _getLocationsForFilterScope(type) {
@@ -1799,6 +1835,37 @@ class GlobeExplorer {
         }
         this._syncSelectedFilterValue();
         if (render) this._renderFilterMenu();
+    }
+
+    _setFilterSelectionFromOption(type, item, render = true) {
+        if (!this.selectedFilters) {
+            this.selectedFilters = { country: '', state: '', location: '' };
+        }
+        if (type === 'state') {
+            if (item.country) this.selectedFilters.country = item.country;
+            this.selectedFilters.state = item.value || '';
+            this.selectedFilters.location = '';
+        } else if (type === 'location') {
+            if (item.country) this.selectedFilters.country = item.country;
+            if (item.state) this.selectedFilters.state = item.state;
+            this.selectedFilters.location = item.value || '';
+        } else {
+            this._setFilterSelection(type, item.value, false);
+        }
+        this._syncSelectedFilterValue();
+        if (render) this._renderFilterMenu();
+    }
+
+    _isFilterOptionActive(type, item) {
+        if (!item || this.selectedFilters?.[type] !== item.value) return false;
+        if (type === 'state' && item.country) {
+            return this.selectedFilters.country === item.country;
+        }
+        if (type === 'location') {
+            if (item.country && this.selectedFilters.country !== item.country) return false;
+            if (item.state && this.selectedFilters.state !== item.state) return false;
+        }
+        return true;
     }
 
     _clearFilterSelection(type, render = true) {
