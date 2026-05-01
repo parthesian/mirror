@@ -1125,9 +1125,12 @@ class GlobeExplorer {
             controls = new OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
             controls.dampingFactor = 0.08;
+            controls.enableRotate = true;
             controls.enablePan = false;
             controls.minDistance = 1.8;
             controls.maxDistance = 6;
+            controls.minPolarAngle = Math.PI / 2 - THREE.MathUtils.degToRad(62);
+            controls.maxPolarAngle = Math.PI / 2 + THREE.MathUtils.degToRad(62);
             controls.rotateSpeed = 0.5;
             controls.enableZoom = true;
             controls.autoRotate = this.autoRotateEnabled;
@@ -1159,7 +1162,7 @@ class GlobeExplorer {
         raycaster.params.Points = { threshold: 0.034 };
         const mouse = new THREE.Vector2();
 
-        // Fallback drag-rotate (works even when OrbitControls fails to load).
+        // Fallback drag-rotate keeps interaction available if OrbitControls fails to load.
         let drag = null;
         renderer.domElement.addEventListener('pointerdown', (e) => {
             this.pointerGesture = {
@@ -1190,7 +1193,6 @@ class GlobeExplorer {
                     this._syncRotateToggleUI();
                 }
             }
-            // Only apply fallback while controls are missing.
             if (!controls) {
                 group.rotation.y = drag.rotY + dx * 0.005;
                 group.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, drag.rotX + dy * 0.005));
