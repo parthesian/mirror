@@ -101,6 +101,29 @@ export function mapPhotoRecord(record) {
     };
 }
 
+/**
+ * Stable 32-bit hash for deterministic daily photo selection.
+ * @param {string} value - Seed string (e.g. YYYY-MM-DD)
+ * @returns {number} Unsigned hash
+ */
+export function hashString(value) {
+    let hash = 2166136261;
+    for (let i = 0; i < value.length; i++) {
+        hash ^= value.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+}
+
+/**
+ * UTC calendar date as YYYY-MM-DD.
+ * @param {Date} [date]
+ * @returns {string}
+ */
+export function utcDateKey(date = new Date()) {
+    return date.toISOString().slice(0, 10);
+}
+
 export function getExtensionFromType(contentType = '') {
     const normalized = contentType.toLowerCase();
 

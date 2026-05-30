@@ -5,6 +5,7 @@ class Gallery {
     constructor(imageService, imagePreloader) {
         this.imageService = imageService;
         this.galleryContainer = document.getElementById('gallery-container');
+        this.dailyPhotoElement = document.getElementById('daily-photo');
         this.loadingElement = document.getElementById('loading');
         this.scrollLoadingElement = document.getElementById('scroll-loading');
         this.errorElement = document.getElementById('error-message');
@@ -182,9 +183,12 @@ class Gallery {
 
             const images = await this.imageService.fetchImages();
             this.hideLoading();
+            this.renderDailyPhoto(this.imageService.dailyPhoto);
 
             if (!images || images.length === 0) {
-                this.showEmptyState();
+                if (!this.imageService.dailyPhoto) {
+                    this.showEmptyState();
+                }
                 return;
             }
 
@@ -470,6 +474,9 @@ class Gallery {
     showLoading() {
         this.loadingElement.classList.remove('hidden');
         this.galleryContainer.classList.add('hidden');
+        if (this.dailyPhotoElement) {
+            this.dailyPhotoElement.classList.add('hidden');
+        }
     }
 
     hideLoading() {
@@ -501,6 +508,69 @@ class Gallery {
         this.topSpacer.style.height = '0px';
         this.bottomSpacer.style.height = '0px';
         this.renderState = { startIndex: -1, endIndex: -1 };
+        this.renderDailyPhoto(null);
+    }
+
+    renderDailyPhoto(photo) {
+        if (!this.dailyPhotoElement) return;
+
+        if (!photo) {
+            this.dailyPhotoElement.innerHTML = '';
+            this.dailyPhotoElement.classList.add('hidden');
+            this.dailyPhotoElement.setAttribute('aria-hidden', 'true');
+            return;
+        }
+
+        this.dailyPhotoElement.classList.remove('hidden');
+        this.dailyPhotoElement.setAttribute('aria-hidden', 'false');
+        this.dailyPhotoElement.innerHTML = '';
+
+        const item = document.createElement('div');
+        item.className = 'daily-photo-item gallery-item';
+        item.dataset.imageId = photo.id;
+
+        const img = document.createElement('img');
+        img.className = 'daily-photo-image gallery-item-image';
+        const dateLabel = this.imageService.formatTimestamp(photo.timestamp);
+        img.alt = photo.description ? photo.description : `Photo from ${dateLabel}`;
+        img.decoding = 'async';
+
+        const url = photo.thumbnailUrl;
+        const cached = this.imagePreloader.isImageLoaded(url);
+
+        if (cached) {
+            img.src = url;
+            item.classList.add('loaded', 'instant');
+        } else {
+            img.addEventListener('load', () => {
+                this.imagePreloader.markLoaded(url);
+                item.classList.add('loaded');
+            }, { once: true });
+
+            img.addEventListener('error', () => {
+                this.imagePreloader.markFailed(url);
+                img.src = this.getImageFallbackSrc();
+                item.classList.add('loaded');
+            }, { once: true });
+
+            img.src = url;
+        }
+
+        item.appendChild(img);
+        item.addEventListener('click', () => this.openImageModal(photo.id));
+        item.setAttribute('tabindex', '0');
+        item.setAttribute('role', 'button');
+        item.setAttribute('aria-label', photo.description
+            ? `View ${photo.description} in fullscreen`
+            : `View photo from ${dateLabel} in fullscreen`);
+        item.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                this.openImageModal(photo.id);
+            }
+        });
+
+        this.dailyPhotoElement.appendChild(item);
     }
 
     showEmptyState() {
