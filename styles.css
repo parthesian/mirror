@@ -989,6 +989,7 @@ body.exposure-3 .scroll-loading p {
     width: 100%;
     height: 100%;
     display: block;
+    pointer-events: none;
     opacity: 0;
     will-change: opacity;
     transition: opacity 0.18s ease-out;
