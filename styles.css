@@ -831,29 +831,6 @@ body.exposure-3 .timeline-month.active {
     }
 }
 
-/* Daily photo — one image per UTC day, shown above the grid */
-.daily-photo {
-    margin-bottom: 2rem;
-}
-
-.daily-photo.hidden {
-    display: none;
-}
-
-.daily-photo .daily-photo-item {
-    aspect-ratio: unset;
-    max-height: min(70vh, 820px);
-    cursor: pointer;
-}
-
-.daily-photo .daily-photo-image {
-    width: 100%;
-    height: auto;
-    max-height: min(70vh, 820px);
-    object-fit: contain;
-    object-position: center top;
-}
-
 /* Loading spinner */
 .loading {
     text-align: center;

@@ -18,8 +18,6 @@ class ImageService {
         this.locationFilter = null;
         this.takenFromFilter = null;
         this.takenToFilter = null;
-        this.dailyPhotoId = null;
-        this.dailyPhoto = null;
         /** @type {Map<string, Promise<Object>>} */
         this._detailInFlight = new Map();
     }
@@ -153,56 +151,6 @@ class ImageService {
         this.hasMore = true;
         this.nextCursor = null;
         this._detailInFlight.clear();
-        this.clearDailyPhoto();
-    }
-
-    /**
-     * Fetch the photo selected for the current UTC calendar day.
-     * @returns {Promise<Object|null>} Normalized summary photo or null
-     */
-    async fetchDailyPhoto() {
-        if (!this.apiBaseUrl && window.location.protocol === 'file:') {
-            return null;
-        }
-
-        try {
-            const response = await fetch(this.buildApiUrl('/api/photos/daily'), {
-                method: 'GET',
-                headers: { 'Content-Type': 'application/json' },
-                mode: 'cors'
-            });
-
-            if (!response.ok) {
-                return null;
-            }
-
-            const data = await this.parseJsonResponse(response);
-            const raw = data?.photo;
-            if (!raw?.id) {
-                return null;
-            }
-
-            const photo = this.mapPhotoSummary(raw);
-            this.dailyPhotoId = photo.id;
-            this.dailyPhoto = photo;
-            return photo;
-        } catch (error) {
-            console.error('Failed to fetch daily photo:', error);
-            return null;
-        }
-    }
-
-    clearDailyPhoto() {
-        this.dailyPhotoId = null;
-        this.dailyPhoto = null;
-    }
-
-    /**
-     * @param {Object} photo
-     * @returns {boolean}
-     */
-    isDailyPhoto(photo) {
-        return Boolean(photo?.id && this.dailyPhotoId && photo.id === this.dailyPhotoId);
     }
 
     /**
@@ -219,10 +167,6 @@ class ImageService {
 
         photos.forEach((photo) => {
             if (!photo || !photo.id) {
-                return;
-            }
-
-            if (this.dailyPhotoId && photo.id === this.dailyPhotoId) {
                 return;
             }
 
@@ -369,10 +313,6 @@ class ImageService {
 
         try {
             this.resetCollection();
-            await this.fetchDailyPhoto();
-            if (this.dailyPhoto) {
-                this.imagesById.set(this.dailyPhoto.id, this.dailyPhoto);
-            }
 
             const result = await this.requestPhotos();
             this.mergePhotos(result.photos, { replace: true });
@@ -511,19 +451,12 @@ class ImageService {
 
         const data = await this.parseJsonResponse(response);
 
-        const inGallery = this.orderedIds.includes(id);
-        const isDaily = id === this.dailyPhotoId;
-        if (!inGallery && !isDaily) {
+        if (!this.orderedIds.includes(id)) {
             return null;
         }
 
         const photo = this.mapPhoto(data);
-        if (inGallery) {
-            this.mergePhotos([photo], { replace: false });
-        } else if (isDaily) {
-            this.dailyPhoto = { ...this.dailyPhoto, ...photo };
-            this.imagesById.set(id, this.dailyPhoto);
-        }
+        this.mergePhotos([photo], { replace: false });
         return this.imagesById.get(id) || null;
     }
 
