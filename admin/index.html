@@ -9,18 +9,74 @@
 </head>
 <body class="exposure-0 admin-page">
     <main class="admin-shell">
-        <div class="admin-panel">
+        <div class="admin-panel admin-panel-wide">
             <div class="admin-panel-header">
                 <div>
                     <p class="admin-eyebrow">Cloudflare Access</p>
-                    <h1>Upload Photos</h1>
+                    <h1>Gallery Admin</h1>
                 </div>
                 <a href="/" class="admin-back-link">Back to gallery</a>
             </div>
 
             <p id="admin-session-status" class="admin-session-status">Checking admin session...</p>
 
-            <form id="upload-form" class="upload-form admin-upload-form">
+            <nav class="admin-tabs" aria-label="Admin tools">
+                <button type="button" class="admin-tab active" data-admin-tab="metadata" aria-selected="true">photo metadata</button>
+                <button type="button" class="admin-tab" data-admin-tab="upload" aria-selected="false">upload photo</button>
+            </nav>
+
+            <section id="metadata-section" class="admin-section" data-admin-section="metadata">
+                <div class="admin-section-heading">
+                    <div>
+                        <p class="admin-eyebrow">Content management</p>
+                        <h2>Photo Metadata</h2>
+                    </div>
+                    <label class="admin-search">
+                        <span>search loaded photos</span>
+                        <input id="metadata-search" type="search" placeholder="location, country, camera...">
+                    </label>
+                </div>
+
+                <div class="admin-table-summary">
+                    <span id="metadata-count">Loading photos...</span>
+                    <span id="metadata-save-status" class="admin-save-status" role="status" aria-live="polite"></span>
+                </div>
+
+                <div class="admin-table-wrap">
+                    <table class="admin-metadata-table">
+                        <thead>
+                            <tr>
+                                <th scope="col">photo</th>
+                                <th scope="col">date</th>
+                                <th scope="col">location</th>
+                                <th scope="col">country</th>
+                                <th scope="col">state / region</th>
+                                <th scope="col">camera / device</th>
+                                <th scope="col">latitude</th>
+                                <th scope="col">longitude</th>
+                                <th scope="col">description</th>
+                                <th scope="col"><span class="sr-only">actions</span></th>
+                            </tr>
+                        </thead>
+                        <tbody id="metadata-table-body"></tbody>
+                    </table>
+                    <div id="metadata-empty" class="admin-empty-state hidden">No photos found.</div>
+                </div>
+
+                <div class="admin-table-actions">
+                    <button type="button" id="load-more-metadata" class="btn hidden">load more</button>
+                </div>
+            </section>
+
+            <section id="upload-section" class="admin-section hidden" data-admin-section="upload">
+                <div class="admin-section-heading admin-upload-heading">
+                    <div>
+                        <p class="admin-eyebrow">Add to gallery</p>
+                        <h2>Upload Photo</h2>
+                    </div>
+                </div>
+
+                <form id="upload-form" class="upload-form admin-upload-form">
                 <div class="form-group">
                     <label for="photo-file">photo</label>
                     <div class="file-input-wrapper">
@@ -94,13 +150,14 @@
                 <div id="upload-success" class="upload-success hidden">
                     <p></p>
                 </div>
-            </form>
+                </form>
+            </section>
         </div>
     </main>
 
-    <script src="../js/config.js?v=20260405c"></script>
-    <script src="../js/imageService.js?v=20260428a"></script>
-    <script src="../js/customCalendar.js?v=20260405c"></script>
-    <script src="../js/adminUpload.js?v=20260428a"></script>
+    <script src="../js/config.js?v=20260717a"></script>
+    <script src="../js/imageService.js?v=20260717a"></script>
+    <script src="../js/customCalendar.js?v=20260717a"></script>
+    <script src="../js/adminUpload.js?v=20260717a"></script>
 </body>
 </html>
