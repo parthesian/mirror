@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gallery Admin</title>
     <link rel="icon" type="image/svg+xml" href="../mirror.svg">
-    <link rel="stylesheet" href="../styles.css">
+    <link rel="stylesheet" href="../styles.css?v=20260717b">
 </head>
 <body class="exposure-0 admin-page">
     <main class="admin-shell">
@@ -44,6 +44,18 @@
 
                 <div class="admin-table-wrap">
                     <table class="admin-metadata-table">
+                        <colgroup>
+                            <col class="admin-col-photo">
+                            <col class="admin-col-date">
+                            <col class="admin-col-location">
+                            <col class="admin-col-country">
+                            <col class="admin-col-state">
+                            <col class="admin-col-camera">
+                            <col class="admin-col-coord">
+                            <col class="admin-col-coord">
+                            <col class="admin-col-description">
+                            <col class="admin-col-actions">
+                        </colgroup>
                         <thead>
                             <tr>
                                 <th scope="col">photo</th>
@@ -64,7 +76,7 @@
                 </div>
 
                 <div class="admin-table-actions">
-                    <button type="button" id="load-more-metadata" class="btn hidden">load more</button>
+                    <button type="button" id="load-more-metadata" class="btn btn-primary hidden">load more</button>
                 </div>
             </section>
 
@@ -155,9 +167,9 @@
         </div>
     </main>
 
-    <script src="../js/config.js?v=20260717a"></script>
-    <script src="../js/imageService.js?v=20260717a"></script>
-    <script src="../js/customCalendar.js?v=20260717a"></script>
-    <script src="../js/adminUpload.js?v=20260717a"></script>
+    <script src="../js/config.js?v=20260717b"></script>
+    <script src="../js/imageService.js?v=20260717b"></script>
+    <script src="../js/customCalendar.js?v=20260717b"></script>
+    <script src="../js/adminUpload.js?v=20260717b"></script>
 </body>
 </html>
