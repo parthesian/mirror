@@ -295,6 +295,7 @@ class AdminUploadPage {
         const photoCell = document.createElement('td');
         photoCell.className = 'admin-photo-cell';
         const imageLink = document.createElement('a');
+        imageLink.className = 'admin-photo-thumb';
         imageLink.href = photo.url;
         imageLink.target = '_blank';
         imageLink.rel = 'noopener';
@@ -302,7 +303,10 @@ class AdminUploadPage {
         const image = document.createElement('img');
         image.src = photo.thumbnailUrl;
         image.alt = photo.location ? `Photo from ${photo.location}` : 'Gallery photo';
+        image.width = 56;
+        image.height = 56;
         image.loading = 'lazy';
+        image.decoding = 'async';
         imageLink.appendChild(image);
         photoCell.appendChild(imageLink);
         row.appendChild(photoCell);
@@ -324,7 +328,7 @@ class AdminUploadPage {
         actionCell.className = 'admin-row-actions';
         const saveButton = document.createElement('button');
         saveButton.type = 'button';
-        saveButton.className = 'btn admin-save-button';
+        saveButton.className = 'btn btn-primary admin-save-button';
         saveButton.dataset.savePhoto = photo.id;
         saveButton.textContent = 'saved';
         saveButton.disabled = true;
