@@ -275,6 +275,67 @@ class ImageService {
     }
 
     /**
+     * Load a page of full photo records for the metadata editor.
+     * @param {string|null} cursor - Pagination cursor
+     * @param {number} limit - Page size
+     * @returns {Promise<Object>} Admin photo page
+     */
+    async getAdminPhotos(cursor = null, limit = 24) {
+        const url = new URL(this.buildApiUrl('/api/admin/photos'), window.location.origin);
+        url.searchParams.set('limit', String(limit));
+        if (cursor) {
+            url.searchParams.set('cursor', cursor);
+        }
+
+        const response = await fetch(url.toString(), {
+            method: 'GET',
+            credentials: 'same-origin'
+        });
+        const payload = await this.parseJsonResponse(response);
+
+        if (!response.ok) {
+            const error = new Error(payload.error || 'Unable to load photo metadata.');
+            error.status = response.status;
+            throw error;
+        }
+
+        return {
+            photos: (payload.photos || []).map((photo) => this.mapPhoto(photo)),
+            hasMore: Boolean(payload.hasMore),
+            nextCursor: payload.nextCursor || null
+        };
+    }
+
+    /**
+     * Save editable metadata for one photo.
+     * @param {string} id - Photo id
+     * @param {Object} metadata - Editable metadata values
+     * @returns {Promise<Object>} Updated photo response
+     */
+    async updatePhotoMetadata(id, metadata) {
+        const response = await fetch(this.buildApiUrl(`/api/admin/photos/${encodeURIComponent(id)}`), {
+            method: 'PATCH',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(metadata)
+        });
+        const payload = await this.parseJsonResponse(response);
+
+        if (!response.ok) {
+            const error = new Error(payload.error || 'Unable to save photo metadata.');
+            error.status = response.status;
+            throw error;
+        }
+
+        return {
+            ...payload,
+            photo: this.mapPhoto(payload.photo)
+        };
+    }
+
+    /**
      * Complete Cloudflare Access auth for the admin API in a top-level navigation.
      * @param {string} returnTo - Path to return to after auth succeeds
      */
