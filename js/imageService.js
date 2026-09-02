@@ -336,6 +336,27 @@ class ImageService {
     }
 
     /**
+     * Delete a photo file and its metadata.
+     * @param {string} id - Photo id
+     * @returns {Promise<Object>} Delete response
+     */
+    async deletePhoto(id) {
+        const response = await fetch(this.buildApiUrl(`/api/admin/photos/${encodeURIComponent(id)}`), {
+            method: 'DELETE',
+            credentials: 'same-origin'
+        });
+        const payload = await this.parseJsonResponse(response);
+
+        if (!response.ok) {
+            const error = new Error(payload.error || 'Unable to delete photo.');
+            error.status = response.status;
+            throw error;
+        }
+
+        return payload;
+    }
+
+    /**
      * Complete Cloudflare Access auth for the admin API in a top-level navigation.
      * @param {string} returnTo - Path to return to after auth succeeds
      */

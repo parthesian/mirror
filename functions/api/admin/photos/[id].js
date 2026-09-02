@@ -1,6 +1,6 @@
 import { requireAdmin } from '../../../_lib/access.js';
 import { errorResponse, handleOptions, json } from '../../../_lib/http.js';
-import { mapPhotoRecord } from '../../../_lib/photos.js';
+import { buildThumbnailStorageKey, mapPhotoRecord } from '../../../_lib/photos.js';
 
 const PHOTO_COLUMNS = `
     id, storage_key, location, description, taken_at, uploaded_at, width, height,
@@ -153,18 +153,70 @@ async function updatePhoto(context) {
     });
 }
 
+async function deleteStoredObjects(env, storageKey) {
+    const keys = [storageKey];
+    const thumbnailKey = buildThumbnailStorageKey(storageKey);
+    if (thumbnailKey && thumbnailKey !== storageKey) {
+        keys.push(thumbnailKey);
+    }
+
+    await Promise.all(keys.map(async (key) => {
+        try {
+            await env.PHOTO_BUCKET.delete(key);
+        } catch (error) {
+            console.error(`Failed to delete stored photo object ${key}:`, error);
+        }
+    }));
+}
+
+async function deletePhoto(context) {
+    const { request, env, params } = context;
+    const auth = await requireAdmin(request, env);
+
+    if (!auth.ok) {
+        return auth.response;
+    }
+
+    const existing = await env.PHOTO_DB.prepare(`
+        SELECT id, storage_key FROM photos WHERE id = ? LIMIT 1
+    `).bind(params.id).first();
+
+    if (!existing) {
+        return errorResponse('Photo not found.', 404);
+    }
+
+    await env.PHOTO_DB.prepare(`
+        DELETE FROM photos WHERE id = ?
+    `).bind(params.id).run();
+
+    await deleteStoredObjects(env, existing.storage_key);
+
+    return json({
+        success: true,
+        message: 'Photo and metadata deleted.',
+        photoId: params.id
+    }, {
+        headers: {
+            'Cache-Control': 'no-store'
+        }
+    });
+}
+
 export async function onRequest(context) {
     try {
         switch (context.request.method) {
             case 'PATCH':
                 return await updatePhoto(context);
+            case 'DELETE':
+                return await deletePhoto(context);
             case 'OPTIONS':
                 return handleOptions();
             default:
                 return errorResponse('Method not allowed.', 405);
         }
     } catch (error) {
-        console.error('Failed to update photo metadata:', error);
-        return errorResponse('Failed to update photo metadata.', 500, error.message);
+        const action = context.request.method === 'DELETE' ? 'delete photo' : 'update photo metadata';
+        console.error(`Failed to ${action}:`, error);
+        return errorResponse(`Failed to ${action}.`, 500, error.message);
     }
 }

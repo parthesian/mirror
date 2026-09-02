@@ -30,10 +30,17 @@ class AdminUploadPage {
         this.metadataSaveStatus = document.getElementById('metadata-save-status');
         this.metadataEmpty = document.getElementById('metadata-empty');
         this.loadMoreMetadataBtn = document.getElementById('load-more-metadata');
+        this.confirmDialog = document.getElementById('admin-confirm-dialog');
+        this.confirmTitle = document.getElementById('admin-confirm-title');
+        this.confirmMessage = document.getElementById('admin-confirm-message');
+        this.confirmCancelBtn = document.getElementById('admin-confirm-cancel');
+        this.confirmAcceptBtn = document.getElementById('admin-confirm-accept');
         this.adminPhotos = [];
         this.metadataCursor = null;
         this.metadataHasMore = false;
         this.isLoadingMetadata = false;
+        this.confirmResolver = null;
+        this.confirmPreviousFocus = null;
 
         this.init();
     }
@@ -81,21 +88,40 @@ class AdminUploadPage {
         this.metadataSearch.addEventListener('input', () => this.filterMetadataRows());
         this.loadMoreMetadataBtn.addEventListener('click', () => this.loadMetadata({ append: true }));
 
-        this.metadataTableBody.addEventListener('input', (event) => {
+        const markDirty = (event) => {
             const row = event.target.closest('tr');
             if (!row || !event.target.matches('input, textarea')) {
                 return;
             }
-            row.classList.add('is-dirty');
-            const saveButton = row.querySelector('[data-save-photo]');
-            saveButton.disabled = false;
-            saveButton.textContent = 'save';
-        });
+            this.markMetadataRowDirty(row);
+        };
+        this.metadataTableBody.addEventListener('input', markDirty);
+        this.metadataTableBody.addEventListener('change', markDirty);
 
         this.metadataTableBody.addEventListener('click', async (event) => {
             const saveButton = event.target.closest('[data-save-photo]');
             if (saveButton) {
                 await this.saveMetadataRow(saveButton.closest('tr'), saveButton);
+                return;
+            }
+
+            const deleteButton = event.target.closest('[data-delete-photo]');
+            if (deleteButton) {
+                await this.deleteMetadataRow(deleteButton.closest('tr'), deleteButton);
+            }
+        });
+
+        this.confirmCancelBtn.addEventListener('click', () => this.closeConfirm(false));
+        this.confirmAcceptBtn.addEventListener('click', () => this.closeConfirm(true));
+        this.confirmDialog.addEventListener('click', (event) => {
+            if (event.target === this.confirmDialog || event.target.dataset.adminConfirmDismiss !== undefined) {
+                this.closeConfirm(false);
+            }
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && !this.confirmDialog.classList.contains('hidden')) {
+                event.preventDefault();
+                this.closeConfirm(false);
             }
         });
     }
@@ -326,13 +352,24 @@ class AdminUploadPage {
 
         const actionCell = document.createElement('td');
         actionCell.className = 'admin-row-actions';
+
         const saveButton = document.createElement('button');
         saveButton.type = 'button';
         saveButton.className = 'btn btn-primary admin-save-button';
         saveButton.dataset.savePhoto = photo.id;
         saveButton.textContent = 'saved';
         saveButton.disabled = true;
+        saveButton.setAttribute('aria-label', `Save metadata for ${photo.location || 'this photo'}`);
         actionCell.appendChild(saveButton);
+
+        const deleteButton = document.createElement('button');
+        deleteButton.type = 'button';
+        deleteButton.className = 'btn btn-danger admin-delete-button';
+        deleteButton.dataset.deletePhoto = photo.id;
+        deleteButton.textContent = 'delete';
+        deleteButton.setAttribute('aria-label', `Delete photo ${photo.location || photo.id}`);
+        actionCell.appendChild(deleteButton);
+
         row.appendChild(actionCell);
 
         return row;
@@ -366,6 +403,65 @@ class AdminUploadPage {
         return cell;
     }
 
+    markMetadataRowDirty(row) {
+        row.classList.add('is-dirty');
+        const saveButton = row.querySelector('[data-save-photo]');
+        if (!saveButton || saveButton.dataset.busy === 'true') {
+            return;
+        }
+        saveButton.disabled = false;
+        saveButton.textContent = 'save';
+    }
+
+    getRowSummary(row) {
+        const location = row.querySelector('[data-field="location"]')?.value.trim() || 'this photo';
+        const takenAt = row.querySelector('[data-field="takenAt"]')?.value.trim();
+        return takenAt ? `${location} (${takenAt})` : location;
+    }
+
+    async confirmAction({ title, message, confirmLabel, danger = false }) {
+        if (this.confirmResolver) {
+            this.closeConfirm(false);
+        }
+
+        this.confirmTitle.textContent = title;
+        this.confirmMessage.textContent = message;
+        this.confirmAcceptBtn.textContent = confirmLabel;
+        this.confirmAcceptBtn.classList.toggle('btn-danger', danger);
+        this.confirmAcceptBtn.classList.toggle('btn-primary', !danger);
+        this.confirmDialog.classList.remove('hidden');
+        this.confirmDialog.setAttribute('aria-hidden', 'false');
+        this.confirmPreviousFocus = document.activeElement;
+        this.confirmAcceptBtn.focus();
+
+        return new Promise((resolve) => {
+            this.confirmResolver = resolve;
+        });
+    }
+
+    closeConfirm(confirmed) {
+        if (!this.confirmResolver) {
+            return;
+        }
+
+        const resolve = this.confirmResolver;
+        this.confirmResolver = null;
+        this.confirmDialog.classList.add('hidden');
+        this.confirmDialog.setAttribute('aria-hidden', 'true');
+        if (this.confirmPreviousFocus && typeof this.confirmPreviousFocus.focus === 'function') {
+            this.confirmPreviousFocus.focus();
+        }
+        this.confirmPreviousFocus = null;
+        resolve(confirmed);
+    }
+
+    setRowBusy(row, busy) {
+        row.querySelectorAll('button').forEach((button) => {
+            button.dataset.busy = busy ? 'true' : 'false';
+            button.disabled = busy || (button.matches('[data-save-photo]') && !row.classList.contains('is-dirty'));
+        });
+    }
+
     async saveMetadataRow(row, saveButton) {
         const controls = Array.from(row.querySelectorAll('[data-field]'));
         if (controls.some((control) => !control.reportValidity())) {
@@ -380,7 +476,16 @@ class AdminUploadPage {
                 : value;
         });
 
-        saveButton.disabled = true;
+        const confirmed = await this.confirmAction({
+            title: 'Save metadata changes?',
+            message: `Save updates to ${this.getRowSummary(row)}?`,
+            confirmLabel: 'save'
+        });
+        if (!confirmed) {
+            return;
+        }
+
+        this.setRowBusy(row, true);
         saveButton.textContent = 'saving';
         this.setMetadataStatus('Saving changes...');
 
@@ -397,9 +502,40 @@ class AdminUploadPage {
             this.filterMetadataRows();
         } catch (error) {
             console.error('Failed to save metadata:', error);
-            saveButton.disabled = false;
             saveButton.textContent = 'retry';
             this.setMetadataStatus(error.message || 'Failed to save changes.', true);
+        } finally {
+            this.setRowBusy(row, false);
+        }
+    }
+
+    async deleteMetadataRow(row, deleteButton) {
+        const confirmed = await this.confirmAction({
+            title: 'Delete this photo?',
+            message: `This will permanently delete the photo and its metadata for ${this.getRowSummary(row)}. This cannot be undone.`,
+            confirmLabel: 'delete',
+            danger: true
+        });
+        if (!confirmed) {
+            return;
+        }
+
+        const photoId = row.dataset.photoId;
+        this.setRowBusy(row, true);
+        deleteButton.textContent = 'deleting';
+        this.setMetadataStatus('Deleting photo...');
+
+        try {
+            await this.imageService.deletePhoto(photoId);
+            this.adminPhotos = this.adminPhotos.filter((photo) => photo.id !== photoId);
+            row.remove();
+            this.setMetadataStatus('Photo and metadata deleted.');
+            this.filterMetadataRows();
+        } catch (error) {
+            console.error('Failed to delete photo:', error);
+            deleteButton.textContent = 'delete';
+            this.setMetadataStatus(error.message || 'Failed to delete photo.', true);
+            this.setRowBusy(row, false);
         }
     }
 

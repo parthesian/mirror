@@ -2429,7 +2429,7 @@ body.exposure-3 .btn-secondary {
 .admin-col-camera { width: 150px; }
 .admin-col-coord { width: 104px; }
 .admin-col-description { width: 210px; }
-.admin-col-actions { width: 88px; }
+.admin-col-actions { width: 104px; }
 
 .admin-metadata-table th {
     position: sticky;
@@ -2534,19 +2534,86 @@ body.exposure-3 .btn-secondary {
 }
 
 .admin-row-actions {
-    text-align: right;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.35rem;
     white-space: nowrap;
 }
 
-.admin-save-button {
+.admin-save-button,
+.admin-delete-button {
     min-width: 72px;
-    padding: 0.6rem 0.7rem !important;
+    padding: 0.55rem 0.65rem !important;
 }
 
-.admin-save-button:disabled {
+.admin-save-button:disabled,
+.admin-delete-button:disabled {
     cursor: default;
     opacity: 0.5;
     transform: none !important;
+}
+
+.btn-danger {
+    background: rgba(141, 37, 37, 0.14);
+    color: #8d2525;
+    border: 1px solid rgba(141, 37, 37, 0.28);
+}
+
+.btn-danger:hover {
+    background: rgba(141, 37, 37, 0.22);
+    border-color: rgba(141, 37, 37, 0.4);
+}
+
+.admin-confirm {
+    position: fixed;
+    inset: 0;
+    z-index: 12000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.25rem;
+}
+
+.admin-confirm-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(24, 20, 16, 0.42);
+    backdrop-filter: blur(10px);
+}
+
+.admin-confirm-panel {
+    position: relative;
+    z-index: 1;
+    width: min(420px, 100%);
+    padding: 1.4rem 1.45rem 1.3rem;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.86);
+    box-shadow:
+        0 24px 60px rgba(0, 0, 0, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(20px);
+}
+
+.admin-confirm-panel h3 {
+    margin: 0 0 0.65rem;
+    font-size: 1.05rem;
+    font-weight: 400;
+    letter-spacing: 0.04em;
+}
+
+.admin-confirm-panel p {
+    margin: 0 0 1.2rem;
+    font-size: 0.88rem;
+    line-height: 1.5;
+    opacity: 0.82;
+}
+
+.admin-confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.6rem;
 }
 
 .admin-empty-state {

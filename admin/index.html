@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gallery Admin</title>
     <link rel="icon" type="image/svg+xml" href="../mirror.svg">
-    <link rel="stylesheet" href="../styles.css?v=20260717b">
+    <link rel="stylesheet" href="../styles.css?v=20260902a">
 </head>
 <body class="exposure-0 admin-page">
     <main class="admin-shell">
@@ -167,9 +167,21 @@
         </div>
     </main>
 
-    <script src="../js/config.js?v=20260717b"></script>
-    <script src="../js/imageService.js?v=20260717b"></script>
-    <script src="../js/customCalendar.js?v=20260717b"></script>
-    <script src="../js/adminUpload.js?v=20260717b"></script>
+    <div id="admin-confirm-dialog" class="admin-confirm hidden" role="dialog" aria-modal="true" aria-labelledby="admin-confirm-title" aria-describedby="admin-confirm-message" aria-hidden="true">
+        <div class="admin-confirm-backdrop" data-admin-confirm-dismiss></div>
+        <div class="admin-confirm-panel">
+            <h3 id="admin-confirm-title">Confirm</h3>
+            <p id="admin-confirm-message"></p>
+            <div class="admin-confirm-actions">
+                <button type="button" id="admin-confirm-cancel" class="btn btn-secondary">cancel</button>
+                <button type="button" id="admin-confirm-accept" class="btn btn-primary">confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/config.js?v=20260902a"></script>
+    <script src="../js/imageService.js?v=20260902a"></script>
+    <script src="../js/customCalendar.js?v=20260902a"></script>
+    <script src="../js/adminUpload.js?v=20260902a"></script>
 </body>
 </html>
