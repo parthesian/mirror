@@ -162,7 +162,7 @@ class CustomCalendar {
         const formattedDate = this.selectedDate.toISOString().split('T')[0];
         this.inputElement.value = formattedDate;
         
-        // Trigger change event
+        this.inputElement.dispatchEvent(new Event('input', { bubbles: true }));
         this.inputElement.dispatchEvent(new Event('change', { bubbles: true }));
         
         this.renderCalendar();

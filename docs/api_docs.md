@@ -111,6 +111,47 @@ Grid views should use `thumbnail.url`; fullscreen/modal views should use `image.
 }
 ```
 
+### 4. Update Photo Metadata
+
+**Endpoint:** `PATCH /api/admin/photos/:id`
+
+**Description:** Updates editable metadata for one photo.
+
+**Auth:** Cloudflare Access required.
+
+**Request body:** JSON object with any of `takenAt`, `location`, `country`, `state`, `camera`, `latitude`, `longitude`, `description`.
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "message": "Photo metadata saved.",
+  "photo": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "location": "California"
+  }
+}
+```
+
+### 5. Delete Photo
+
+**Endpoint:** `DELETE /api/admin/photos/:id`
+
+**Description:** Permanently deletes a photo from `R2` and removes its metadata from `D1`.
+
+**Auth:** Cloudflare Access required.
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "message": "Photo and metadata deleted.",
+  "photoId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
 ## D1 Schema
 
 The canonical metadata schema lives in `migrations/0001_create_photos.sql`.
