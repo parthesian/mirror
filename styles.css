@@ -2294,6 +2294,10 @@ body.exposure-1 .btn-secondary {
     align-self: flex-end; /* Position in bottom-right of modal info panel */
 }
 
+#modal-globe {
+    align-self: flex-start;
+}
+
 #modal-globe:not(.hidden) {
     cursor: pointer;
 }
