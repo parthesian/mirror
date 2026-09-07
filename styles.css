@@ -3787,8 +3787,8 @@ body.ui-animating .control-menu {
 
 .cm-hub {
     --cm-orb: 42px;
-    --cm-orb-inset: 1.7rem;
-    --cm-orb-dock: 0.42rem;
+    --cm-orb-inset: 3.4rem;
+    --cm-orb-dock: 0.38rem;
     position: absolute;
     right: calc(var(--cm-r-hub) * -1);
     bottom: calc(var(--cm-r-hub) * -1);
@@ -4075,8 +4075,8 @@ body.ui-animating .control-menu {
 
     .cm-hub {
         --cm-orb: 44px;
-        --cm-orb-inset: 1.15rem;
-        --cm-orb-dock: 0.4rem;
+        --cm-orb-inset: 2.2rem;
+        --cm-orb-dock: 0.38rem;
     }
 }
 

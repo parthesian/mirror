@@ -69,7 +69,7 @@ class ControlMenu {
         this.scale = 1;
         this.geometry = { ...CM_BASE };
 
-        this.slideMs = 340;
+        this.slideMs = 380;
         this.expandMs = 520;
 
         this.applyGeometry();
