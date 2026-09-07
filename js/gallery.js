@@ -923,20 +923,24 @@ class Gallery {
     waitForMorph(grid) {
         return new Promise((resolve) => {
             let settled = false;
+            let quietTimer = null;
             const finish = () => {
                 if (settled) return;
                 settled = true;
                 grid.removeEventListener('transitionend', onEnd);
-                window.clearTimeout(timer);
+                window.clearTimeout(quietTimer);
+                window.clearTimeout(hardStop);
                 resolve();
             };
             const onEnd = (event) => {
-                if (event.propertyName === 'transform' && event.target.classList.contains('gallery-item')) {
-                    window.clearTimeout(timer);
-                    timer = window.setTimeout(finish, 60);
-                }
+                if (event.propertyName !== 'transform') return;
+                if (!event.target.classList.contains('gallery-item')) return;
+                window.clearTimeout(quietTimer);
+                quietTimer = window.setTimeout(finish, 60);
             };
-            let timer = window.setTimeout(finish, 700);
+            // Many tiles (5–6 columns) fire transitionend at slightly
+            // different times; never let that postpone the hard stop.
+            const hardStop = window.setTimeout(finish, 700);
             grid.addEventListener('transitionend', onEnd);
         });
     }

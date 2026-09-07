@@ -3984,54 +3984,54 @@ body.ui-animating .control-menu {
        from the open hub rule when .collapsed is removed. */
     transition-duration: var(--dur-mid);
     box-shadow:
-        0 0 0 1px color-mix(in srgb, var(--ink, #333) 22%, transparent),
-        0 0 12px color-mix(in srgb, var(--ink, #333) 20%, transparent),
-        0 0 28px color-mix(in srgb, var(--ink, #333) 10%, transparent);
+        0 0 0 1px color-mix(in srgb, var(--ink, #333) 30%, transparent),
+        0 0 14px color-mix(in srgb, var(--ink, #333) 28%, transparent),
+        0 0 32px color-mix(in srgb, var(--ink, #333) 14%, transparent);
 }
 
 .control-menu.collapsed:not(.is-docked) .cm-hub {
     right: var(--cm-orb-inset);
     bottom: var(--cm-orb-inset);
-    animation: cm-orb-pulse 3.8s ease-in-out infinite;
+    animation: cm-orb-pulse 4.2s ease-in-out infinite;
 }
 
 .control-menu.collapsed .cm-hub::after {
     content: '';
     position: absolute;
-    inset: -7px;
+    inset: -8px;
     border-radius: 50%;
-    border: 1px solid color-mix(in srgb, var(--ink, #333) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--ink, #333) 22%, transparent);
     pointer-events: none;
     opacity: 0;
 }
 
 .control-menu.collapsed:not(.is-docked) .cm-hub::after {
-    animation: cm-orb-ring 3.8s ease-in-out infinite;
+    animation: cm-orb-ring 4.2s ease-in-out infinite;
 }
 
 @keyframes cm-orb-pulse {
     0%, 100% {
         box-shadow:
-            0 0 0 1px color-mix(in srgb, var(--ink, #333) 20%, transparent),
-            0 0 10px color-mix(in srgb, var(--ink, #333) 18%, transparent),
-            0 0 24px color-mix(in srgb, var(--ink, #333) 8%, transparent);
+            0 0 0 1px color-mix(in srgb, var(--ink, #333) 26%, transparent),
+            0 0 12px color-mix(in srgb, var(--ink, #333) 24%, transparent),
+            0 0 28px color-mix(in srgb, var(--ink, #333) 10%, transparent);
     }
     50% {
         box-shadow:
-            0 0 0 1px color-mix(in srgb, var(--ink, #333) 36%, transparent),
-            0 0 16px color-mix(in srgb, var(--ink, #333) 28%, transparent),
-            0 0 34px color-mix(in srgb, var(--ink, #333) 14%, transparent);
+            0 0 0 1px color-mix(in srgb, var(--ink, #333) 48%, transparent),
+            0 0 20px color-mix(in srgb, var(--ink, #333) 36%, transparent),
+            0 0 40px color-mix(in srgb, var(--ink, #333) 18%, transparent);
     }
 }
 
 @keyframes cm-orb-ring {
     0%, 100% {
-        opacity: 0.2;
-        transform: scale(0.94);
+        opacity: 0.25;
+        transform: scale(0.96);
     }
     50% {
-        opacity: 0.55;
-        transform: scale(1.08);
+        opacity: 0.7;
+        transform: scale(1.1);
     }
 }
 
