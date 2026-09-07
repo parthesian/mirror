@@ -90,7 +90,6 @@ body.exposure-1 { --ink: #000000; --ink-dim: #666666; --ink-soft: #888888; --lin
     font-size: 1.55rem;
     font-weight: 400;
     letter-spacing: 0.16em;
-    text-transform: uppercase;
     white-space: nowrap;
 }
 
