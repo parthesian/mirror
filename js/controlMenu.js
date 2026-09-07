@@ -160,7 +160,9 @@ class ControlMenu {
         }, { passive: false });
 
         document.addEventListener('exposureChange', () => this.renderOptions());
-        document.addEventListener('viewModeChange', () => this.renderOptions());
+        document.addEventListener('viewModeChange', (event) => {
+            this.syncViewModeSelection(event.detail?.mode);
+        });
         document.addEventListener('galleryLayoutChange', () => this.renderOptions());
         document.addEventListener('galleryFilterChange', () => {
             this.syncFilterState();
@@ -584,8 +586,20 @@ class ControlMenu {
         });
     }
 
+    currentViewMode() {
+        return this.viewMode?.displayMode || this.viewMode?.mode || 'chrono';
+    }
+
+    syncViewModeSelection(mode) {
+        const current = mode || this.currentViewMode();
+        this.root.querySelectorAll('.cm-node[data-kind="view"]').forEach((node) => {
+            node.classList.toggle('is-active', node.dataset.value === current);
+        });
+        this.renderReadout();
+    }
+
     renderOrderOptions() {
-        const mode = this.viewMode?.mode || 'chrono';
+        const mode = this.currentViewMode();
         const modes = [
             { id: 'chrono', label: 'CHRONO' },
             { id: 'random', label: 'SHUFFLE' }
@@ -593,7 +607,7 @@ class ControlMenu {
         const angles = this.anglesFor(modes.length, 22);
 
         modes.forEach((entry, index) => {
-            this.optionLayer.appendChild(this.node({
+            const node = this.node({
                 label: entry.label,
                 size: this.geometry.nodeB,
                 radius: this.geometry.ringB,
@@ -601,7 +615,10 @@ class ControlMenu {
                 active: mode === entry.id,
                 title: entry.id === 'random' ? 'Shuffle the gallery' : 'Newest first',
                 onClick: () => this.viewMode?.setMode(entry.id, { forceRefresh: entry.id === 'random' })
-            }));
+            });
+            node.dataset.kind = 'view';
+            node.dataset.value = entry.id;
+            this.optionLayer.appendChild(node);
         });
     }
 
@@ -651,7 +668,7 @@ class ControlMenu {
             const mode = this.gallery.layoutMode === 'masonry' ? 'MASONRY' : 'GRID';
             parts.push(window.innerWidth > 768 ? `${mode} ${this.gallery.columns}` : mode);
         }
-        if (this.viewMode?.mode === 'random') {
+        if (this.currentViewMode() === 'random') {
             parts.push('SHUFFLED');
         }
 
