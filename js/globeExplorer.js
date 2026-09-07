@@ -8,9 +8,8 @@ class GlobeExplorer {
         this.overlay = document.getElementById('globe-explorer');
         this.sceneContainer = document.getElementById('globe-explorer-scene');
         this.intersectPicker = document.getElementById('globe-intersect-picker');
-        this.panelContent = document.getElementById('globe-panel-content');
         this.hint = this.overlay?.querySelector('.globe-explorer-hint');
-        this.openBtn = document.getElementById('globe-btn');
+        this.openBtn = document.getElementById('globe-btn'); // optional; CONTROL menu opens the globe now
         this.closeBtn = document.getElementById('globe-explorer-close');
         this.rotateToggleBtn = document.getElementById('globe-rotate-toggle');
         this.filterPanel = document.getElementById('country-filter-panel');
@@ -141,12 +140,28 @@ class GlobeExplorer {
         this._applyDotHighlight();
     }
 
-    _setPendingFilterSelection(type, value, loc = null) {
-        this.selectedFilterType = type;
-        if (loc?.country) this.selectedFilters.country = loc.country;
-        if (loc?.state) this.selectedFilters.state = loc.state;
-        this._setFilterSelection(type, value, false);
-        this._renderFilterMenu();
+    _applyGlobePick(option) {
+        this._hideIntersectPicker();
+        if (!option) return;
+        if (option.kind === 'country' && option.feature) {
+            const aliases = option.feature.names || [];
+            const canonicalCountry = this._resolveCountryFilterValue(option.feature.name, aliases);
+            this._applyFilter('country', canonicalCountry);
+            return;
+        }
+        const loc = option.sample;
+        if (loc?.location) {
+            this._setFilterSelectionFromOption('location', {
+                value: loc.location,
+                country: loc.country || '',
+                state: loc.state || ''
+            }, false);
+            this._applyFilter('location', loc.location);
+            return;
+        }
+        if (loc?.country) {
+            this._applyFilter('country', loc.country);
+        }
     }
 
     _normalizeCountryName(value) {
@@ -232,24 +247,6 @@ class GlobeExplorer {
         }
         group.add(borderGroup);
         this.countryBoundaryBorder = borderGroup;
-    }
-
-    _showCountryPanel(country, aliases = []) {
-        const resolvedCountry = this._resolveCountryFilterValue(country, aliases);
-        const photos = this.locationsByCountry[resolvedCountry] || [];
-        let html = `<h3 class="globe-panel-country">${this._escapeHtml(country || 'Unknown')}</h3>`;
-        html += `<p class="globe-panel-count">${photos.length} photo${photos.length !== 1 ? 's' : ''}</p>`;
-        if (!photos.length) {
-            html += '<p class="globe-panel-count">no photos in this country yet</p>';
-        }
-        html += '<div class="globe-panel-actions">';
-        html += `<button class="globe-panel-filter-btn" id="globe-filter-country-boundary" ${photos.length ? '' : 'disabled'}>show photos</button>`;
-        html += '</div>';
-        this.panelContent.innerHTML = html;
-        document.getElementById('globe-filter-country-boundary')?.addEventListener('click', () => {
-            if (!photos.length) return;
-            this._applyFilter('country', resolvedCountry);
-        });
     }
 
     _hideIntersectPicker() {
@@ -666,19 +663,10 @@ class GlobeExplorer {
         if (!match) return;
 
         this._rotateToLocation(match);
-        const place = String(match.location || '').trim();
-        if (place) {
-            this._setPendingFilterSelection('location', place, match);
-        } else if (match.state) {
-            this._setPendingFilterSelection('state', match.state, match);
-        } else if (match.country) {
-            this._setPendingFilterSelection('country', match.country, match);
-        }
         const key = this._locationKeyFor(match);
         if (this.locationGroupByKey.has(key)) {
             this._setHoverHighlight('location', key);
         }
-        this._showPointPanel(match, null);
     }
 
     _findLocationMatch(location) {
@@ -721,10 +709,13 @@ class GlobeExplorer {
         this._syncRotateToggleUI();
     }
 
+    prefetch() {
+        this._prefetchAssets({ includeBoundaries: true, includeGeo: true });
+    }
+
     _bindPrefetchIntent() {
-        const prefetch = () => this._prefetchAssets({ includeBoundaries: true, includeGeo: true });
-        this.openBtn?.addEventListener('pointerenter', prefetch);
-        this.openBtn?.addEventListener('focus', prefetch);
+        this.openBtn?.addEventListener('pointerenter', () => this.prefetch());
+        this.openBtn?.addEventListener('focus', () => this.prefetch());
     }
 
     _prefetchAssets({ includeBoundaries = false, includeGeo = false } = {}) {
@@ -743,8 +734,8 @@ class GlobeExplorer {
     }
 
     _warmup() {
-        // Idle warmup must not race first-viewport thumbnails. Hover/focus on
-        // the globe button still starts Three + geo + borders immediately.
+        // Idle warmup must not race first-viewport thumbnails. Opening the
+        // CONTROL menu, or hovering GLOBE, still starts Three + geo + borders.
         const start = () => this._prefetchAssets({ includeBoundaries: false, includeGeo: true });
         if (typeof window.requestIdleCallback === 'function') {
             window.requestIdleCallback(start, { timeout: 3500 });
@@ -1101,11 +1092,10 @@ class GlobeExplorer {
             const countryHit = this._findCountryFromDirection(THREE, clickDir, group);
             const applyCountryChoice = () => {
                 if (!countryHit?.feature) return;
-                const aliases = countryHit.feature.names || [];
-                const canonicalCountry = this._resolveCountryFilterValue(countryHit.feature.name, aliases);
-                this._setPendingFilterSelection('country', canonicalCountry);
-                this._showCountryPanel(countryHit.feature.name, aliases);
-                this._setCountryBorderHighlight(THREE, countryHit.feature, group);
+                this._applyGlobePick({
+                    kind: 'country',
+                    feature: countryHit.feature
+                });
             };
 
             if (dotsMesh) {
@@ -1179,14 +1169,9 @@ class GlobeExplorer {
                         applyCountryChoice();
                         return;
                     }
-                    const selectedForPanel = option.sample || selectedLocation;
-                    if (!selectedForPanel?.country) return;
-                    if (selectedForPanel.location) {
-                        this._setPendingFilterSelection('location', selectedForPanel.location, selectedForPanel);
-                    } else {
-                        this._setPendingFilterSelection('country', selectedForPanel.country, selectedForPanel);
-                    }
-                    this._showPointPanel(selectedForPanel, null);
+                    this._applyGlobePick({
+                        sample: option?.sample || selectedLocation
+                    });
                 };
 
                 if (options.length > 1) {
@@ -1370,118 +1355,6 @@ class GlobeExplorer {
         );
     }
 
-    // ── panel ──
-
-    _showPointPanel(point, cycleInfo = null) {
-        const country = point?.country || 'Unknown';
-        const state = String(point?.state || '').trim();
-        const place = String(point?.location || '').trim();
-        const countryLocs = this.locationsByCountry[country] || [];
-        const stateLocs = state ? (this.locationsByStateKey[this._stateKeyForLoc(point)] || this.locationsByState[state] || []) : [];
-        const placeLocs = place ? (this.locationsByPlaceKey[this._locationKeyFor(point)] || this.locationsByPlace[place] || []) : [];
-        const defaultType = placeLocs.length > 0 ? 'location' : (stateLocs.length > 0 ? 'state' : 'country');
-        const defaultValue = defaultType === 'location' ? place : (defaultType === 'state' ? state : country);
-        const activeLocs = defaultType === 'location' ? placeLocs : (defaultType === 'state' ? stateLocs : countryLocs);
-        if (!activeLocs.length) return;
-
-        const trips = this._groupTrips(activeLocs);
-        const title = this._formatLocationWithRegion(point) || country;
-        const titleEscaped = this._escapeHtml(title);
-
-        let html = `<h3 class="globe-panel-country">${titleEscaped}</h3>`;
-        html += `<p class="globe-panel-count">${activeLocs.length} photo${activeLocs.length !== 1 ? 's' : ''}</p>`;
-        if (trips.length) {
-            html += `<p class="globe-panel-section">${trips.length} trip${trips.length !== 1 ? 's' : ''}</p>`;
-        }
-        html += '<div class="globe-panel-trips">';
-
-        for (const trip of trips) {
-            const startDate = new Date(trip[0].takenAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-            const endDate = new Date(trip[trip.length - 1].takenAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-            const label = startDate === endDate ? startDate : `${startDate} — ${endDate}`;
-            const fromIso = new Date(trip[0].takenAt).toISOString();
-            const toIso = new Date(trip[trip.length - 1].takenAt).toISOString();
-            html += `<button class="globe-panel-trip-link" data-filter-type="${defaultType}" data-filter-value="${this._escapeHtml(defaultValue)}" data-from="${fromIso}" data-to="${toIso}">
-                <span class="trip-date">${label}</span>
-                <span class="trip-count">${trip.length}</span>
-            </button>`;
-        }
-
-        html += '</div>';
-        const placeAndRegionMatch = place && state && place.toLowerCase() === state.toLowerCase();
-        const filterScopes = [
-            place ? { type: 'location', value: place, label: placeAndRegionMatch ? `${place} (place)` : place } : null,
-            state ? { type: 'state', value: state, label: placeAndRegionMatch ? `${state} (region)` : state } : null,
-            country ? { type: 'country', value: country, label: country } : null
-        ].filter(Boolean);
-        html += '<div class="globe-panel-actions">';
-        if (filterScopes.length > 1) {
-            html += '<label class="globe-panel-filter-scope">';
-            html += '<span>filter by</span>';
-            html += '<select id="globe-filter-scope-select">';
-            for (const scope of filterScopes) {
-                html += `<option value="${scope.type}" ${scope.type === defaultType ? 'selected' : ''}>${this._escapeHtml(scope.label)}</option>`;
-            }
-            html += '</select>';
-            html += '</label>';
-        }
-        html += '<button class="globe-panel-filter-btn is-primary" id="globe-filter-selected">show photos</button>';
-        html += '</div>';
-
-        this.panelContent.innerHTML = html;
-
-        document.getElementById('globe-filter-selected')?.addEventListener('click', () => {
-            const selectedType = document.getElementById('globe-filter-scope-select')?.value || defaultType;
-            const selectedScope = filterScopes.find((scope) => scope.type === selectedType)
-                || filterScopes.find((scope) => scope.type === defaultType)
-                || filterScopes[0];
-            if (selectedScope) {
-                this._applyFilter(selectedScope.type, selectedScope.value);
-            }
-        });
-        this.panelContent.querySelectorAll('.globe-panel-trip-link').forEach((el) => {
-            el.addEventListener('click', () => {
-                const selectedType = document.getElementById('globe-filter-scope-select')?.value || el.getAttribute('data-filter-type') || defaultType;
-                const selectedScope = filterScopes.find((scope) => scope.type === selectedType)
-                    || filterScopes.find((scope) => scope.type === defaultType)
-                    || filterScopes[0];
-                const type = selectedScope?.type || defaultType;
-                const value = selectedScope?.value || defaultValue;
-                const from = el.getAttribute('data-from');
-                const to = el.getAttribute('data-to');
-                const label = el.querySelector('.trip-date')?.textContent || '';
-                this._applyFilter(type, value, from, to, label);
-            });
-        });
-    }
-
-    _showInferredCountryPanel(country, nearestLoc, angleDeg, cycleInfo = null) {
-        const countryLocs = this.locationsByCountry[country] || [];
-        if (!countryLocs.length) return;
-        const countryEscaped = this._escapeHtml(country);
-        const nearestPlace = String(nearestLoc?.location || '').trim();
-        const nearestPlaceEscaped = this._escapeHtml(nearestPlace);
-
-        let html = `<h3 class="globe-panel-country">${countryEscaped}</h3>`;
-        html += `<p class="globe-panel-count">${countryLocs.length} photo${countryLocs.length !== 1 ? 's' : ''}</p>`;
-        html += '<p class="globe-panel-count">inferred from nearest globe point</p>';
-        if (nearestPlace) {
-            html += `<p class="globe-panel-count">nearest place: ${nearestPlaceEscaped}</p>`;
-        }
-        if (cycleInfo && cycleInfo.clusterTotal > 1) {
-            html += `<p class="globe-panel-count">nearby match ${cycleInfo.clusterPosition + 1}/${cycleInfo.clusterTotal}</p>`;
-        }
-        html += `<p class="globe-panel-count">distance: ${Math.round(angleDeg)}°</p>`;
-        html += '<div class="globe-panel-actions">';
-        html += '<button class="globe-panel-filter-btn is-primary" id="globe-filter-country-inferred">show photos</button>';
-        html += '</div>';
-
-        this.panelContent.innerHTML = html;
-        document.getElementById('globe-filter-country-inferred')?.addEventListener('click', () => {
-            this._applyFilter('country', country);
-        });
-    }
-
     _pickNearestCountryFromSurface(THREE, clickDir, group, maxAngleDeg = 24) {
         const groupQuat = group.getWorldQuaternion(new THREE.Quaternion());
         const maxAngle = THREE.MathUtils.degToRad(maxAngleDeg);
@@ -1582,10 +1455,6 @@ class GlobeExplorer {
             return String(a.location.takenAt || '').localeCompare(String(b.location.takenAt || ''));
         });
         return cluster;
-    }
-
-    _groupTrips(locs) {
-        return window.LocationModel.groupTrips(locs);
     }
 
     // ── filtering: public API for the radial control menu ──

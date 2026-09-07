@@ -1,20 +1,33 @@
 /**
  * Exposure state.
  *
- * The dial itself now lives in the radial CONTROL menu, so this class owns
- * the value, the persisted preference and the body theme class, and renders
- * nothing. Anything that wants to drive exposure calls setExposure().
+ * Three looks: dark (-1, the old -3 black), gray (0), and light (+1, the
+ * old +3 white). The dial itself lives in the radial CONTROL menu.
  */
 class ExposureDial {
     constructor() {
-        this.exposureValues = [-3, -2, -1, 0, 1, 2, 3];
-        this.currentExposure = -3;
+        this.exposureValues = [-1, 0, 1];
+        this.currentExposure = -1;
 
         if (!this.loadExposurePreference()) {
-            this.setExposure(-3);
+            this.setExposure(-1);
         }
 
         document.addEventListener('keydown', this.handleKeyDown.bind(this));
+    }
+
+    normalize(value) {
+        const next = Number(value);
+        if (Number.isNaN(next)) {
+            return -1;
+        }
+        if (next < 0) {
+            return -1;
+        }
+        if (next > 0) {
+            return 1;
+        }
+        return 0;
     }
 
     handleKeyDown(e) {
@@ -31,11 +44,11 @@ class ExposureDial {
         switch (e.key) {
             case 'ArrowRight':
                 e.preventDefault();
-                newExposure = Math.min(3, this.currentExposure + 1);
+                newExposure = Math.min(1, this.currentExposure + 1);
                 break;
             case 'ArrowLeft':
                 e.preventDefault();
-                newExposure = Math.max(-3, this.currentExposure - 1);
+                newExposure = Math.max(-1, this.currentExposure - 1);
                 break;
             default:
                 return;
@@ -47,11 +60,7 @@ class ExposureDial {
     }
 
     setExposure(value) {
-        const next = Number(value);
-        if (!this.exposureValues.includes(next)) {
-            console.warn(`Invalid exposure value: ${value}`);
-            return;
-        }
+        const next = this.normalize(value);
 
         this.currentExposure = next;
         this.applyTheme(next);
@@ -60,9 +69,15 @@ class ExposureDial {
     }
 
     applyTheme(exposure) {
-        for (const value of this.exposureValues) {
-            document.body.classList.remove(`exposure-${value}`);
-        }
+        document.body.classList.remove(
+            'exposure--3',
+            'exposure--2',
+            'exposure--1',
+            'exposure-0',
+            'exposure-1',
+            'exposure-2',
+            'exposure-3'
+        );
         document.body.classList.add(`exposure-${exposure}`);
     }
 
@@ -78,11 +93,8 @@ class ExposureDial {
         try {
             const stored = localStorage.getItem('mirror-exposure');
             if (stored !== null) {
-                const value = parseInt(stored, 10);
-                if (this.exposureValues.includes(value)) {
-                    this.setExposure(value);
-                    return true;
-                }
+                this.setExposure(stored);
+                return true;
             }
         } catch (e) {
             console.warn('Could not load exposure preference:', e);
@@ -101,11 +113,11 @@ class ExposureDial {
     }
 
     increaseExposure() {
-        this.setExposure(Math.min(3, this.currentExposure + 1));
+        this.setExposure(Math.min(1, this.currentExposure + 1));
     }
 
     decreaseExposure() {
-        this.setExposure(Math.max(-3, this.currentExposure - 1));
+        this.setExposure(Math.max(-1, this.currentExposure - 1));
     }
 
     resetExposure() {

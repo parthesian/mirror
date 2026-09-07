@@ -7,21 +7,21 @@
  * the bottom edge and 90° runs up the right edge.
  *
  *   hub  → open/close
- *   ring A → sections (filter, layout, order, exposure)
+ *   ring A → sections (globe, filter, layout, order, exposure)
  *   ring B → that section's options
  *   ring C → leaf values, rotatable when the list is longer than the arc
  */
 
 const CM_BASE = {
     hub: 78,
-    ringA: 172,
-    ringB: 262,
+    ringA: 180,
+    ringB: 268,
     ringC: 350,
     outer: 410,
-    nodeA: 56,
-    nodeB: 54,
-    // The leaf ring carries place names, so its nodes are sized to hold two
-    // short words rather than to pack the arc.
+    // One chip size for every section and option on rings A/B so FILTER
+    // and +1 occupy the same circle. Leaf place names stay larger.
+    nodeA: 50,
+    nodeB: 50,
     nodeC: 78
 };
 
@@ -30,10 +30,19 @@ const LEAF_TOP = 76;
 const LEAF_BOTTOM = 14;
 
 const SECTIONS = [
+    { id: 'globe', label: 'GLOBE' },
     { id: 'filter', label: 'FILTER' },
     { id: 'layout', label: 'LAYOUT' },
     { id: 'order', label: 'ORDER' },
     { id: 'exposure', label: 'EXPOSE' }
+];
+
+// Painted right-to-left on the quarter-circle (index 0 nearest 90°),
+// so +1 sits on the right and -1 on the left.
+const EXPOSURE_OPTIONS = [
+    { id: 1, label: '+1' },
+    { id: 0, label: '0' },
+    { id: -1, label: '-1' }
 ];
 
 const FILTER_TYPES = [
@@ -53,6 +62,7 @@ class ControlMenu {
         if (!this.root) return;
 
         this.hub = document.getElementById('cm-hub');
+        this.hubCatch = document.getElementById('cm-hub-catch');
         this.sectorLayer = document.getElementById('cm-sectors');
         this.optionLayer = document.getElementById('cm-options');
         this.leafLayer = document.getElementById('cm-leaf');
@@ -114,9 +124,24 @@ class ControlMenu {
     }
 
     /**
-     * Spread n nodes across the quadrant, first item nearest the right edge
-     * so the list reads top-to-bottom.
+     * Angles that keep `count` chips of `size` from overlapping on `radius`.
+     * Pad is at least half a chip so the first and last stay on screen.
      */
+    packAngles(count, radius, size) {
+        const nodeDeg = (size / Math.max(1, radius)) * (180 / Math.PI);
+        const pitch = nodeDeg * 1.16;
+        const span = Math.max(0, count - 1) * pitch;
+        const edge = nodeDeg / 2 + 2;
+        // Keep the pitch. Extra room goes to the ends so chips do not
+        // get squeezed into each other.
+        const pad = span + 2 * edge <= 90 ? (90 - span) / 2 : edge;
+        return this.anglesFor(count, pad);
+    }
+
+    controlSize() {
+        return this.geometry.nodeA;
+    }
+
     anglesFor(count, pad = 14) {
         if (count <= 0) return [];
         if (count === 1) return [45];
@@ -130,6 +155,7 @@ class ControlMenu {
 
     bindEvents() {
         this.hub.addEventListener('click', () => this.toggle());
+        this.hubCatch?.addEventListener('click', () => this.toggle());
 
         document.addEventListener('keydown', (event) => {
             if (event.key === 'Escape' && this.isOpen && !this.isAnimating) {
@@ -168,8 +194,12 @@ class ControlMenu {
         });
     }
 
+    setAnimating(value) {
+        this.isAnimating = Boolean(value);
+        this.root.classList.toggle('is-animating', this.isAnimating);
+    }
+
     toggle() {
-        if (this.isAnimating) return;
         if (this.isOpen) this.close();
         else this.open();
     }
@@ -202,29 +232,34 @@ class ControlMenu {
      * quarter-circle expands. Closing reverses that: shrink, then slide home.
      */
     open() {
-        if (this.isOpen || this.isAnimating) return;
+        if (this.isOpen && !this.isAnimating) return;
+        this.clearPhase();
         this.isOpen = true;
-        this.isAnimating = true;
+        this.setAnimating(true);
         this.hub.setAttribute('aria-expanded', 'true');
         this.hub.setAttribute('aria-label', 'Close control menu');
 
         const instant = this.prefersReducedMotion();
+        const alreadyDocked = this.root.classList.contains('is-docked');
         this.root.classList.add('is-docked');
 
-        this.after(instant ? 0 : this.slideMs, () => {
+        this.globeExplorer?.prefetch?.();
+        this.after(instant || alreadyDocked ? 0 : this.slideMs, () => {
             this.root.classList.remove('collapsed');
             this.render();
             this.after(instant ? 0 : this.expandMs, () => {
-                this.isAnimating = false;
+                this.setAnimating(false);
             });
         });
     }
 
     close() {
-        if (!this.isOpen || this.isAnimating) return;
+        if (!this.isOpen && !this.isAnimating) return;
+        this.clearPhase();
         this.isOpen = false;
-        this.isAnimating = true;
+        this.setAnimating(true);
         this.section = null;
+        const alreadyCollapsed = this.root.classList.contains('collapsed');
         this.root.classList.add('collapsed');
         this.root.dataset.section = '';
         this.hub.setAttribute('aria-expanded', 'false');
@@ -232,15 +267,21 @@ class ControlMenu {
         this.render();
 
         const instant = this.prefersReducedMotion();
-        this.after(instant ? 0 : this.expandMs, () => {
+        this.after(instant || alreadyCollapsed ? 0 : this.expandMs, () => {
             this.root.classList.remove('is-docked');
             this.after(instant ? 0 : this.slideMs, () => {
-                this.isAnimating = false;
+                this.setAnimating(false);
             });
         });
     }
 
     async selectSection(id) {
+        if (id === 'globe') {
+            this.close();
+            await this.globeExplorer?.open?.();
+            return;
+        }
+
         this.section = this.section === id ? null : id;
         this.root.dataset.section = this.section || '';
         this.leafOffset = 0;
@@ -345,23 +386,29 @@ class ControlMenu {
         this.sectorLayer.innerHTML = '';
         if (!this.isOpen) return;
 
-        const angles = this.anglesFor(SECTIONS.length, 12);
+        const size = this.controlSize();
+        const angles = this.packAngles(SECTIONS.length, this.geometry.ringA, size);
         const filterOn = this.hasActiveFilter();
         SECTIONS.forEach((section, index) => {
             const label = this.sectionLabel(section.id);
             const node = this.node({
                 label,
-                size: this.geometry.nodeA,
+                size,
                 radius: this.geometry.ringA,
                 angle: angles[index],
                 // Filter is the only section that fills: a live place
                 // selection. Order shows chrono vs shuffle in its label.
                 active: section.id === 'filter' && filterOn,
                 open: this.section === section.id,
-                title: section.id === 'order'
-                    ? `${label} order`
-                    : `${section.label} options`,
-                onClick: () => this.selectSection(section.id)
+                title: section.id === 'globe'
+                    ? 'Open the globe explorer'
+                    : section.id === 'order'
+                        ? `${label} order`
+                        : `${section.label} options`,
+                onClick: () => this.selectSection(section.id),
+                onHover: section.id === 'globe'
+                    ? () => this.globeExplorer?.prefetch?.()
+                    : undefined
             });
             node.dataset.section = section.id;
             node.setAttribute('role', 'tab');
@@ -401,14 +448,15 @@ class ControlMenu {
     renderFilterOptions() {
         const filters = this.globeExplorer?.getSelectedFilters?.() || {};
         const entries = [...FILTER_TYPES.map((t) => ({ ...t })), { id: 'clear', label: 'CLEAR' }];
-        const angles = this.anglesFor(entries.length, 10);
+        const size = this.controlSize();
+        const angles = this.packAngles(entries.length, this.geometry.ringB, size);
 
         entries.forEach((entry, index) => {
             if (entry.id === 'clear') {
                 const hasFilter = Boolean(filters.country || filters.state || filters.location);
                 const node = this.node({
                     label: 'CLEAR',
-                    size: this.geometry.nodeB,
+                    size,
                     radius: this.geometry.ringB,
                     angle: angles[index],
                     title: 'Clear all filters',
@@ -424,7 +472,7 @@ class ControlMenu {
             const node = this.node({
                 label: entry.label,
                 sub: selected ? this.shorten(selected, 12) : '',
-                size: this.geometry.nodeB,
+                size,
                 radius: this.geometry.ringB,
                 angle: angles[index],
                 active: Boolean(selected),
@@ -546,12 +594,13 @@ class ControlMenu {
             { id: 'grid', label: 'GRID' },
             { id: 'masonry', label: 'MASONRY' }
         ];
-        const angles = this.anglesFor(modes.length, 22);
+        const size = this.controlSize();
+        const angles = this.packAngles(modes.length, this.geometry.ringB, size);
 
         modes.forEach((entry, index) => {
             this.optionLayer.appendChild(this.node({
                 label: entry.label,
-                size: this.geometry.nodeB,
+                size,
                 radius: this.geometry.ringB,
                 angle: angles[index],
                 active: mode === entry.id,
@@ -576,13 +625,14 @@ class ControlMenu {
         }
 
         const counts = [2, 3, 4, 5, 6];
-        const angles = this.anglesFor(counts.length, 12);
+        const size = this.controlSize();
+        const angles = this.packAngles(counts.length, this.geometry.ringC, size);
         const current = this.gallery?.columns;
 
         counts.forEach((count, index) => {
             this.leafLayer.appendChild(this.node({
                 label: String(count),
-                size: this.geometry.nodeC * 0.72,
+                size,
                 radius: this.geometry.ringC,
                 angle: angles[index],
                 active: current === count,
@@ -617,12 +667,13 @@ class ControlMenu {
             { id: 'chrono', label: 'CHRONO' },
             { id: 'random', label: 'SHUFFLE' }
         ];
-        const angles = this.anglesFor(modes.length, 22);
+        const size = this.controlSize();
+        const angles = this.packAngles(modes.length, this.geometry.ringB, size);
 
         modes.forEach((entry, index) => {
             const node = this.node({
                 label: entry.label,
-                size: this.geometry.nodeB,
+                size,
                 radius: this.geometry.ringB,
                 angle: angles[index],
                 active: mode === entry.id,
@@ -636,19 +687,19 @@ class ControlMenu {
     }
 
     renderExposureOptions() {
-        const values = [3, 2, 1, 0, -1, -2, -3];
-        const angles = this.anglesFor(values.length, 8);
+        const size = this.controlSize();
+        const angles = this.packAngles(EXPOSURE_OPTIONS.length, this.geometry.ringB, size);
         const current = window.exposureDial?.getExposure?.();
 
-        values.forEach((value, index) => {
+        EXPOSURE_OPTIONS.forEach((entry, index) => {
             this.optionLayer.appendChild(this.node({
-                label: value > 0 ? `+${value}` : String(value),
-                size: this.geometry.nodeB * 0.82,
+                label: entry.label,
+                size,
                 radius: this.geometry.ringB,
                 angle: angles[index],
-                active: current === value,
-                title: `Exposure ${value > 0 ? `+${value}` : value}`,
-                onClick: () => window.exposureDial?.setExposure(value)
+                active: current === entry.id,
+                title: `Exposure ${entry.label}`,
+                onClick: () => window.exposureDial?.setExposure(entry.id)
             }));
         });
     }
