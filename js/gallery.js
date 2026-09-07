@@ -907,8 +907,8 @@ class Gallery {
             // as the invert, so the destination grid is never painted first.
             this.topSpacer.style.height = '0px';
             this.bottomSpacer.style.height = '0px';
-            grid.style.height = `${Math.max(previousHeight, layout.totalHeight)}px`;
-            grid.classList.add('is-morphing', 'is-masonry');
+            grid.style.height = `${previousHeight}px`;
+            grid.classList.add('is-masonry', 'is-morphing', 'is-morph-invert');
 
             this.morphFreeze = true;
             this.syncNodes(images, union.startIndex, union.endIndex, layout);
@@ -921,37 +921,49 @@ class Gallery {
                 if (!to) continue;
                 node.classList.add('loaded', 'instant');
                 const from = before.get(id) || this.growInPlace(to);
-                this.invertTo(node, from, to);
+                this.invertTo(node, from);
             }
 
-            // Flush the inverted positions before the targets are applied so
-            // the browser has two distinct states to interpolate between.
+            const duration = this.morphDurationMs();
+            const ease = this.morphEasing();
+            const boxTransition = `left ${duration}ms ${ease}, top ${duration}ms ${ease}, width ${duration}ms ${ease}, height ${duration}ms ${ease}`;
             void grid.offsetHeight;
+            grid.classList.remove('is-morph-invert');
+            grid.style.transition = `height ${duration}ms ${ease}`;
+            for (const node of nodes) {
+                node.style.transition = boxTransition;
+            }
+            void grid.offsetHeight;
+            grid.style.height = `${layout.totalHeight}px`;
 
             for (const node of nodes) {
                 const to = after.get(String(node.dataset.imageId));
                 if (!to) continue;
-                this.playTo(node);
+                this.playTo(node, to);
             }
 
-            await this.waitForMorph(grid);
+            await this.waitForMorph();
 
             for (const node of nodes) {
                 node.style.transform = '';
                 node.style.transformOrigin = '';
                 node.style.opacity = '';
+                node.style.transition = '';
             }
         } finally {
             this.morphFreeze = false;
-            grid.classList.remove('is-morphing');
+            grid.classList.remove('is-morphing', 'is-morph-invert');
             this.isMorphing = false;
             this.cachedLayout = null;
             grid.style.height = '';
+            grid.style.transition = '';
+            this.aspectReflowNeeded = false;
+            if (this.aspectReflowTimer != null) {
+                window.clearTimeout(this.aspectReflowTimer);
+                this.aspectReflowTimer = null;
+            }
             this.renderVisibleWindow(true);
             this.checkIfNeedsMoreContent();
-            if (this.aspectReflowNeeded) {
-                this.scheduleAspectReflow();
-            }
         }
     }
 
@@ -1025,43 +1037,42 @@ class Gallery {
         };
     }
 
-    invertTo(node, from, to) {
-        const sx = to.width ? from.width / to.width : 1;
-        const sy = to.height ? from.height / to.height : 1;
+    invertTo(node, from) {
+        node.style.left = `${from.left}px`;
+        node.style.top = `${from.top}px`;
+        node.style.width = `${from.width}px`;
+        node.style.height = `${from.height}px`;
+        node.style.transform = '';
+        node.style.transformOrigin = '';
+    }
+
+    playTo(node, to) {
         node.style.left = `${to.left}px`;
         node.style.top = `${to.top}px`;
         node.style.width = `${to.width}px`;
         node.style.height = `${to.height}px`;
-        node.style.transformOrigin = 'top left';
-        node.style.transform = `translate(${from.left - to.left}px, ${from.top - to.top}px) scale(${sx}, ${sy})`;
+        node.style.transform = '';
     }
 
-    playTo(node) {
-        node.style.transform = 'translate(0px, 0px) scale(1, 1)';
+    morphDurationMs() {
+        const raw = getComputedStyle(document.documentElement)
+            .getPropertyValue('--dur-slow')
+            .trim() || '520ms';
+        const ms = raw.endsWith('ms')
+            ? parseFloat(raw)
+            : parseFloat(raw) * 1000;
+        return Number.isFinite(ms) ? ms : 520;
     }
 
-    waitForMorph(grid) {
+    morphEasing() {
+        return getComputedStyle(document.documentElement)
+            .getPropertyValue('--ease')
+            .trim() || 'cubic-bezier(0.22, 1, 0.36, 1)';
+    }
+
+    waitForMorph() {
         return new Promise((resolve) => {
-            let settled = false;
-            let quietTimer = null;
-            const finish = () => {
-                if (settled) return;
-                settled = true;
-                grid.removeEventListener('transitionend', onEnd);
-                window.clearTimeout(quietTimer);
-                window.clearTimeout(hardStop);
-                resolve();
-            };
-            const onEnd = (event) => {
-                if (event.propertyName !== 'transform') return;
-                if (!event.target.classList.contains('gallery-item')) return;
-                window.clearTimeout(quietTimer);
-                quietTimer = window.setTimeout(finish, 60);
-            };
-            // Many tiles (5–6 columns) fire transitionend at slightly
-            // different times; never let that postpone the hard stop.
-            const hardStop = window.setTimeout(finish, 700);
-            grid.addEventListener('transitionend', onEnd);
+            window.setTimeout(resolve, this.morphDurationMs() + 32);
         });
     }
 

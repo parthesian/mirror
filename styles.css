@@ -440,21 +440,33 @@ body.exposure-1 .scroll-loading p {
     object-position: center center;
 }
 
-/* During a layout change the tiles are driven by FLIP transforms.
-   Only transform/opacity interpolate — animating width/height thrashes
-   layout and flickers once a row has five or six tiles. */
+/* Layout morph: tiles are already absolute, so interpolating the box does
+   not reflow siblings. Non-uniform scale was stretching the photos. */
+.gallery-window.is-morphing {
+    transition: height var(--dur-slow) var(--ease);
+}
+
 .gallery-window.is-morphing .gallery-item {
-    transition: transform var(--dur-slow) var(--ease),
+    transition: left var(--dur-slow) var(--ease),
+                top var(--dur-slow) var(--ease),
+                width var(--dur-slow) var(--ease),
+                height var(--dur-slow) var(--ease),
                 opacity var(--dur-mid) var(--ease);
-    transform-origin: top left;
-    will-change: transform;
+    perspective: none;
     backface-visibility: hidden;
+}
+
+.gallery-window.is-morph-invert,
+.gallery-window.is-morph-invert .gallery-item {
+    transition: none;
 }
 
 .gallery-window.is-morphing .gallery-item-image {
     opacity: 1;
     transform: none;
     transition: none;
+    /* Keep cover for the flight so contain/cover does not pop mid-morph. */
+    object-fit: cover;
     will-change: auto;
 }
 
