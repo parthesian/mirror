@@ -86,9 +86,10 @@ body.exposure-3  { --ink: #000000; --ink-dim: #666666; --ink-soft: #888888; --li
     height: var(--ctl);
     display: flex;
     align-items: center;
-    font-size: 1.2rem;
-    font-weight: 300;
-    letter-spacing: 0.2em;
+    font-family: 'Cormorant Garamond', 'Times New Roman', serif;
+    font-size: 1.55rem;
+    font-weight: 400;
+    letter-spacing: 0.16em;
     text-transform: uppercase;
     white-space: nowrap;
 }
@@ -2383,7 +2384,7 @@ body.exposure-3 .btn-secondary {
 /* Responsive design */
 @media (max-width: 768px) {
     .header h1 {
-        font-size: 1rem;
+        font-size: 1.25rem;
     }
 
     /* Hide timeline on mobile */
@@ -3955,11 +3956,17 @@ body.ui-animating .control-menu {
    Closing: the disc shrinks back to the docked orb, then slides home. */
 
 .control-menu.collapsed .cm-backdrop,
-.control-menu.collapsed .cm-ring-a,
-.control-menu.collapsed .cm-ring-b,
-.control-menu.collapsed .cm-ring-c {
+.control-menu.collapsed .cm-ring {
     transform: scale(0.24);
     opacity: 0;
+    pointer-events: none;
+}
+
+/* A collapsed backdrop-filter still paints a frosted quarter in some
+   browsers even at opacity 0. Drop the frost so only the orb remains. */
+.control-menu.collapsed .cm-backdrop {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
 }
 
 .control-menu.collapsed .cm-layer {
