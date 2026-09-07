@@ -126,9 +126,12 @@ class ControlMenu {
      */
     packAngles(count, radius, size) {
         const nodeDeg = (size / Math.max(1, radius)) * (180 / Math.PI);
-        const pitch = nodeDeg * 1.14;
+        const pitch = nodeDeg * 1.16;
         const span = Math.max(0, count - 1) * pitch;
-        const pad = Math.max(nodeDeg / 2 + 3, (90 - span) / 2);
+        const edge = nodeDeg / 2 + 2;
+        // Keep the pitch. Extra room goes to the ends so chips do not
+        // get squeezed into each other.
+        const pad = span + 2 * edge <= 90 ? (90 - span) / 2 : edge;
         return this.anglesFor(count, pad);
     }
 
