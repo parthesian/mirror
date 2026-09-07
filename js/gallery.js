@@ -446,6 +446,7 @@ class Gallery {
             }
             this.windowGrid.insertBefore(node, cursor);
         }
+        this.loadQueue.pump();
     }
 
     releaseItem(child) {
@@ -496,7 +497,7 @@ class Gallery {
             if (this.adoptNaturalAspect(image, img)) {
                 this.scheduleAspectReflow();
             }
-            if (img && !img.complete && image.thumbnailUrl) {
+            if (img && image.thumbnailUrl && !img.naturalWidth) {
                 this.loadQueue.assign(img, image.thumbnailUrl, this.thumbPriority(layout, absoluteIndex));
             }
             return existing;
@@ -586,6 +587,7 @@ class Gallery {
             return;
         }
 
+        img.dataset.loadUrl = url;
         this.loadQueue.assign(img, url, priority);
         if (img.complete && img.naturalWidth) {
             markReady();
@@ -601,7 +603,7 @@ class Gallery {
             const stuck = [];
             for (const item of this.mountedItems.values()) {
                 const img = item.querySelector('.gallery-item-image');
-                if (img && img.isConnected && !img.complete && (img.dataset.loadUrl || img.getAttribute('src'))) {
+                if (img && img.isConnected && !img.naturalWidth) {
                     stuck.push(img);
                 }
             }

@@ -55,13 +55,16 @@ class ImageLoadQueue {
         if (this.paused) {
             return;
         }
+        const stillWaiting = [];
         while (this.active < this.limit && this.queue.length) {
             const job = this.queue.shift();
             if (!job.img.isConnected) {
+                stillWaiting.push(job);
                 continue;
             }
             this.start(job);
         }
+        this.queue = stillWaiting.concat(this.queue);
     }
 
     start(job) {

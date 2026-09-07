@@ -205,5 +205,11 @@ queue.pause();
 assert(queue.paused === true, 'load queue can pause during a morph');
 queue.resume();
 assert(queue.paused === false, 'load queue resumes after a morph');
+const detachedImg = { isConnected: false, dataset: {}, getAttribute: () => '', addEventListener() {}, removeEventListener() {} };
+queue.assign(detachedImg, '/t.jpg', 0);
+assert(queue.queue.length === 1, 'a tile created before insert stays queued');
+queue.pump();
+assert(queue.queue.length === 1, 'pump does not drop a disconnected tile');
+assert(queue.active === 0, 'a disconnected tile does not consume a decode slot');
 
 console.log('gallery-order, location-model, flipboard, and image-url checks passed');
