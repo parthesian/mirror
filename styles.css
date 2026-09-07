@@ -436,12 +436,23 @@ body.exposure-1 .scroll-loading p {
     display: block;
     pointer-events: none;
     opacity: 0;
+    /* Broken-image chrome (icon + alt) ignores opacity on some mobile
+       browsers. Hide the tag until it has real pixels. */
+    visibility: hidden;
+    color: transparent;
     transition: opacity 0.18s ease-out,
                 transform var(--dur-slow) var(--ease),
                 filter var(--dur-mid) var(--ease);
     filter: grayscale(0.1);
     object-fit: cover;
     object-position: center center;
+}
+
+/* src is assigned by the load queue, so new tiles sit src-less for a
+   beat. Never paint the UA broken-image fallback on that hole. */
+.gallery-item-image:not([src]) {
+    visibility: hidden;
+    opacity: 0;
 }
 
 /* Layout morph: same-aspect flights (grid column changes) use a compositor
@@ -477,6 +488,7 @@ body.exposure-1 .scroll-loading p {
 
 .gallery-window.is-morphing .gallery-item-image {
     opacity: 1;
+    visibility: visible;
     transform: none;
     transition: none;
     /* Keep cover for the flight so contain/cover does not pop mid-morph. */
@@ -490,6 +502,7 @@ body.exposure-1 .scroll-loading p {
 
 .gallery-item.loaded .gallery-item-image {
     opacity: 1;
+    visibility: visible;
 }
 
 .gallery-item.instant .gallery-item-image {
@@ -509,6 +522,7 @@ body.exposure-1 .scroll-loading p {
 
 .gallery-item.flipboard-busy .gallery-item-image {
     opacity: 1;
+    visibility: visible;
     transition: none;
 }
 
