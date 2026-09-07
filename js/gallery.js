@@ -367,8 +367,6 @@ class Gallery {
 
         const img = document.createElement('img');
         img.className = 'gallery-item-image';
-        const dateLabel = this.imageService.formatTimestamp(image.timestamp);
-        img.alt = image.description ? image.description : `Photo from ${dateLabel}`;
         img.decoding = 'async';
 
         item.appendChild(img);
@@ -399,16 +397,16 @@ class Gallery {
             img.src = url;
         }
 
-        item.addEventListener('click', () => this.openImageModal(image.id));
         item.setAttribute('tabindex', '0');
         item.setAttribute('role', 'button');
-        item.setAttribute('aria-label', image.description
-            ? `View ${image.description} in fullscreen`
-            : `View photo from ${dateLabel} in fullscreen`);
+        this.bindItemMetadata(item, image);
+
+        // Read dataset at event time so a flipboard landing rebind stays correct.
+        item.addEventListener('click', () => this.openImageModal(item.dataset.imageId));
         item.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
-                this.openImageModal(image.id);
+                this.openImageModal(item.dataset.imageId);
             }
         });
 
@@ -423,8 +421,9 @@ class Gallery {
             clearHoverPrefetch();
             hoverPrefetchTimer = window.setTimeout(() => {
                 hoverPrefetchTimer = null;
-                if (image.url && image.thumbnailUrl !== image.url) {
-                    this.imagePreloader.prefetch([image.url], { concurrency: 1 });
+                const live = this.imageService.getImageById(item.dataset.imageId);
+                if (live?.url && live.thumbnailUrl !== live.url) {
+                    this.imagePreloader.prefetch([live.url], { concurrency: 1 });
                 }
             }, 250);
         });
@@ -463,6 +462,72 @@ class Gallery {
 
     openImageModal(imageId) {
         document.dispatchEvent(new CustomEvent('openModal', { detail: { imageId } }));
+    }
+
+    bindItemMetadata(item, image) {
+        if (!item || !image) {
+            return;
+        }
+        item.dataset.imageId = image.id;
+        const img = item.querySelector('.gallery-item-image');
+        const dateLabel = this.imageService.formatTimestamp(image.timestamp);
+        if (img) {
+            img.alt = image.description ? image.description : `Photo from ${dateLabel}`;
+        }
+        item.setAttribute(
+            'aria-label',
+            image.description
+                ? `View ${image.description} in fullscreen`
+                : `View photo from ${dateLabel} in fullscreen`
+        );
+    }
+
+    /**
+     * Flip visible tiles in place, then retarget the same nodes.
+     * Remounting would erase the flaps, so the window is rebound instead.
+     */
+    async transitionToNewOrder(previousImages) {
+        const previous = Array.isArray(previousImages) ? previousImages : [];
+        const next = this.imageService.images || [];
+        const start = Math.max(0, this.renderState.startIndex);
+        const end = this.renderState.endIndex > start ? this.renderState.endIndex : start;
+        const nodes = this.windowGrid
+            ? Array.from(this.windowGrid.querySelectorAll('.gallery-item'))
+            : [];
+
+        if (end > start && nodes.length && window.Flipboard) {
+            const thumbCandidates = [...previous, ...next]
+                .map((image) => image?.thumbnailUrl)
+                .filter(Boolean);
+            await window.Flipboard.animateWindow({
+                items: nodes,
+                previousImages: previous.slice(start, end),
+                nextImages: next.slice(start, end),
+                preloader: this.imagePreloader,
+                thumbCandidates
+            });
+            this.rebindMountedWindow(nodes, next.slice(start, end));
+        }
+
+        this.cachedLayout = null;
+        this.scheduleRefresh(true);
+    }
+
+    rebindMountedWindow(nodes, nextImages) {
+        this.mountedItems.clear();
+        nodes.forEach((node, index) => {
+            const image = nextImages[index];
+            if (!image) {
+                return;
+            }
+            this.bindItemMetadata(node, image);
+            const img = node.querySelector('.gallery-item-image');
+            if (img && image.thumbnailUrl && img.src !== image.thumbnailUrl) {
+                img.src = image.thumbnailUrl;
+            }
+            node.classList.add('loaded', 'instant');
+            this.mountedItems.set(image.id, node);
+        });
     }
 
     // ── UI state ──
@@ -628,8 +693,9 @@ class Gallery {
         if (this.globePreloaded || !images || images.length === 0) return;
         this.globePreloaded = true;
 
-        setTimeout(async () => {
+        const start = async () => {
             try {
+                window.threeLoader?.prefetchEarthImage();
                 const container = document.getElementById('globe-preload-container');
                 if (!container) return;
                 const first = images[0];
@@ -643,7 +709,15 @@ class Gallery {
                 console.error('Gallery: Failed to preload globe:', error);
                 this.globePreloaded = false;
             }
-        }, 300);
+        };
+
+        // Idle beats a fixed 300ms timer: first-viewport thumbnails and hover
+        // prefetch should win the network before the modal globe texture.
+        if (typeof window.requestIdleCallback === 'function') {
+            window.requestIdleCallback(start, { timeout: 4000 });
+        } else {
+            setTimeout(start, 1200);
+        }
     }
 }
 

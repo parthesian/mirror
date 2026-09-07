@@ -18,6 +18,11 @@ class ImageService {
         this.locationFilter = null;
         this.takenFromFilter = null;
         this.takenToFilter = null;
+        /** Chronological IDs from the API. Display order may differ in random view. */
+        this.chronoIds = [];
+        this.viewMode = (window.GalleryOrder && window.GalleryOrder.readStoredMode)
+            ? window.GalleryOrder.readStoredMode()
+            : 'chrono';
         /** @type {Map<string, Promise<Object>>} */
         this._detailInFlight = new Map();
     }
@@ -148,9 +153,45 @@ class ImageService {
         this.images = [];
         this.imagesById = new Map();
         this.orderedIds = [];
+        this.chronoIds = [];
         this.hasMore = true;
         this.nextCursor = null;
         this._detailInFlight.clear();
+    }
+
+    /**
+     * Rebuild this.images from chronological IDs or the current random map.
+     * @param {Object} options - Rebuild options
+     * @returns {Array<Object>} Visible images
+     */
+    rebuildDisplayOrder(options = {}) {
+        const order = window.GalleryOrder || {
+            buildDisplayOrder: ({ chronoIds, mode }) => (mode === 'random' ? chronoIds.slice() : chronoIds.slice())
+        };
+
+        this.orderedIds = order.buildDisplayOrder({
+            chronoIds: this.chronoIds,
+            currentOrder: this.orderedIds,
+            mode: this.viewMode,
+            reshuffle: Boolean(options.reshuffle)
+        });
+        this.images = this.orderedIds
+            .map((id) => this.imagesById.get(id))
+            .filter(Boolean);
+        return this.images;
+    }
+
+    /**
+     * Switch chronological / random display without refetching.
+     * @param {'chrono'|'random'} mode - Requested view
+     * @returns {boolean} Whether the mode changed
+     */
+    setViewMode(mode) {
+        const next = mode === 'random' ? 'random' : 'chrono';
+        const changed = next !== this.viewMode;
+        this.viewMode = next;
+        this.rebuildDisplayOrder({ reshuffle: next === 'random' });
+        return changed;
     }
 
     /**
@@ -162,7 +203,7 @@ class ImageService {
     mergePhotos(photos, options = {}) {
         const replace = Boolean(options.replace);
         const nextById = replace ? new Map() : new Map(this.imagesById);
-        const nextOrderedIds = replace ? [] : [...this.orderedIds];
+        const nextChronoIds = replace ? [] : [...this.chronoIds];
         const addedPhotos = [];
 
         photos.forEach((photo) => {
@@ -179,15 +220,15 @@ class ImageService {
             }
 
             nextById.set(photo.id, photo);
-            nextOrderedIds.push(photo.id);
+            nextChronoIds.push(photo.id);
             addedPhotos.push(photo);
         });
 
         this.imagesById = nextById;
-        this.orderedIds = nextOrderedIds;
-        this.images = this.orderedIds
-            .map((id) => this.imagesById.get(id))
-            .filter(Boolean);
+        this.chronoIds = nextChronoIds;
+        this.rebuildDisplayOrder({
+            reshuffle: replace && this.viewMode === 'random'
+        });
 
         return addedPhotos;
     }
@@ -519,7 +560,7 @@ class ImageService {
      * @returns {Promise<Object|null>} Merged image or null
      */
     async _fetchAndMergePhotoDetail(id) {
-        const response = await fetch(this.buildApiUrl(`/api/photos/${id}/metadata`), {
+        const response = await fetch(this.buildApiUrl(`/api/photos/${encodeURIComponent(id)}/metadata`), {
             method: 'GET',
             headers: { 'Content-Type': 'application/json' },
             mode: 'cors'

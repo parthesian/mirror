@@ -1,5 +1,6 @@
 const DEFAULT_HEADERS = {
     'Content-Type': 'application/json; charset=UTF-8',
+    'X-Content-Type-Options': 'nosniff',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type'
