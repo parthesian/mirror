@@ -10,11 +10,13 @@
 const Flipboard = {
     FLAP_MS: 52,
     STAGGER_MS: 12,
+    STAGGER_BUDGET_MS: 240,
     MIN_TICKS: 4,
     MAX_TICKS: 6,
     // A tile must not land on a thumb the browser cannot paint yet, or it
     // keeps the old frame and pops to the new one once the bytes arrive.
     MAX_LANDING_WAIT_MS: 4000,
+    BUSY_LANDING_WAIT_MS: 1400,
 
     prefersReducedMotion() {
         return Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
@@ -59,8 +61,24 @@ const Flipboard = {
         return sequence;
     },
 
-    landingWaitExceeded(startedAt, now = Date.now()) {
-        return now - startedAt >= this.MAX_LANDING_WAIT_MS;
+    landingBudgetMs(tileCount) {
+        return tileCount > 28 ? this.BUSY_LANDING_WAIT_MS : this.MAX_LANDING_WAIT_MS;
+    },
+
+    landingWaitExceeded(startedAt, now = Date.now(), budget = this.MAX_LANDING_WAIT_MS) {
+        return now - startedAt >= budget;
+    },
+
+    /**
+     * Keep the board starting together. 12ms × 80 tiles at 6 columns made
+     * the last flap wait almost a second before it even moved.
+     */
+    staggerDelay(index, tileCount) {
+        if (tileCount <= 1) {
+            return 0;
+        }
+        const step = Math.min(this.STAGGER_MS, this.STAGGER_BUDGET_MS / (tileCount - 1));
+        return index * step;
     },
 
     /**
@@ -138,7 +156,7 @@ const Flipboard = {
             return [];
         }
         return preloader.preloadBatch(missing, {
-            concurrency: Math.min(8, missing.length)
+            concurrency: Math.min(urls.length > 28 ? 4 : 8, missing.length)
         });
     },
 
@@ -194,7 +212,8 @@ const Flipboard = {
             const sequence = this.pickIntermediates(pool, currentUrl, destUrl, tickCount)
                 .filter((url) => url !== destUrl && preloader.isImageLoaded(url));
 
-            return this.wait(index * this.STAGGER_MS).then(async () => {
+            const landingBudget = this.landingBudgetMs(nodes.length);
+            return this.wait(this.staggerDelay(index, nodes.length)).then(async () => {
                 for (const url of sequence) {
                     await this.flipOnce(item, img, url);
                 }
@@ -203,7 +222,7 @@ const Flipboard = {
                 // to be replaced.
                 const waitStartedAt = Date.now();
                 let tick = 0;
-                while (!destReady && !this.landingWaitExceeded(waitStartedAt)) {
+                while (!destReady && !this.landingWaitExceeded(waitStartedAt, Date.now(), landingBudget)) {
                     const filler = this.fillerFace(sequence, pool, tick, destUrl, img.src);
                     tick += 1;
                     if (filler) {

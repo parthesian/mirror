@@ -9,6 +9,8 @@ class ImageService {
         this.isLoading = false;
         this.apiBaseUrl = this.getApiBaseUrl();
         this.limit = 24;
+        /** Cloudflare thumb edge used for list-derived URLs. */
+        this.thumbEdge = 640;
         this.hasMore = true;
         this.nextCursor = null;
         this.activeLoadPromise = null;
@@ -58,11 +60,37 @@ class ImageService {
      * @param {'thumb'|'full'} variant - Derivative
      * @returns {string} Absolute or site-relative URL
      */
-    buildPhotoAssetUrl(id, variant = 'full') {
+    /**
+     * Snap a CSS tile width to a CF transform edge. 5–6 columns on a
+     * phone do not need 640px thumbs; decoding that many is what leaves
+     * holes in the grid.
+     */
+    static thumbEdgeFor(columnWidth, devicePixelRatio = 1) {
+        const dpr = Math.min(Math.max(Number(devicePixelRatio) || 1, 1), 2.5);
+        const needed = Math.ceil(Math.max(1, Number(columnWidth) || 1) * dpr);
+        if (needed <= 320) return 320;
+        if (needed <= 480) return 480;
+        return 640;
+    }
+
+    setThumbEdge(edge) {
+        const next = Number(edge) || 640;
+        if (next === this.thumbEdge) {
+            return false;
+        }
+        this.thumbEdge = next;
+        for (const image of this.imagesById.values()) {
+            image.thumbnailUrl = this.buildPhotoAssetUrl(image.id, 'thumb');
+        }
+        return true;
+    }
+
+    buildPhotoAssetUrl(id, variant = 'full', options = {}) {
         const safeId = encodeURIComponent(id);
         const basePath = `/api/photos/${safeId}/image`;
         if (variant === 'thumb') {
-            return this.buildApiUrl(`/cdn-cgi/image/width=640,height=640,fit=scale-down,quality=82,format=auto${basePath}`);
+            const width = Number(options.width) || this.thumbEdge || 640;
+            return this.buildApiUrl(`/cdn-cgi/image/width=${width},height=${width},fit=scale-down,quality=82,format=auto${basePath}`);
         }
         return this.buildApiUrl(basePath);
     }

@@ -417,6 +417,7 @@ body.exposure-1 .scroll-loading p {
     aspect-ratio: 4 / 3;
     background: rgba(255, 255, 255, 0.08);
     perspective: 720px;
+    contain: layout;
 }
 
 /* The frame holds still and the photo breathes inside it, so hovering a
@@ -440,20 +441,30 @@ body.exposure-1 .scroll-loading p {
     object-position: center center;
 }
 
-/* Layout morph: tiles are already absolute, so interpolating the box does
-   not reflow siblings. Non-uniform scale was stretching the photos. */
+/* Layout morph: same-aspect flights (grid column changes) use a compositor
+   transform. Aspect-changing masonry flights interpolate the box so
+   object-fit:cover can crop instead of squash the photo. Off-screen tiles
+   snap with no transition. */
 .gallery-window.is-morphing {
     transition: height var(--dur-slow) var(--ease);
 }
 
 .gallery-window.is-morphing .gallery-item {
+    perspective: none;
+    backface-visibility: hidden;
+}
+
+.gallery-window.is-morphing .gallery-item.is-flying {
+    transition: transform var(--dur-slow) var(--ease);
+    will-change: transform;
+    transform-origin: top left;
+}
+
+.gallery-window.is-morphing .gallery-item.is-boxing {
     transition: left var(--dur-slow) var(--ease),
                 top var(--dur-slow) var(--ease),
                 width var(--dur-slow) var(--ease),
-                height var(--dur-slow) var(--ease),
-                opacity var(--dur-mid) var(--ease);
-    perspective: none;
-    backface-visibility: hidden;
+                height var(--dur-slow) var(--ease);
 }
 
 .gallery-window.is-morph-invert,
@@ -544,6 +555,8 @@ body.exposure-1 .scroll-loading p {
     }
 
     .gallery-window.is-morphing .gallery-item,
+    .gallery-window.is-morphing .gallery-item.is-flying,
+    .gallery-window.is-morphing .gallery-item.is-boxing,
     .gallery-item:hover .gallery-item-image {
         transition: none;
         transform: none;

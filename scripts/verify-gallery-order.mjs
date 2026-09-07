@@ -93,6 +93,18 @@ assert(
     Flipboard.landingWaitExceeded(0, Flipboard.MAX_LANDING_WAIT_MS + 1),
     'a tile lands anyway once the landing budget is spent'
 );
+assert(Flipboard.staggerDelay(0, 80) === 0, 'first flap still starts immediately');
+assert(
+    Flipboard.staggerDelay(79, 80) <= Flipboard.STAGGER_BUDGET_MS + 0.001,
+    'dense 6-col boards keep total stagger inside the budget'
+);
+assert(Flipboard.staggerDelay(3, 8) === 3 * Flipboard.STAGGER_MS, 'small boards keep the original 12ms step');
+assert(Flipboard.landingBudgetMs(80) === Flipboard.BUSY_LANDING_WAIT_MS, 'dense boards cut the landing wait');
+assert(Flipboard.landingBudgetMs(12) === Flipboard.MAX_LANDING_WAIT_MS, 'small boards keep the full landing wait');
+assert(
+    Flipboard.landingWaitExceeded(0, Flipboard.BUSY_LANDING_WAIT_MS + 1, Flipboard.BUSY_LANDING_WAIT_MS),
+    'busy landing budget is honoured when passed through'
+);
 
 const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -113,7 +125,18 @@ vm.createContext(sandbox);
 vm.runInContext(imageServiceSrc, sandbox);
 const service = new sandbox.window.ImageService();
 assert(service.buildPhotoAssetUrl('abc', 'thumb').includes('format=auto'), 'thumb URL includes format=auto');
+assert(service.buildPhotoAssetUrl('abc', 'thumb').includes('width=640'), 'default thumb edge is 640');
+assert(
+    service.buildPhotoAssetUrl('abc', 'thumb', { width: 320 }).includes('width=320'),
+    'thumb URL can request a smaller decode edge'
+);
 assert(!service.buildPhotoAssetUrl('abc', 'full').includes('cdn-cgi/image'), 'full URL stays untransformed');
+assert(sandbox.window.ImageService.thumbEdgeFor(150, 2) === 320, 'narrow 6-col tiles use 320px thumbs');
+assert(sandbox.window.ImageService.thumbEdgeFor(200, 2) === 480, 'mid tiles use 480px thumbs');
+assert(sandbox.window.ImageService.thumbEdgeFor(400, 2) === 640, 'wide tiles keep 640px thumbs');
+assert(service.setThumbEdge(320) === true, 'setThumbEdge reports a change');
+assert(service.thumbEdge === 320, 'thumbEdge is stored');
+assert(service.setThumbEdge(320) === false, 'setThumbEdge is a no-op at the same edge');
 service.countryFilter = 'Japan';
 assert(service.filterKey().includes('Japan'), 'filterKey reflects the active country');
 service.countryFilter = null;
@@ -121,5 +144,61 @@ assert(service.filterKey() !== service.filterKey() + 'x', 'filterKey is stable f
 const emptyKey = service.filterKey();
 service.locationFilter = 'Kyoto';
 assert(service.filterKey() !== emptyKey, 'filterKey changes when a filter is applied');
+
+const layoutSandbox = { window: {}, console, module: { exports: {} } };
+vm.createContext(layoutSandbox);
+vm.runInContext(fs.readFileSync(path.join(repoRoot, 'js/galleryLayout.js'), 'utf8'), layoutSandbox);
+const GalleryLayout = layoutSandbox.window.GalleryLayout || layoutSandbox.module.exports;
+assert(GalleryLayout.isConstrainedViewport({
+    innerWidth: 980,
+    screen: { width: 412 },
+    matchMedia: () => ({ matches: true })
+}), 'desktop-site on a phone is treated as constrained');
+assert(!GalleryLayout.isConstrainedViewport({
+    innerWidth: 1440,
+    screen: { width: 1440 },
+    matchMedia: () => ({ matches: false })
+}), 'a real desktop is not constrained');
+assert(
+    GalleryLayout.overscanPixels({ rowSpan: 120, viewportHeight: 2100, columns: 6, constrained: true }) === 240,
+    '5–6 col phone desktop keeps two rows of overscan'
+);
+assert(
+    GalleryLayout.overscanPixels({ rowSpan: 180, viewportHeight: 900, columns: 4, constrained: false }) <= 180 * 4,
+    'desktop overscan is capped at four rows'
+);
+assert(
+    GalleryLayout.rectIntersectsBand({ top: 100, height: 80 }, 0, 90) === false,
+    'a tile fully below the band is not visible'
+);
+assert(
+    GalleryLayout.rectIntersectsBand({ top: 40, height: 80 }, 0, 90) === true,
+    'a tile that crosses the band is visible'
+);
+
+const preloaderSandbox = {
+    window: {
+        setTimeout: () => 1,
+        clearTimeout: () => {}
+    },
+    console,
+    module: { exports: {} }
+};
+vm.createContext(preloaderSandbox);
+vm.runInContext(fs.readFileSync(path.join(repoRoot, 'js/imagePreloader.js'), 'utf8'), preloaderSandbox);
+const { ImagePreloader, ImageLoadQueue } = preloaderSandbox.module.exports;
+const pendingPreloader = new ImagePreloader();
+const hanging = new Promise(() => {});
+pendingPreloader.registerPending('stuck.jpg', hanging);
+assert(!pendingPreloader.loadingPromises.has('stuck.jpg'), 'DOM load promises are not parked in the preload map');
+pendingPreloader.loadingPromises.set('other.jpg', hanging);
+pendingPreloader.abandon('other.jpg');
+assert(!pendingPreloader.loadingPromises.has('other.jpg'), 'abandon drops a cancelled pending URL');
+const queue = new ImageLoadQueue({ limit: 6 });
+assert(queue.limit === 6, 'load queue accepts a decode cap');
+queue.pause();
+assert(queue.paused === true, 'load queue can pause during a morph');
+queue.resume();
+assert(queue.paused === false, 'load queue resumes after a morph');
 
 console.log('gallery-order, location-model, flipboard, and image-url checks passed');
