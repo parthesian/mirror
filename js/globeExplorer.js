@@ -1390,6 +1390,9 @@ class GlobeExplorer {
 
         let html = `<h3 class="globe-panel-country">${titleEscaped}</h3>`;
         html += `<p class="globe-panel-count">${activeLocs.length} photo${activeLocs.length !== 1 ? 's' : ''}</p>`;
+        if (trips.length) {
+            html += `<p class="globe-panel-section">${trips.length} trip${trips.length !== 1 ? 's' : ''}</p>`;
+        }
         html += '<div class="globe-panel-trips">';
 
         for (const trip of trips) {
@@ -1422,7 +1425,7 @@ class GlobeExplorer {
             html += '</select>';
             html += '</label>';
         }
-        html += '<button class="globe-panel-filter-btn" id="globe-filter-selected">show photos</button>';
+        html += '<button class="globe-panel-filter-btn is-primary" id="globe-filter-selected">show photos</button>';
         html += '</div>';
 
         this.panelContent.innerHTML = html;
@@ -1470,7 +1473,7 @@ class GlobeExplorer {
         }
         html += `<p class="globe-panel-count">distance: ${Math.round(angleDeg)}°</p>`;
         html += '<div class="globe-panel-actions">';
-        html += '<button class="globe-panel-filter-btn" id="globe-filter-country-inferred">show photos</button>';
+        html += '<button class="globe-panel-filter-btn is-primary" id="globe-filter-country-inferred">show photos</button>';
         html += '</div>';
 
         this.panelContent.innerHTML = html;
