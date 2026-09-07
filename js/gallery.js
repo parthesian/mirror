@@ -44,6 +44,8 @@ class Gallery {
         this.windowGrid = null;
         this.bottomSpacer = null;
         this._loadToken = 0;
+        this._loadWatchdog = null;
+        this.loadQueue = new ImageLoadQueue({ limit: 8 });
 
         this.init();
     }
@@ -268,7 +270,20 @@ class Gallery {
         const referenceRow = this.isMasonry
             ? metrics.columnWidth / GalleryLayout.GRID_ASPECT + metrics.gap
             : layout.rowSpan;
-        layout.overscan = Math.max(window.innerHeight, referenceRow * 2);
+        const constrained = GalleryLayout.isConstrainedViewport();
+        layout.overscan = GalleryLayout.overscanPixels({
+            rowSpan: referenceRow,
+            viewportHeight: window.innerHeight,
+            columns: metrics.columns,
+            constrained
+        });
+        layout.constrained = constrained;
+
+        const dpr = window.devicePixelRatio || 1;
+        if (typeof this.imageService.setThumbEdge === 'function') {
+            this.imageService.setThumbEdge(ImageService.thumbEdgeFor(metrics.columnWidth, dpr));
+        }
+        this.loadQueue.setLimit(constrained && metrics.columns >= 5 ? 6 : 8);
 
         this.cachedLayout = layout;
         return layout;
@@ -277,16 +292,25 @@ class Gallery {
     /**
      * Index range to mount for the current scroll position, in layout space.
      */
-    visibleRange(layout, imageCount) {
+    visibleRange(layout, imageCount, overscan = layout.overscan) {
         const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-        const windowTop = scrollTop - layout.contentTop - layout.overscan;
-        const windowBottom = scrollTop - layout.contentTop + window.innerHeight + layout.overscan;
+        const pad = overscan == null ? layout.overscan : overscan;
+        const windowTop = scrollTop - layout.contentTop - pad;
+        const windowBottom = scrollTop - layout.contentTop + window.innerHeight + pad;
         return GalleryLayout.rangeForViewport(
             layout,
             imageCount,
             Math.max(0, windowTop),
             Math.max(0, windowBottom)
         );
+    }
+
+    thumbPriority(layout, index) {
+        const tight = this.visibleRange(layout, (this.imageService.images || []).length, 0);
+        if (index >= tight.startIndex && index < tight.endIndex) {
+            return 0;
+        }
+        return 1;
     }
 
     /**
@@ -354,6 +378,7 @@ class Gallery {
         }
 
         this.syncNodes(images, startIndex, endIndex, layout);
+        this.scheduleLoadWatchdog();
 
         this.renderState = {
             startIndex,
@@ -405,8 +430,7 @@ class Gallery {
         const wanted = new Set(desired.map((i) => images[i].id));
         for (const child of Array.from(this.windowGrid.children)) {
             if (!wanted.has(child.dataset.imageId)) {
-                this.mountedItems.delete(child.dataset.imageId);
-                child.remove();
+                this.releaseItem(child);
             }
         }
 
@@ -422,6 +446,21 @@ class Gallery {
             }
             this.windowGrid.insertBefore(node, cursor);
         }
+        this.loadQueue.pump();
+    }
+
+    releaseItem(child) {
+        const img = child.querySelector('.gallery-item-image');
+        const url = img?.dataset.loadUrl || img?.getAttribute('src');
+        if (img && url && !img.complete) {
+            this.imagePreloader.abandon(url);
+            img.removeAttribute('src');
+        }
+        if (img) {
+            this.loadQueue.cancel(img);
+        }
+        this.mountedItems.delete(child.dataset.imageId);
+        child.remove();
     }
 
     positionItem(node, index, layout) {
@@ -458,6 +497,9 @@ class Gallery {
             if (this.adoptNaturalAspect(image, img)) {
                 this.scheduleAspectReflow();
             }
+            if (img && image.thumbnailUrl && !img.naturalWidth) {
+                this.loadQueue.assign(img, image.thumbnailUrl, this.thumbPriority(layout, absoluteIndex));
+            }
             return existing;
         }
         return this.createGalleryItem(image, absoluteIndex, layout);
@@ -478,47 +520,7 @@ class Gallery {
         item.appendChild(img);
 
         const url = image.thumbnailUrl;
-        const cached = this.imagePreloader.isImageLoaded(url);
-
-        if (cached) {
-            img.src = url;
-            item.classList.add('loaded', 'instant');
-            const cachedImg = this.imagePreloader.getLoadedImage(url);
-            if (this.adoptNaturalAspect(image, cachedImg || img)) {
-                this.scheduleAspectReflow();
-            } else if (!img.complete) {
-                img.addEventListener('load', () => {
-                    this.imagePreloader.markLoaded(url, img);
-                    if (this.adoptNaturalAspect(image, img)) {
-                        this.scheduleAspectReflow();
-                    }
-                }, { once: true });
-            }
-        } else {
-            const loadPromise = new Promise((resolve) => {
-                img.addEventListener('load', () => {
-                    this.imagePreloader.markLoaded(url, img);
-                    item.classList.add('loaded');
-                    if (this.adoptNaturalAspect(image, img)) {
-                        this.scheduleAspectReflow();
-                    }
-                    resolve(img);
-                }, { once: true });
-
-                img.addEventListener('error', () => {
-                    this.imagePreloader.markFailed(url);
-                    img.src = this.getImageFallbackSrc();
-                    item.classList.add('loaded');
-                    resolve(null);
-                }, { once: true });
-            });
-
-            this.imagePreloader.registerPending(url, loadPromise);
-            img.src = url;
-            if (this.isMorphing) {
-                item.classList.add('loaded', 'instant');
-            }
-        }
+        this.bindThumbLoad(item, img, image, url, this.thumbPriority(layout, absoluteIndex));
 
         item.setAttribute('tabindex', '0');
         item.setAttribute('role', 'button');
@@ -555,6 +557,73 @@ class Gallery {
 
         this.mountedItems.set(image.id, item);
         return item;
+    }
+
+    bindThumbLoad(item, img, image, url, priority) {
+        let attempts = 0;
+        const markReady = () => {
+            this.imagePreloader.markLoaded(url, img);
+            item.classList.add('loaded');
+            if (this.adoptNaturalAspect(image, img)) {
+                this.scheduleAspectReflow();
+            }
+        };
+
+        img.addEventListener('load', markReady);
+        img.addEventListener('error', () => {
+            if (img.dataset.retrying === '1') {
+                delete img.dataset.retrying;
+                return;
+            }
+            const intended = img.dataset.loadUrl || url;
+            attempts += 1;
+            if (intended && attempts < 3) {
+                this.loadQueue.assign(img, intended, 0);
+                return;
+            }
+            this.imagePreloader.markFailed(url);
+            img.src = this.getImageFallbackSrc();
+            item.classList.add('loaded');
+        });
+
+        const cached = this.imagePreloader.isImageLoaded(url);
+        if (cached) {
+            img.src = url;
+            img.dataset.loadUrl = url;
+            item.classList.add('loaded', 'instant');
+            const cachedImg = this.imagePreloader.getLoadedImage(url);
+            if (this.adoptNaturalAspect(image, cachedImg || img)) {
+                this.scheduleAspectReflow();
+            }
+            return;
+        }
+
+        img.dataset.loadUrl = url;
+        this.loadQueue.assign(img, url, priority);
+        if (img.complete && img.naturalWidth) {
+            markReady();
+        }
+    }
+
+    scheduleLoadWatchdog() {
+        if (this._loadWatchdog != null) {
+            return;
+        }
+        this._loadWatchdog = window.setTimeout(() => {
+            this._loadWatchdog = null;
+            const stuck = [];
+            for (const item of this.mountedItems.values()) {
+                const img = item.querySelector('.gallery-item-image');
+                if (img && img.isConnected && !img.naturalWidth) {
+                    stuck.push(img);
+                }
+            }
+            if (stuck.length === 0) {
+                return;
+            }
+            this.loadQueue.retryStuck(stuck);
+            this.scheduleLoadWatchdog();
+        }, 1600);
     }
 
     /**
@@ -613,7 +682,8 @@ class Gallery {
             .filter((image) => !image.aspectRatioKnown && image.thumbnailUrl)
             .map((image) => image.thumbnailUrl);
         if (urls.length === 0) return;
-        this.imagePreloader.prefetch(urls, { concurrency: 6 });
+        const constrained = this.cachedLayout?.constrained || GalleryLayout.isConstrainedViewport();
+        this.imagePreloader.prefetch(urls, { concurrency: constrained ? 2 : 6 });
     }
 
     scheduleAspectReflow() {
@@ -647,7 +717,10 @@ class Gallery {
             .map((img) => img.thumbnailUrl)
             .filter(Boolean);
         if (urls.length > 0) {
-            this.imagePreloader.prefetch(urls, { concurrency: 4 });
+            const constrained = this.cachedLayout?.constrained || GalleryLayout.isConstrainedViewport();
+            this.imagePreloader.prefetch(urls, {
+                concurrency: constrained && columns >= 5 ? 2 : 4
+            });
         }
         if (this.isMasonry) {
             this.warmUnknownAspects();
@@ -697,10 +770,25 @@ class Gallery {
                 const thumbCandidates = [...previous, ...next]
                     .map((image) => image?.thumbnailUrl)
                     .filter(Boolean);
+                const viewportHeight = window.innerHeight;
+                const flipItems = [];
+                const flipPrevious = [];
+                const flipNext = [];
+                nodes.forEach((node, index) => {
+                    const imageIndex = start + index;
+                    const rect = node.getBoundingClientRect();
+                    const onScreen = rect.bottom > 0 && rect.top < viewportHeight;
+                    if (!onScreen) {
+                        return;
+                    }
+                    flipItems.push(node);
+                    flipPrevious.push(previous[imageIndex]);
+                    flipNext.push(next[imageIndex]);
+                });
                 await window.Flipboard.animateWindow({
-                    items: nodes,
-                    previousImages: previous.slice(start, end),
-                    nextImages: next.slice(start, end),
+                    items: flipItems.length ? flipItems : nodes,
+                    previousImages: flipItems.length ? flipPrevious : previous.slice(start, end),
+                    nextImages: flipItems.length ? flipNext : next.slice(start, end),
                     preloader: this.imagePreloader,
                     thumbCandidates,
                     onTileLanded: (item, index, image) => {
@@ -787,6 +875,13 @@ class Gallery {
 
     clearGallery() {
         this.ensureWindowStructure();
+        if (this._loadWatchdog != null) {
+            window.clearTimeout(this._loadWatchdog);
+            this._loadWatchdog = null;
+        }
+        for (const child of Array.from(this.windowGrid.children)) {
+            this.loadQueue.cancel(child.querySelector('.gallery-item-image'));
+        }
         this.windowGrid.innerHTML = '';
         this.mountedItems.clear();
         this.topSpacer.style.height = '0px';
@@ -876,6 +971,7 @@ class Gallery {
 
     async morphLayout(images) {
         this.isMorphing = true;
+        this.loadQueue.pause();
         const grid = this.windowGrid;
 
         try {
@@ -902,6 +998,9 @@ class Gallery {
                 endIndex: Math.max(prevEnd, nextRange.endIndex)
             };
             const after = this.rectsFromLayout(layout, union.startIndex, union.endIndex);
+            const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+            const viewTop = scrollTop - layout.contentTop;
+            const viewBottom = viewTop + window.innerHeight;
 
             // Collapse spacers and lock into absolute space in the same turn
             // as the invert, so the destination grid is never painted first.
@@ -919,19 +1018,31 @@ class Gallery {
                 const id = String(node.dataset.imageId);
                 const to = after.get(id);
                 if (!to) continue;
-                node.classList.add('loaded', 'instant');
                 const from = before.get(id) || this.growInPlace(to);
-                this.invertTo(node, from);
+                const visible = GalleryLayout.rectIntersectsBand(from, viewTop, viewBottom)
+                    || GalleryLayout.rectIntersectsBand(to, viewTop, viewBottom);
+                if (!visible) {
+                    this.playTo(node, to);
+                    continue;
+                }
+                this.invertTo(node, from, to);
             }
 
             const duration = this.morphDurationMs();
             const ease = this.morphEasing();
             const boxTransition = `left ${duration}ms ${ease}, top ${duration}ms ${ease}, width ${duration}ms ${ease}, height ${duration}ms ${ease}`;
+            const flyTransition = `transform ${duration}ms ${ease}`;
             void grid.offsetHeight;
             grid.classList.remove('is-morph-invert');
             grid.style.transition = `height ${duration}ms ${ease}`;
             for (const node of nodes) {
-                node.style.transition = boxTransition;
+                if (node.classList.contains('is-flying')) {
+                    node.style.transition = flyTransition;
+                } else if (node.classList.contains('is-boxing')) {
+                    node.style.transition = boxTransition;
+                } else {
+                    node.style.transition = 'none';
+                }
             }
             void grid.offsetHeight;
             grid.style.height = `${layout.totalHeight}px`;
@@ -945,6 +1056,7 @@ class Gallery {
             await this.waitForMorph();
 
             for (const node of nodes) {
+                node.classList.remove('is-flying', 'is-boxing');
                 node.style.transform = '';
                 node.style.transformOrigin = '';
                 node.style.opacity = '';
@@ -954,6 +1066,7 @@ class Gallery {
             this.morphFreeze = false;
             grid.classList.remove('is-morphing', 'is-morph-invert');
             this.isMorphing = false;
+            this.loadQueue.resume();
             this.cachedLayout = null;
             grid.style.height = '';
             grid.style.transition = '';
@@ -1037,16 +1150,41 @@ class Gallery {
         };
     }
 
-    invertTo(node, from) {
+    invertTo(node, from, to) {
+        const fromAspect = from.height ? from.width / from.height : 1;
+        const toAspect = to.height ? to.width / to.height : 1;
+        const sameAspect = Math.abs(fromAspect - toAspect) < 0.04;
+
+        // Grid column changes keep 4:3, so a compositor transform is enough
+        // and does not stretch the photo. Masonry aspect changes still
+        // interpolate the box so object-fit:cover can crop instead of squash.
+        if (sameAspect) {
+            const sx = to.width ? from.width / to.width : 1;
+            const sy = to.height ? from.height / to.height : 1;
+            node.style.left = `${to.left}px`;
+            node.style.top = `${to.top}px`;
+            node.style.width = `${to.width}px`;
+            node.style.height = `${to.height}px`;
+            node.style.transformOrigin = 'top left';
+            node.style.transform = `translate(${from.left - to.left}px, ${from.top - to.top}px) scale(${sx}, ${sy})`;
+            node.classList.add('is-flying');
+            return;
+        }
+
         node.style.left = `${from.left}px`;
         node.style.top = `${from.top}px`;
         node.style.width = `${from.width}px`;
         node.style.height = `${from.height}px`;
         node.style.transform = '';
         node.style.transformOrigin = '';
+        node.classList.add('is-boxing');
     }
 
     playTo(node, to) {
+        if (node.classList.contains('is-flying')) {
+            node.style.transform = 'translate(0px, 0px) scale(1, 1)';
+            return;
+        }
         node.style.left = `${to.left}px`;
         node.style.top = `${to.top}px`;
         node.style.width = `${to.width}px`;

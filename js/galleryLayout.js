@@ -115,6 +115,52 @@ const GalleryLayout = {
     },
 
     /**
+     * Phone in "desktop site" mode: the layout viewport is wide enough for
+     * 5–6 columns, but the device is still a coarse-pointer handset.
+     */
+    isConstrainedViewport(win = typeof window !== 'undefined' ? window : null) {
+        if (!win) {
+            return false;
+        }
+        const screenWidth = Number(win.screen?.width) || 0;
+        const layoutWidth = Number(win.innerWidth) || 0;
+        let coarse = false;
+        try {
+            coarse = Boolean(win.matchMedia?.('(pointer: coarse)')?.matches);
+        } catch {
+            coarse = false;
+        }
+        return Boolean(coarse || (layoutWidth >= 769 && screenWidth > 0 && screenWidth <= 600));
+    },
+
+    /**
+     * Extra pixels above and below the viewport to keep mounted. A full
+     * viewport of overscan at 5–6 columns on a tall phone attaches the
+     * entire collection and stalls decode + layout animation.
+     */
+    overscanPixels({ rowSpan, viewportHeight, columns, constrained = false } = {}) {
+        const row = Math.max(1, Number(rowSpan) || 1);
+        const view = Math.max(1, Number(viewportHeight) || 1);
+        const count = Math.max(1, Number(columns) || 1);
+        if (constrained && count >= 5) {
+            return row * 2;
+        }
+        if (constrained && count >= 4) {
+            return row * 3;
+        }
+        return row * Math.min(4, Math.max(2, Math.ceil(view / row)));
+    },
+
+    rectIntersectsBand(rect, top, bottom) {
+        if (!rect) {
+            return false;
+        }
+        const height = Number(rect.height) || 0;
+        const y = Number(rect.top) || 0;
+        return y < bottom && y + height > top;
+    },
+
+    /**
      * Contiguous index range covering a scroll window. Masonry tops are not
      * strictly monotonic in index, so the bounds are taken as the min and max
      * index of everything that intersects the window rather than the first
@@ -156,4 +202,10 @@ const GalleryLayout = {
     }
 };
 
-window.GalleryLayout = GalleryLayout;
+if (typeof window !== 'undefined') {
+    window.GalleryLayout = GalleryLayout;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = GalleryLayout;
+}

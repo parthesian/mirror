@@ -1,11 +1,123 @@
 /**
  * ImagePreloader - lightweight prefetch helper for nearby thumbnails/full images.
+ *
+ * Visible tiles assign src through ImageLoadQueue so a 5–6 column window
+ * cannot open 80+ decodes at once (the usual cause of tiles that stay
+ * blank). preloadImage never waits on a DOM element's promise — removing
+ * that <img> used to leave the map entry pending forever.
  */
+class ImageLoadQueue {
+    constructor(options = {}) {
+        this.limit = Math.max(1, options.limit || 8);
+        this.active = 0;
+        this.queue = [];
+        this.paused = false;
+        this._inflight = new WeakSet();
+    }
+
+    setLimit(limit) {
+        this.limit = Math.max(1, Number(limit) || 8);
+        this.pump();
+    }
+
+    pause() {
+        this.paused = true;
+    }
+
+    resume() {
+        this.paused = false;
+        this.pump();
+    }
+
+    cancel(img) {
+        this.queue = this.queue.filter((job) => job.img !== img);
+    }
+
+    assign(img, url, priority = 1) {
+        if (!img || !url) {
+            return;
+        }
+        this.cancel(img);
+        if (img.dataset.loadUrl === url && this.hasAssignedSrc(img)) {
+            return;
+        }
+        this.queue.push({ img, url, priority: Number(priority) || 0 });
+        this.queue.sort((left, right) => left.priority - right.priority);
+        this.pump();
+    }
+
+    hasAssignedSrc(img) {
+        const src = img.getAttribute('src') || '';
+        return Boolean(src);
+    }
+
+    pump() {
+        if (this.paused) {
+            return;
+        }
+        const stillWaiting = [];
+        while (this.active < this.limit && this.queue.length) {
+            const job = this.queue.shift();
+            if (!job.img.isConnected) {
+                stillWaiting.push(job);
+                continue;
+            }
+            this.start(job);
+        }
+        this.queue = stillWaiting.concat(this.queue);
+    }
+
+    start(job) {
+        const { img, url } = job;
+        this.active += 1;
+        this._inflight.add(img);
+
+        const finish = () => {
+            if (!this._inflight.has(img)) {
+                return;
+            }
+            this._inflight.delete(img);
+            this.active = Math.max(0, this.active - 1);
+            this.pump();
+        };
+
+        const onDone = () => {
+            img.removeEventListener('load', onDone);
+            img.removeEventListener('error', onDone);
+            finish();
+        };
+
+        img.addEventListener('load', onDone);
+        img.addEventListener('error', onDone);
+        img.dataset.loadUrl = url;
+        img.src = url;
+        if (img.complete) {
+            onDone();
+        }
+    }
+
+    retryStuck(images) {
+        for (const img of images) {
+            if (!img || !img.isConnected || img.naturalWidth) {
+                continue;
+            }
+            const url = img.dataset.loadUrl || img.getAttribute('src');
+            if (!url) {
+                continue;
+            }
+            img.dataset.retrying = '1';
+            img.removeAttribute('src');
+            this.assign(img, url, 0);
+        }
+    }
+}
+
 class ImagePreloader {
     constructor() {
         this.loadedImages = new Map();
         this.loadingPromises = new Map();
         this._aspectHandler = null;
+        this.loadTimeoutMs = 12000;
     }
 
     /**
@@ -33,6 +145,17 @@ class ImagePreloader {
                 image.fetchPriority = 'low';
             }
 
+            let settled = false;
+            const settle = (result) => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                window.clearTimeout(timer);
+                this.loadingPromises.delete(url);
+                resolve(result);
+            };
+
             image.onload = async () => {
                 try {
                     if (typeof image.decode === 'function') {
@@ -43,15 +166,24 @@ class ImagePreloader {
                 }
 
                 this.loadedImages.set(url, image);
-                this.loadingPromises.delete(url);
                 this.notifyAspect(url, image);
-                resolve(image);
+                settle(image);
             };
 
             image.onerror = () => {
-                this.loadingPromises.delete(url);
-                resolve(null);
+                settle(null);
             };
+
+            const timer = window.setTimeout(() => {
+                image.onload = null;
+                image.onerror = null;
+                try {
+                    image.src = '';
+                } catch {
+                    // Ignore revoke failures on already-cleared images.
+                }
+                settle(null);
+            }, this.loadTimeoutMs);
 
             image.src = url;
         });
@@ -109,13 +241,38 @@ class ImagePreloader {
     }
 
     /**
-     * Register that a URL is already being loaded by an external element (e.g.
-     * a visible <img> in the DOM) so the preloader won't create a duplicate
-     * request.
+     * Visible <img> tags used to park their load promise here so prefetch
+     * would not start a second request. Unmounting that element cancelled
+     * the request without resolving the promise, so later preloads of the
+     * same URL waited forever. Browser HTTP caches already coalesce.
      */
     registerPending(url, loadPromise) {
-        if (this.loadedImages.has(url) || this.loadingPromises.has(url)) return;
-        this.loadingPromises.set(url, loadPromise);
+        if (!url || this.loadedImages.has(url) || this.loadingPromises.has(url)) {
+            return;
+        }
+        if (loadPromise && typeof loadPromise.then === 'function') {
+            loadPromise.then(
+                (image) => {
+                    if (image) {
+                        this.markLoaded(url, image);
+                    } else {
+                        this.markFailed(url);
+                    }
+                },
+                () => this.markFailed(url)
+            );
+        }
+    }
+
+    /**
+     * Drop a pending map entry so a cancelled DOM load cannot starve the
+     * next preload or remount of the same URL.
+     */
+    abandon(url) {
+        if (!url || this.loadedImages.has(url)) {
+            return;
+        }
+        this.loadingPromises.delete(url);
     }
 
     /**
@@ -182,4 +339,11 @@ class ImagePreloader {
     }
 }
 
-window.ImagePreloader = ImagePreloader;
+if (typeof window !== 'undefined') {
+    window.ImagePreloader = ImagePreloader;
+    window.ImageLoadQueue = ImageLoadQueue;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { ImagePreloader, ImageLoadQueue };
+}

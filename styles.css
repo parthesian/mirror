@@ -31,9 +31,11 @@ body {
     --rail-center: calc(var(--gutter) + var(--rail-w) / 2);
     /* Horizontal space the grid gives up so the rail never overlaps a photo. */
     --rail-reserve: calc(var(--gutter) * 2 + var(--rail-w));
-    --grid-pad: 2rem;
+    --grid-pad: 1.1rem;
+    /* Space between the header block and the first photo row. */
+    --gallery-top: 0.45rem;
     /* Top edge of the first photo row; the rail starts on the same line. */
-    --rail-top: calc(var(--header-h) + var(--gutter) + var(--grid-pad));
+    --rail-top: calc(var(--header-h) + var(--gallery-top) + var(--grid-pad));
 
     --ctl: 30px;
     --ctl-sm: 24px;
@@ -41,7 +43,7 @@ body {
 
     /* Single horizontal line that the wordmark and rail controls share. */
     --chrome-top: 2rem;
-    --header-h: 5.25rem;
+    --header-h: 4.4rem;
 
     --dur-fast: 180ms;
     --dur-mid: 320ms;
@@ -53,7 +55,9 @@ body {
     :root {
         --gutter: 1.25rem;
         --chrome-top: 1.5rem;
-        --header-h: 4.5rem;
+        --header-h: 3.55rem;
+        --grid-pad: 0.7rem;
+        --gallery-top: 0.25rem;
     }
 }
 
@@ -269,7 +273,7 @@ body.view-random .timeline-sidebar:not(.is-animated) {
 .main-content {
     max-width: 1400px;
     margin: 0 auto;
-    padding: var(--gutter);
+    padding: var(--gallery-top) var(--gutter) var(--gutter);
     position: relative;
     z-index: 2;
 }
@@ -417,6 +421,7 @@ body.exposure-1 .scroll-loading p {
     aspect-ratio: 4 / 3;
     background: rgba(255, 255, 255, 0.08);
     perspective: 720px;
+    contain: layout;
 }
 
 /* The frame holds still and the photo breathes inside it, so hovering a
@@ -440,20 +445,30 @@ body.exposure-1 .scroll-loading p {
     object-position: center center;
 }
 
-/* Layout morph: tiles are already absolute, so interpolating the box does
-   not reflow siblings. Non-uniform scale was stretching the photos. */
+/* Layout morph: same-aspect flights (grid column changes) use a compositor
+   transform. Aspect-changing masonry flights interpolate the box so
+   object-fit:cover can crop instead of squash the photo. Off-screen tiles
+   snap with no transition. */
 .gallery-window.is-morphing {
     transition: height var(--dur-slow) var(--ease);
 }
 
 .gallery-window.is-morphing .gallery-item {
+    perspective: none;
+    backface-visibility: hidden;
+}
+
+.gallery-window.is-morphing .gallery-item.is-flying {
+    transition: transform var(--dur-slow) var(--ease);
+    will-change: transform;
+    transform-origin: top left;
+}
+
+.gallery-window.is-morphing .gallery-item.is-boxing {
     transition: left var(--dur-slow) var(--ease),
                 top var(--dur-slow) var(--ease),
                 width var(--dur-slow) var(--ease),
-                height var(--dur-slow) var(--ease),
-                opacity var(--dur-mid) var(--ease);
-    perspective: none;
-    backface-visibility: hidden;
+                height var(--dur-slow) var(--ease);
 }
 
 .gallery-window.is-morph-invert,
@@ -544,6 +559,8 @@ body.exposure-1 .scroll-loading p {
     }
 
     .gallery-window.is-morphing .gallery-item,
+    .gallery-window.is-morphing .gallery-item.is-flying,
+    .gallery-window.is-morphing .gallery-item.is-boxing,
     .gallery-item:hover .gallery-item-image {
         transition: none;
         transform: none;
@@ -2065,7 +2082,7 @@ body.exposure-1 .btn-secondary {
     }
 
     .main-content {
-        padding: 1rem;
+        padding: var(--gallery-top) 1rem 1rem;
     }
 
     /* Hide navigation buttons on mobile in modal */
@@ -3552,6 +3569,7 @@ body.exposure-0 .timeline-sidebar.timeline-popout .timeline-month.active {
         flex: 1;
         min-height: 50vh;
         min-width: 0;
+        margin: 0 1.45rem;
     }
 
     .globe-explorer-toolbar {

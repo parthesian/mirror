@@ -751,6 +751,7 @@ class GlobeExplorer {
             await this._initScene();
             this._setSceneRunning(true);
             this.threeState?.onResize?.();
+            this._fitGlobeInView();
             if (focusLocation) {
                 await this._focusLocation(focusLocation);
             }
@@ -1076,7 +1077,7 @@ class GlobeExplorer {
 
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 1000);
-        camera.position.set(0, 0, 3.2);
+        camera.position.set(0, 0, GlobeExplorer.globeFitDistance(w, h, 45));
 
         scene.add(new THREE.AmbientLight(0xffffff, 1.0));
         const dir = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -1094,7 +1095,7 @@ class GlobeExplorer {
             controls.enableRotate = true;
             controls.enablePan = false;
             controls.minDistance = 1.8;
-            controls.maxDistance = 6;
+            controls.maxDistance = 8;
             controls.minPolarAngle = Math.PI / 2 - THREE.MathUtils.degToRad(62);
             controls.maxPolarAngle = Math.PI / 2 + THREE.MathUtils.degToRad(62);
             controls.rotateSpeed = 0.5;
@@ -2034,6 +2035,41 @@ class GlobeExplorer {
         if (window.gallery) {
             await window.gallery.loadImages();
         }
+    }
+
+    /**
+     * Camera distance that keeps a radius-1 globe inside the viewport
+     * with a little air on the short side. Portrait phones crop the
+     * sides at the old z=3.2 framing.
+     */
+    static globeFitDistance(width, height, fovDeg = 45, pad = 1.28) {
+        const aspect = Math.max(1, Number(width) || 1) / Math.max(1, Number(height) || 1);
+        const halfFov = (Number(fovDeg) || 45) * Math.PI / 360;
+        const halfMin = Math.min(1, aspect) * Math.tan(halfFov);
+        const distance = (Number(pad) || 1.28) / Math.max(halfMin, 0.001);
+        return Math.min(8, Math.max(2.6, distance));
+    }
+
+    _fitGlobeInView() {
+        const state = this.threeState;
+        if (!state?.camera || !this.sceneContainer) {
+            return;
+        }
+        const rect = this.sceneContainer.getBoundingClientRect();
+        const width = rect.width || 1;
+        const height = rect.height || 1;
+        const distance = GlobeExplorer.globeFitDistance(width, height, state.camera.fov);
+        if (state.controls) {
+            state.controls.maxDistance = Math.max(state.controls.maxDistance, distance + 0.35);
+        }
+        const current = state.camera.position.length();
+        if (current > 0.001) {
+            state.camera.position.multiplyScalar(distance / current);
+        } else {
+            state.camera.position.set(0, 0, distance);
+        }
+        state.camera.updateProjectionMatrix();
+        state.controls?.update?.();
     }
 }
 
