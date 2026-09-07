@@ -518,6 +518,11 @@ body.exposure-1 .scroll-loading p {
         transition: none;
     }
 
+    .modal-content.modal-layout-animating .modal-image-container,
+    .modal-content.modal-layout-animating #modal-globe {
+        transition: none;
+    }
+
     .timeline-sidebar.is-animated,
     .main-content {
         transition: none;
@@ -817,7 +822,7 @@ body.exposure-1 .scroll-loading p {
     max-width: 100%;
     max-height: 90vh;
     object-fit: contain;
-    transition: all 0.5s ease;
+    transition: opacity 0.35s ease, transform 0.5s ease;
     transform: scale(0.95);
 }
 
@@ -2066,6 +2071,29 @@ body.exposure-1 .btn-secondary {
         flex: 0 0 auto; /* Don't grow or shrink, use natural size */
         margin-top: max(0.75rem, env(safe-area-inset-top, 0px));
         margin-bottom: 1rem; /* Space below image */
+    }
+
+    /* Portrait frames sit higher; shorter frames drop toward the
+       upper-third so the photo is closer to vertical center. */
+    .modal-content.modal-photo-placed .modal-image-container {
+        overflow: hidden;
+    }
+
+    .modal-content.modal-photo-placed #modal-image {
+        max-height: 100%;
+        max-width: 100%;
+    }
+
+    .modal-content.modal-layout-animating .modal-image-container {
+        transition:
+            height var(--dur-slow) var(--ease),
+            margin-top var(--dur-slow) var(--ease);
+    }
+
+    .modal-content.modal-layout-animating #modal-globe {
+        transition:
+            width var(--dur-slow) var(--ease),
+            height var(--dur-slow) var(--ease);
     }
     
     #modal-image {
