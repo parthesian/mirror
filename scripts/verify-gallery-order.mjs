@@ -79,4 +79,15 @@ const thumbsOnly = Flipboard.loadedThumbUrls(preloader, ['a.jpg', 'b.jpg', 'miss
 assert(thumbsOnly.join(',') === 'a.jpg,b.jpg', 'flip faces are loaded thumbs only');
 assert(!thumbsOnly.includes('full.jpg'), 'full-size hover prefetches stay out of the flap pool');
 
+const filler = Flipboard.fillerFace(['a.jpg', 'b.jpg'], ['c.jpg'], 0, 'dest.jpg', 'a.jpg');
+assert(filler !== 'dest.jpg', 'a waiting tile must not land on the destination early');
+assert(filler !== 'a.jpg', 'a waiting tile must not reflip the face already shown');
+assert(['b.jpg', 'c.jpg'].includes(filler), 'waiting faces come from the cached pool');
+assert(Flipboard.fillerFace([], [], 3, 'dest.jpg', 'a.jpg') === '', 'no cached faces means no filler flap');
+assert(!Flipboard.landingWaitExceeded(Date.now()), 'a tile keeps waiting inside the landing budget');
+assert(
+    Flipboard.landingWaitExceeded(0, Flipboard.MAX_LANDING_WAIT_MS + 1),
+    'a tile lands anyway once the landing budget is spent'
+);
+
 console.log('gallery-order, location-model, and flipboard checks passed');
