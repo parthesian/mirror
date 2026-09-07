@@ -212,4 +212,14 @@ queue.pump();
 assert(queue.queue.length === 1, 'pump does not drop a disconnected tile');
 assert(queue.active === 0, 'a disconnected tile does not consume a decode slot');
 
+const globeSandbox = { window: {}, console, document: { getElementById() { return null; } } };
+vm.createContext(globeSandbox);
+vm.runInContext(fs.readFileSync(path.join(repoRoot, 'js/globeExplorer.js'), 'utf8'), globeSandbox);
+const GlobeExplorer = globeSandbox.window.GlobeExplorer;
+const phoneDist = GlobeExplorer.globeFitDistance(390, 844, 45);
+const squareDist = GlobeExplorer.globeFitDistance(800, 800, 45);
+assert(phoneDist > squareDist + 1.5, 'a portrait phone pulls the camera back to show the whole globe');
+assert(phoneDist <= 8, 'fit distance stays inside the orbit max');
+assert(squareDist >= 2.6 && squareDist < 3.4, 'a square view stays near the original framing');
+
 console.log('gallery-order, location-model, flipboard, and image-url checks passed');
