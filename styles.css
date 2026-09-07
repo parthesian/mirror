@@ -569,12 +569,22 @@ body.exposure-3 .scroll-loading p {
     object-position: center center;
 }
 
-/* During a layout change the tiles are driven by FLIP transforms. */
+/* During a layout change the tiles are driven by FLIP transforms.
+   Only transform/opacity interpolate — animating width/height thrashes
+   layout and flickers once a row has five or six tiles. */
 .gallery-window.is-morphing .gallery-item {
     transition: transform var(--dur-slow) var(--ease),
-                width var(--dur-slow) var(--ease),
-                height var(--dur-slow) var(--ease);
-    will-change: transform, width, height;
+                opacity var(--dur-mid) var(--ease);
+    transform-origin: 0 0;
+    will-change: transform;
+    backface-visibility: hidden;
+}
+
+.gallery-window.is-morphing .gallery-item-image {
+    opacity: 1;
+    transform: none;
+    transition: none;
+    will-change: auto;
 }
 
 .gallery-window.is-morphing .gallery-item:hover .gallery-item-image {
@@ -646,6 +656,17 @@ body.exposure-3 .scroll-loading p {
     .gallery-item:hover .gallery-item-image {
         transition: none;
         transform: none;
+    }
+
+    .cm-hub,
+    .cm-backdrop,
+    .cm-ring {
+        transition: none;
+    }
+
+    .control-menu.collapsed:not(.is-docked) .cm-hub,
+    .control-menu.collapsed:not(.is-docked) .cm-hub::after {
+        animation: none;
     }
 }
 
@@ -3765,6 +3786,9 @@ body.ui-animating .control-menu {
 /* ── hub ── */
 
 .cm-hub {
+    --cm-orb: 42px;
+    --cm-orb-inset: 1.7rem;
+    --cm-orb-dock: 0.42rem;
     position: absolute;
     right: calc(var(--cm-r-hub) * -1);
     bottom: calc(var(--cm-r-hub) * -1);
@@ -3782,23 +3806,14 @@ body.ui-animating .control-menu {
     cursor: pointer;
     padding: 0;
     display: block;
-    transition: background var(--dur-mid) var(--ease), border-color var(--dur-mid) var(--ease);
-}
-
-/* The hub button is 2r square and centred on the viewport corner, so its
-   own centre — not its edges — is the origin these offsets work from. */
-.cm-hub-label {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    font-size: 0.6rem;
-    letter-spacing: 0.2em;
-    white-space: nowrap;
-    color: var(--ink, #333);
-    transform: translate(-50%, -50%)
-               translate(calc(var(--cm-r-hub) * -0.44), calc(var(--cm-r-hub) * -0.44))
-               rotate(-45deg);
-    transition: opacity var(--dur-fast) var(--ease);
+    transition:
+        right var(--dur-slow) var(--ease),
+        bottom var(--dur-slow) var(--ease),
+        width var(--dur-slow) var(--ease),
+        height var(--dur-slow) var(--ease),
+        background var(--dur-mid) var(--ease),
+        border-color var(--dur-mid) var(--ease),
+        box-shadow var(--dur-mid) var(--ease);
 }
 
 .cm-hub-mark {
@@ -3810,15 +3825,19 @@ body.ui-animating .control-menu {
     height: 9px;
     border-radius: 50%;
     border: 1px solid var(--ink-soft, #888);
+    opacity: 0;
     transform: translate(-50%, -50%)
                translate(calc(var(--cm-r-hub) * -0.80), calc(var(--cm-r-hub) * -0.80))
                scale(var(--mark-scale));
-    transition: background var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+    transition: background var(--dur-fast) var(--ease),
+                transform var(--dur-fast) var(--ease),
+                opacity var(--dur-fast) var(--ease);
 }
 
 .control-menu:not(.collapsed) .cm-hub-mark {
     background: var(--ink, #333);
     border-color: var(--ink, #333);
+    opacity: 1;
     --mark-scale: 0.72;
 }
 
@@ -3829,6 +3848,10 @@ body.ui-animating .control-menu {
 .cm-hub:focus-visible {
     outline: 1px solid var(--ink, #333);
     outline-offset: -6px;
+}
+
+.control-menu.collapsed .cm-hub:focus-visible {
+    outline-offset: 3px;
 }
 
 /* ── nodes ── */
@@ -3934,7 +3957,10 @@ body.ui-animating .control-menu {
     font-weight: 400;
 }
 
-/* ── collapsed state ── */
+/* ── collapsed state ──
+   Resting: a small floating orb inset from the corner.
+   Opening: it docks down-right, then the quarter-circle blooms.
+   Closing: the disc shrinks back to the docked orb, then slides home. */
 
 .control-menu.collapsed .cm-backdrop,
 .control-menu.collapsed .cm-ring-a,
@@ -3947,6 +3973,66 @@ body.ui-animating .control-menu {
 .control-menu.collapsed .cm-layer {
     opacity: 0;
     pointer-events: none;
+}
+
+.control-menu.collapsed .cm-hub {
+    width: var(--cm-orb);
+    height: var(--cm-orb);
+    right: var(--cm-orb-dock);
+    bottom: var(--cm-orb-dock);
+    /* Slide uses the mid duration; the expand/shrink still inherits slow
+       from the open hub rule when .collapsed is removed. */
+    transition-duration: var(--dur-mid);
+    box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--ink, #333) 22%, transparent),
+        0 0 12px color-mix(in srgb, var(--ink, #333) 20%, transparent),
+        0 0 28px color-mix(in srgb, var(--ink, #333) 10%, transparent);
+}
+
+.control-menu.collapsed:not(.is-docked) .cm-hub {
+    right: var(--cm-orb-inset);
+    bottom: var(--cm-orb-inset);
+    animation: cm-orb-pulse 3.8s ease-in-out infinite;
+}
+
+.control-menu.collapsed .cm-hub::after {
+    content: '';
+    position: absolute;
+    inset: -7px;
+    border-radius: 50%;
+    border: 1px solid color-mix(in srgb, var(--ink, #333) 16%, transparent);
+    pointer-events: none;
+    opacity: 0;
+}
+
+.control-menu.collapsed:not(.is-docked) .cm-hub::after {
+    animation: cm-orb-ring 3.8s ease-in-out infinite;
+}
+
+@keyframes cm-orb-pulse {
+    0%, 100% {
+        box-shadow:
+            0 0 0 1px color-mix(in srgb, var(--ink, #333) 20%, transparent),
+            0 0 10px color-mix(in srgb, var(--ink, #333) 18%, transparent),
+            0 0 24px color-mix(in srgb, var(--ink, #333) 8%, transparent);
+    }
+    50% {
+        box-shadow:
+            0 0 0 1px color-mix(in srgb, var(--ink, #333) 36%, transparent),
+            0 0 16px color-mix(in srgb, var(--ink, #333) 28%, transparent),
+            0 0 34px color-mix(in srgb, var(--ink, #333) 14%, transparent);
+    }
+}
+
+@keyframes cm-orb-ring {
+    0%, 100% {
+        opacity: 0.2;
+        transform: scale(0.94);
+    }
+    50% {
+        opacity: 0.55;
+        transform: scale(1.08);
+    }
 }
 
 .cm-layer {
@@ -3986,6 +4072,12 @@ body.ui-animating .control-menu {
         overflow: hidden;
         text-overflow: ellipsis;
     }
+
+    .cm-hub {
+        --cm-orb: 44px;
+        --cm-orb-inset: 1.15rem;
+        --cm-orb-dock: 0.4rem;
+    }
 }
 
 /* A filter selection is live: mark the hub so the state is visible closed. */
@@ -3993,8 +4085,11 @@ body.ui-animating .control-menu {
     border-color: var(--ink, #333);
 }
 
-.control-menu.has-filter .cm-hub-label {
-    color: var(--ink, #111);
+.control-menu.has-filter.collapsed:not(.is-docked) .cm-hub {
+    box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--ink, #333) 40%, transparent),
+        0 0 16px color-mix(in srgb, var(--ink, #333) 30%, transparent),
+        0 0 36px color-mix(in srgb, var(--ink, #333) 14%, transparent);
 }
 
 /* The globe button is the only chrome the menu can overlap when open. */

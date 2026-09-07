@@ -59,6 +59,8 @@ class ControlMenu {
         this.readout = document.getElementById('cm-readout');
 
         this.isOpen = false;
+        this.isAnimating = false;
+        this.phaseTimer = null;
         this.section = null;
         this.filterType = 'country';
         this.leafOffset = 0;
@@ -66,6 +68,9 @@ class ControlMenu {
         this.hoverLabel = '';
         this.scale = 1;
         this.geometry = { ...CM_BASE };
+
+        this.slideMs = 340;
+        this.expandMs = 520;
 
         this.applyGeometry();
         this.bindEvents();
@@ -129,7 +134,7 @@ class ControlMenu {
         this.hub.addEventListener('click', () => this.toggle());
 
         document.addEventListener('keydown', (event) => {
-            if (event.key === 'Escape' && this.isOpen) {
+            if (event.key === 'Escape' && this.isOpen && !this.isAnimating) {
                 event.preventDefault();
                 this.close();
                 this.hub.focus();
@@ -137,7 +142,7 @@ class ControlMenu {
         });
 
         document.addEventListener('pointerdown', (event) => {
-            if (!this.isOpen) return;
+            if (!this.isOpen || this.isAnimating) return;
             if (this.root.contains(event.target)) return;
             this.close();
         });
@@ -164,26 +169,75 @@ class ControlMenu {
     }
 
     toggle() {
+        if (this.isAnimating) return;
         if (this.isOpen) this.close();
         else this.open();
     }
 
+    prefersReducedMotion() {
+        return Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
+    }
+
+    clearPhase() {
+        if (this.phaseTimer != null) {
+            window.clearTimeout(this.phaseTimer);
+            this.phaseTimer = null;
+        }
+    }
+
+    after(ms, fn) {
+        this.clearPhase();
+        if (ms <= 0) {
+            fn();
+            return;
+        }
+        this.phaseTimer = window.setTimeout(() => {
+            this.phaseTimer = null;
+            fn();
+        }, ms);
+    }
+
+    /**
+     * Closed rest is a floating orb. Opening docks it down-right, then the
+     * quarter-circle expands. Closing reverses that: shrink, then slide home.
+     */
     open() {
+        if (this.isOpen || this.isAnimating) return;
         this.isOpen = true;
-        this.root.classList.remove('collapsed');
+        this.isAnimating = true;
         this.hub.setAttribute('aria-expanded', 'true');
         this.hub.setAttribute('aria-label', 'Close control menu');
-        this.render();
+
+        const instant = this.prefersReducedMotion();
+        this.root.classList.add('is-docked');
+
+        this.after(instant ? 0 : this.slideMs, () => {
+            this.root.classList.remove('collapsed');
+            this.render();
+            this.after(instant ? 0 : this.expandMs, () => {
+                this.isAnimating = false;
+            });
+        });
     }
 
     close() {
+        if (!this.isOpen || this.isAnimating) return;
         this.isOpen = false;
+        this.isAnimating = true;
         this.section = null;
         this.root.classList.add('collapsed');
         this.root.dataset.section = '';
         this.hub.setAttribute('aria-expanded', 'false');
         this.hub.setAttribute('aria-label', 'Open control menu');
         this.render();
+
+        const instant = this.prefersReducedMotion();
+        this.after(instant ? 0 : this.expandMs, () => {
+            this.root.classList.remove('is-docked');
+            this.after(instant ? 0 : this.slideMs, () => {
+                this.isAnimating = false;
+            });
+        });
     }
 
     async selectSection(id) {

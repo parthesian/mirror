@@ -31,6 +31,7 @@ class Gallery {
         this.mountedItems = new Map();
         this.isLoadingMore = false;
         this.isMorphing = false;
+        this.morphFreeze = false;
         this.renderQueued = false;
         this.forceRenderQueued = false;
         this.cachedLayout = null;
@@ -406,12 +407,18 @@ class Gallery {
     }
 
     positionItem(node, index, layout) {
+        if (this.morphFreeze) {
+            return;
+        }
+
         if (layout.mode !== 'masonry') {
             node.style.left = '';
             node.style.top = '';
             node.style.width = '';
             node.style.height = '';
             node.style.transform = '';
+            node.style.transformOrigin = '';
+            node.style.opacity = '';
             return;
         }
 
@@ -470,6 +477,9 @@ class Gallery {
 
             this.imagePreloader.registerPending(url, loadPromise);
             img.src = url;
+            if (this.isMorphing) {
+                item.classList.add('loaded', 'instant');
+            }
         }
 
         item.setAttribute('tabindex', '0');
@@ -738,10 +748,7 @@ class Gallery {
         this.emitLayoutChange();
 
         const images = this.imageService.images || [];
-        const animate = options.animate !== false
-            && images.length > 0
-            && !this.prefersReducedMotion()
-            && this.windowGrid.querySelector('.gallery-item');
+        const animate = options.animate !== false && this.shouldAnimateLayout();
 
         if (!animate) {
             this.cachedLayout = null;
@@ -750,6 +757,13 @@ class Gallery {
         }
 
         await window.UIAnimation.run(() => this.morphLayout(images));
+    }
+
+    shouldAnimateLayout() {
+        const images = this.imageService.images || [];
+        return images.length > 0
+            && !this.prefersReducedMotion()
+            && Boolean(this.windowGrid?.querySelector('.gallery-item'));
     }
 
     prefersReducedMotion() {
@@ -761,44 +775,59 @@ class Gallery {
         const grid = this.windowGrid;
 
         try {
-            const before = this.captureRects();
-            const previousHeight = grid.offsetHeight;
+            const before = this.captureContentRects();
+            const spacerTop = this.windowGrid.classList.contains('is-masonry')
+                ? 0
+                : (this.topSpacer?.offsetHeight || 0);
+            const previousHeight = spacerTop
+                + grid.offsetHeight
+                + (this.bottomSpacer?.offsetHeight || 0);
 
             this.cachedLayout = null;
             const layout = this.getLayout();
             const nextRange = this.visibleRange(layout, images.length);
+            const prevStart = this.renderState.startIndex >= 0
+                ? this.renderState.startIndex
+                : nextRange.startIndex;
+            const prevEnd = this.renderState.endIndex > prevStart
+                ? this.renderState.endIndex
+                : nextRange.endIndex;
             const union = {
-                startIndex: Math.min(this.renderState.startIndex >= 0 ? this.renderState.startIndex : nextRange.startIndex, nextRange.startIndex),
-                endIndex: Math.max(this.renderState.endIndex, nextRange.endIndex)
+                startIndex: Math.min(prevStart, nextRange.startIndex),
+                endIndex: Math.max(prevEnd, nextRange.endIndex)
             };
+            const after = this.rectsFromLayout(layout, union.startIndex, union.endIndex);
 
-            this.renderVisibleWindow(true, union);
-            const after = this.captureRects();
-
-            const nodes = Array.from(grid.querySelectorAll('.gallery-item'));
-            const maxHeight = Math.max(previousHeight, grid.offsetHeight);
-            grid.style.height = `${maxHeight}px`;
+            // Collapse spacers and lock into absolute space in the same turn
+            // as the invert, so the destination grid is never painted first.
+            this.topSpacer.style.height = '0px';
+            this.bottomSpacer.style.height = '0px';
+            grid.style.height = `${Math.max(previousHeight, layout.totalHeight)}px`;
             grid.classList.add('is-morphing', 'is-masonry');
 
+            this.morphFreeze = true;
+            this.syncNodes(images, union.startIndex, union.endIndex, layout);
+            this.morphFreeze = false;
+
+            const nodes = Array.from(grid.querySelectorAll('.gallery-item'));
             for (const node of nodes) {
                 const id = node.dataset.imageId;
-                const from = before.get(id);
                 const to = after.get(id);
                 if (!to) continue;
-
-                const origin = from || { ...to, top: to.top + 24 };
-                this.freezeAt(node, origin);
+                node.classList.add('loaded', 'instant');
+                const from = before.get(id);
+                this.invertTo(node, from || { ...to, top: to.top + 24 }, to);
                 if (!from) node.style.opacity = '0';
             }
 
-            // Flush the frozen positions before the targets are applied so the
-            // browser has two distinct states to interpolate between.
+            // Flush the inverted positions before the targets are applied so
+            // the browser has two distinct states to interpolate between.
             void grid.offsetHeight;
 
             for (const node of nodes) {
                 const to = after.get(node.dataset.imageId);
                 if (!to) continue;
-                this.freezeAt(node, to);
+                this.playTo(node, to);
                 node.style.opacity = '1';
             }
 
@@ -806,9 +835,11 @@ class Gallery {
 
             for (const node of nodes) {
                 node.style.transform = '';
+                node.style.transformOrigin = '';
                 node.style.opacity = '';
             }
         } finally {
+            this.morphFreeze = false;
             grid.classList.remove('is-morphing');
             this.isMorphing = false;
             this.cachedLayout = null;
@@ -818,14 +849,22 @@ class Gallery {
         }
     }
 
-    captureRects() {
+    /**
+     * Tile boxes in content space (above the window grid's spacer). That
+     * lets the morph drop the spacer without the tiles jumping with it.
+     */
+    captureContentRects() {
         const rects = new Map();
         const base = this.windowGrid.getBoundingClientRect();
+        const spacer = this.windowGrid.classList.contains('is-masonry')
+            ? 0
+            : (this.topSpacer?.offsetHeight || 0);
+
         for (const node of this.windowGrid.querySelectorAll('.gallery-item')) {
             const rect = node.getBoundingClientRect();
             rects.set(node.dataset.imageId, {
                 left: rect.left - base.left,
-                top: rect.top - base.top,
+                top: rect.top - base.top + spacer,
                 width: rect.width,
                 height: rect.height
             });
@@ -833,12 +872,52 @@ class Gallery {
         return rects;
     }
 
-    freezeAt(node, rect) {
+    rectsFromLayout(layout, startIndex, endIndex) {
+        const rects = new Map();
+        const images = this.imageService.images || [];
+
+        for (let i = startIndex; i < endIndex; i++) {
+            const image = images[i];
+            if (!image) continue;
+
+            if (layout.mode === 'masonry') {
+                const rect = layout.rects[i];
+                if (!rect) continue;
+                rects.set(image.id, {
+                    left: rect.left,
+                    top: rect.top,
+                    width: rect.width,
+                    height: rect.height
+                });
+                continue;
+            }
+
+            const col = i % layout.columns;
+            const row = Math.floor(i / layout.columns);
+            rects.set(image.id, {
+                left: col * (layout.columnWidth + layout.gap),
+                top: row * layout.rowSpan,
+                width: layout.columnWidth,
+                height: layout.rowHeight
+            });
+        }
+
+        return rects;
+    }
+
+    invertTo(node, from, to) {
+        const sx = to.width ? from.width / to.width : 1;
+        const sy = to.height ? from.height / to.height : 1;
         node.style.left = '0px';
         node.style.top = '0px';
-        node.style.width = `${rect.width}px`;
-        node.style.height = `${rect.height}px`;
-        node.style.transform = `translate(${rect.left}px, ${rect.top}px)`;
+        node.style.width = `${to.width}px`;
+        node.style.height = `${to.height}px`;
+        node.style.transformOrigin = '0 0';
+        node.style.transform = `translate(${from.left}px, ${from.top}px) scale(${sx}, ${sy})`;
+    }
+
+    playTo(node, to) {
+        node.style.transform = `translate(${to.left}px, ${to.top}px) scale(1, 1)`;
     }
 
     waitForMorph(grid) {
@@ -886,9 +965,21 @@ class Gallery {
         this.columns = next;
         this.galleryContainer.dataset.columns = String(next);
         this.storeColumnPreference(next);
-        this.cachedLayout = null;
-        this.scheduleRefresh(true);
         this.emitLayoutChange();
+
+        if (this.isMorphing) {
+            this.cachedLayout = null;
+            return;
+        }
+
+        const images = this.imageService.images || [];
+        if (!this.shouldAnimateLayout()) {
+            this.cachedLayout = null;
+            this.scheduleRefresh(true);
+            return;
+        }
+
+        void window.UIAnimation.run(() => this.morphLayout(images));
     }
 
     storeColumnPreference(value) {
