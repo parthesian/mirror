@@ -512,6 +512,8 @@ class Gallery {
 
         const img = document.createElement('img');
         img.className = 'gallery-item-image';
+        img.alt = '';
+        img.setAttribute('aria-hidden', 'true');
         img.decoding = 'async';
         if ('fetchPriority' in img) {
             img.fetchPriority = 'high';
@@ -740,8 +742,11 @@ class Gallery {
         item.dataset.imageId = image.id;
         const img = item.querySelector('.gallery-item-image');
         const dateLabel = this.imageService.formatTimestamp(image.timestamp);
+        // Keep the thumb decorative. A named <img> with no src yet is what
+        // made mobile browsers paint "Photo from …" on the empty tile.
         if (img) {
-            img.alt = image.description ? image.description : `Photo from ${dateLabel}`;
+            img.alt = '';
+            img.setAttribute('aria-hidden', 'true');
         }
         item.setAttribute(
             'aria-label',
