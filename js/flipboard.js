@@ -12,6 +12,9 @@ const Flipboard = {
     STAGGER_MS: 12,
     MIN_TICKS: 4,
     MAX_TICKS: 6,
+    // A tile must not land on a thumb the browser cannot paint yet, or it
+    // keeps the old frame and pops to the new one once the bytes arrive.
+    MAX_LANDING_WAIT_MS: 4000,
 
     prefersReducedMotion() {
         return Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
@@ -54,6 +57,23 @@ const Flipboard = {
             sequence.push(destUrl);
         }
         return sequence;
+    },
+
+    landingWaitExceeded(startedAt, now = Date.now()) {
+        return now - startedAt >= this.MAX_LANDING_WAIT_MS;
+    },
+
+    /**
+     * A face to flap while the destination is still decoding. Never the
+     * destination (that would land early) and never the face already shown.
+     */
+    fillerFace(sequence, pool, tick, destUrl, currentUrl) {
+        const faces = [...(sequence || []), ...(pool || [])]
+            .filter((url) => url && url !== destUrl && url !== currentUrl);
+        if (!faces.length) {
+            return '';
+        }
+        return faces[Math.abs(tick) % faces.length];
     },
 
     wait(ms) {
@@ -160,9 +180,16 @@ const Flipboard = {
                 return Promise.resolve();
             }
 
-            if (typeof preloader.preloadImage === 'function') {
-                void preloader.preloadImage(destUrl);
+            let destReady = Boolean(preloader.isImageLoaded?.(destUrl));
+            if (!destReady) {
+                const settle = () => { destReady = true; };
+                if (typeof preloader.preloadImage === 'function') {
+                    preloader.preloadImage(destUrl).then(settle, settle);
+                } else {
+                    settle();
+                }
             }
+
             const tickCount = this.MIN_TICKS + Math.floor(Math.random() * (this.MAX_TICKS - this.MIN_TICKS + 1));
             const sequence = this.pickIntermediates(pool, currentUrl, destUrl, tickCount)
                 .filter((url) => url !== destUrl && preloader.isImageLoaded(url));
@@ -171,16 +198,19 @@ const Flipboard = {
                 for (const url of sequence) {
                     await this.flipOnce(item, img, url);
                 }
-                // Keep flapping cached faces if dest is still arriving so the
-                // board never sits still, then land on dest as the last tick.
-                let extras = 0;
-                while (destUrl && !preloader.isImageLoaded(destUrl) && extras < this.MAX_TICKS) {
-                    const filler = sequence[extras % Math.max(sequence.length, 1)]
-                        || pool[extras % Math.max(pool.length, 1)];
-                    if (filler && filler !== destUrl) {
+                // Keep flapping cached faces until the destination can be
+                // painted, so the board never stops on a frame that is about
+                // to be replaced.
+                const waitStartedAt = Date.now();
+                let tick = 0;
+                while (!destReady && !this.landingWaitExceeded(waitStartedAt)) {
+                    const filler = this.fillerFace(sequence, pool, tick, destUrl, img.src);
+                    tick += 1;
+                    if (filler) {
                         await this.flipOnce(item, img, filler);
+                    } else {
+                        await this.wait(this.FLAP_MS);
                     }
-                    extras += 1;
                 }
                 await this.flipOnce(item, img, destUrl);
                 this.removeFlap(item);
