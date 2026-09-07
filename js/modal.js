@@ -250,12 +250,18 @@ class Modal {
     }
 
     formatLocationWithState(image) {
+        if (window.LocationModel?.formatWithRegion) {
+            return window.LocationModel.formatWithRegion({
+                location: image?.location,
+                state: image?.state
+            });
+        }
         const location = String(image?.location || '').trim();
         const state = String(image?.state || '').trim();
         if (!state || state.toLowerCase() === location.toLowerCase()) {
             return location;
         }
-        return `${location}, ${state}`;
+        return location ? `${location}, ${state}` : state;
     }
 
     /**
@@ -281,8 +287,10 @@ class Modal {
         }
 
         // Set text content
-        this.modalDescription.textContent = image.description;
-        this.modalLocation.textContent = this.formatLocationWithState(image);
+        this.modalDescription.textContent = image.description || '';
+        const place = this.formatLocationWithState(image);
+        this.modalLocation.textContent = place;
+        this.modalLocation.classList.toggle('hidden', !place);
         this.modalTimestamp.textContent = this.imageService.formatTimestamp(image.timestamp);
 
         const country = String(image.country || '').trim();
