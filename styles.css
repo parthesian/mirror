@@ -3889,8 +3889,11 @@ body.ui-animating .control-menu {
     color: var(--on-ink, #eee);
     border-color: var(--ink, #333);
     background: var(--ink, #333);
-    /* Selected fill is state, not motion — snap it so a shuffle/chrono
-       click does not wait on the node color fade or the gallery flip. */
+}
+
+/* ORDER chips are state, not motion. Fade would leave the old fill
+   sitting on CHRONO while SHUFFLE is already marked active. */
+.cm-node[data-kind="view"] {
     transition-property: transform, opacity, border-color;
 }
 
