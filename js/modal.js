@@ -19,6 +19,7 @@ class Modal {
         this.globeContainer = document.getElementById('modal-globe');
         this.modalCopy = this.modal?.querySelector('.modal-copy');
         this.modalContent = this.modal?.querySelector('.modal-content');
+        this.modalImageContainer = this.modal?.querySelector('.modal-image-container');
         this.prevBtn = document.getElementById('prev-btn');
         this.nextBtn = document.getElementById('next-btn');
         
@@ -51,6 +52,10 @@ class Modal {
         this.isOpen = false;
         this.isUploadModalOpen = false;
         this.isNavigating = false;
+        this._photoLayoutReady = false;
+        this._layoutAnimTimer = 0;
+        this._resizeTimer = 0;
+        this._safeAreaTop = null;
         
         // Globe integration — share the gallery preload instance so the
         // hidden warmup actually transfers into the modal.
@@ -95,7 +100,9 @@ class Modal {
         });
 
         window.addEventListener('resize', () => {
-            if (this.isOpen) this.syncModalGlobeSize();
+            if (!this.isOpen) return;
+            window.clearTimeout(this._resizeTimer);
+            this._resizeTimer = window.setTimeout(() => this.onViewportChange(), 120);
         }, { passive: true });
 
         // Upload modal events
@@ -169,6 +176,7 @@ class Modal {
         // Handle image load events
         this.modalImage.addEventListener('load', () => {
             this.hideImageLoading();
+            this.refinePhotoPlacementFromNaturalSize();
         });
 
         this.modalImage.addEventListener('error', () => {
@@ -236,15 +244,11 @@ class Modal {
         this.isOpen = false;
         this.currentImageId = null;
         this.isNavigating = false;
+        this.clearPhotoPlacement();
 
         // Keep globe instance alive for reuse across modal opens, but
         // stop the hidden 60fps loop until the next photo needs it.
-        if (this.globeContainer) {
-            this.globeService?.pause?.(this.globeContainer);
-            this.globeContainer.classList.add('hidden');
-            this.globeContainer.style.width = '';
-            this.globeContainer.style.height = '';
-        }
+        this.hideModalGlobe();
         
         // Hide modal
         this.modal.classList.remove('active');
@@ -279,6 +283,8 @@ class Modal {
      * @param {Object} image - Image object
      */
     loadImageContent(image) {
+        this.applyPhotoPlacement(image, { animate: this.shouldAnimatePhotoLayout() });
+
         this.modalImage.alt = image.description || 'Photo';
 
         if (image.thumbnailUrl && image.thumbnailUrl !== image.url) {
@@ -327,6 +333,7 @@ class Modal {
             this.modalCameraRow.classList.add('hidden');
         }
 
+        this.syncModalGlobeSize();
         this.updateGlobe({
             latitude: image.latitude,
             longitude: image.longitude,
@@ -334,6 +341,194 @@ class Modal {
             location: image.location
         });
         this.prefetchAdjacentImages(image.id);
+    }
+
+    isVerticalModal() {
+        return Boolean(window.matchMedia?.('(max-width: 768px)')?.matches);
+    }
+
+    prefersReducedMotion() {
+        return Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
+    }
+
+    shouldAnimatePhotoLayout() {
+        return this._photoLayoutReady && this.isVerticalModal() && !this.prefersReducedMotion();
+    }
+
+    globeIsShowing() {
+        return Boolean(
+            this.globeContainer
+            && !this.globeContainer.classList.contains('hidden')
+            && this.globeContainer.firstChild
+        );
+    }
+
+    hideModalGlobe() {
+        if (!this.globeContainer) {
+            return;
+        }
+        this.globeService?.pause?.(this.globeContainer);
+        this.globeContainer.classList.add('hidden');
+        this.globeContainer.style.width = '';
+        this.globeContainer.style.height = '';
+    }
+
+    onViewportChange() {
+        if (!this.isOpen) {
+            return;
+        }
+        this._safeAreaTop = null;
+        const image = this.imageService.getImageById(this.currentImageId);
+        if (image) {
+            this.applyPhotoPlacement(image, { animate: false });
+        }
+        this.syncModalGlobeSize();
+    }
+
+    getPhotoAspect(image) {
+        const ratio = Number(image?.aspectRatio);
+        if (Number.isFinite(ratio) && ratio > 0) {
+            return ratio;
+        }
+        const width = this.modalImage?.naturalWidth;
+        const height = this.modalImage?.naturalHeight;
+        if (width && height) {
+            return width / height;
+        }
+        return 4 / 3;
+    }
+
+    getSafeAreaTop() {
+        if (this._safeAreaTop != null) {
+            return this._safeAreaTop;
+        }
+        const probe = document.createElement('div');
+        probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top,0px)';
+        document.body.appendChild(probe);
+        this._safeAreaTop = parseFloat(getComputedStyle(probe).paddingTop) || 0;
+        probe.remove();
+        return this._safeAreaTop;
+    }
+
+    /**
+     * Match the mobile max-height / width caps in CSS so reserved frames
+     * land on the same size the image would have used on its own.
+     */
+    verticalPhotoMetrics() {
+        const narrow = Boolean(window.matchMedia?.('(max-width: 480px)')?.matches);
+        const containerWidth = this.modalImageContainer?.clientWidth
+            || this.modalContent?.clientWidth
+            || window.innerWidth;
+        return {
+            maxHeight: window.innerHeight * (narrow ? 0.62 : 0.68),
+            maxWidth: Math.min(narrow ? window.innerWidth * 0.95 : Infinity, containerWidth),
+            minOffset: Math.max(narrow ? 8 : 12, this.getSafeAreaTop())
+        };
+    }
+
+    measurePhotoBox(image) {
+        const aspect = this.getPhotoAspect(image);
+        const { maxHeight, maxWidth } = this.verticalPhotoMetrics();
+        let width = Math.max(1, maxWidth);
+        let height = width / aspect;
+        if (height > maxHeight) {
+            height = maxHeight;
+            width = height * aspect;
+        }
+        return { width, height, aspect };
+    }
+
+    /**
+     * Sit the photo around 65% of the way up the screen. Tall frames clamp
+     * to the safe top so they are not cropped.
+     */
+    computePhotoOffset(photoHeight) {
+        const { minOffset } = this.verticalPhotoMetrics();
+        const padTop = parseFloat(getComputedStyle(this.modalContent).paddingTop) || 0;
+        const anchor = window.innerHeight * 0.35;
+        return Math.max(minOffset, Math.round(anchor - padTop - photoHeight / 2));
+    }
+
+    beginLayoutAnimation(container) {
+        const from = container.getBoundingClientRect();
+        const fromMargin = parseFloat(getComputedStyle(container).marginTop) || 0;
+        this.modalContent.classList.remove('modal-layout-animating');
+        container.style.height = `${Math.round(from.height)}px`;
+        container.style.marginTop = `${Math.round(fromMargin)}px`;
+        void container.offsetHeight;
+        this.modalContent.classList.add('modal-layout-animating');
+    }
+
+    scheduleLayoutAnimEnd() {
+        window.clearTimeout(this._layoutAnimTimer);
+        this._layoutAnimTimer = window.setTimeout(() => {
+            this.modalContent?.classList.remove('modal-layout-animating');
+        }, 580);
+    }
+
+    applyPhotoPlacement(image, { animate = false } = {}) {
+        const container = this.modalImageContainer;
+        if (!container || !this.modalContent) {
+            return;
+        }
+
+        if (!this.isVerticalModal()) {
+            this.clearPhotoPlacement();
+            return;
+        }
+
+        const box = this.measurePhotoBox(image);
+        const offset = this.computePhotoOffset(box.height);
+
+        if (animate) {
+            this.beginLayoutAnimation(container);
+        } else {
+            this.modalContent.classList.remove('modal-layout-animating');
+        }
+
+        this.modalContent.classList.add('modal-photo-placed');
+        container.style.height = `${Math.round(box.height)}px`;
+        container.style.marginTop = `${offset}px`;
+        this.modalContent.style.setProperty('--modal-photo-w', `${Math.round(box.width)}px`);
+        this._photoLayoutReady = true;
+
+        if (animate) {
+            this.scheduleLayoutAnimEnd();
+        }
+    }
+
+    refinePhotoPlacementFromNaturalSize() {
+        if (!this.isOpen || !this.isVerticalModal() || !this.modalImage) {
+            return;
+        }
+        const image = this.imageService.getImageById(this.currentImageId);
+        if (!image) {
+            return;
+        }
+        const { naturalWidth: width, naturalHeight: height } = this.modalImage;
+        if (!width || !height) {
+            return;
+        }
+        const natural = width / height;
+        if (image.aspectRatioKnown && Math.abs(Number(image.aspectRatio) - natural) < 0.02) {
+            return;
+        }
+        image.aspectRatio = natural;
+        image.aspectRatioKnown = true;
+        this.applyPhotoPlacement(image, { animate: this._photoLayoutReady && !this.prefersReducedMotion() });
+    }
+
+    clearPhotoPlacement() {
+        this._photoLayoutReady = false;
+        window.clearTimeout(this._layoutAnimTimer);
+        this._layoutAnimTimer = 0;
+        if (!this.modalContent || !this.modalImageContainer) {
+            return;
+        }
+        this.modalContent.classList.remove('modal-layout-animating', 'modal-photo-placed');
+        this.modalImageContainer.style.height = '';
+        this.modalImageContainer.style.marginTop = '';
+        this.modalContent.style.removeProperty('--modal-photo-w');
     }
 
     /**
@@ -418,8 +613,11 @@ class Modal {
     async updateGlobe(locationOrOptions) {
         try {
             if (!this.globeService || !this.globeContainer) return;
-            
-            this.globeContainer.classList.add('hidden');
+
+            const keepVisible = this.globeIsShowing();
+            if (!keepVisible) {
+                this.globeContainer.classList.add('hidden');
+            }
             this.globeContainer.removeAttribute('title');
 
             if (this.globeService.instances.has(this.globeContainer)) {
@@ -430,7 +628,7 @@ class Modal {
             
             // If unsupported or failed, container will likely be empty; keep hidden
             if (!this.globeContainer.firstChild) {
-                this.globeContainer.classList.add('hidden');
+                this.hideModalGlobe();
             } else {
                 this.globeContainer.setAttribute('title', 'Open globe explorer at this location');
                 this.syncModalGlobeSize();
@@ -439,7 +637,7 @@ class Modal {
             console.warn('Modal.updateGlobe error:', e);
             if (this.globeService && this.globeContainer) {
                 this.globeService.destroy(this.globeContainer);
-                this.globeContainer.classList.add('hidden');
+                this.hideModalGlobe();
             }
         }
     }
