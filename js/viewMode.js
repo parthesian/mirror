@@ -30,6 +30,12 @@ class ViewMode {
         return this.imageService?.viewMode === 'random' ? 'random' : 'chrono';
     }
 
+    // Chip / readout state follows a click immediately, even if a flipboard
+    // is still finishing the previous order.
+    get displayMode() {
+        return this.pendingMode || this.mode;
+    }
+
     bindEvents() {
         this.button?.addEventListener('click', () => {
             this.toggle();
@@ -61,6 +67,7 @@ class ViewMode {
         const refresh = options.refresh !== false;
         if (this.isTransitioning) {
             this.pendingMode = next;
+            this.emitModeChange(next);
             return;
         }
         const previousImages = this.imageService.images.slice();
@@ -68,6 +75,7 @@ class ViewMode {
 
         this.store(next);
         this.syncButton();
+        this.emitModeChange(next);
 
         if (!refresh || !this.gallery) {
             this.syncDocument();
@@ -79,7 +87,6 @@ class ViewMode {
         }
 
         this.isTransitioning = true;
-        window.UIAnimation?.begin();
         try {
             // Start the timeline slide with the first flap so the rail does
             // not sit still and then snap after the board finishes.
@@ -100,11 +107,7 @@ class ViewMode {
             }
             this.syncDocument();
             document.dispatchEvent(new CustomEvent('galleryUpdated'));
-            document.dispatchEvent(new CustomEvent('viewModeChange', {
-                detail: { mode: next }
-            }));
         } finally {
-            window.UIAnimation?.end();
             this.isTransitioning = false;
             this.syncButton();
             const queued = this.pendingMode;
@@ -113,6 +116,12 @@ class ViewMode {
                 void this.setMode(queued);
             }
         }
+    }
+
+    emitModeChange(mode) {
+        document.dispatchEvent(new CustomEvent('viewModeChange', {
+            detail: { mode }
+        }));
     }
 
     syncButton() {

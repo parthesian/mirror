@@ -31,10 +31,13 @@ class Gallery {
         this.mountedItems = new Map();
         this.isLoadingMore = false;
         this.isMorphing = false;
+        this.morphFreeze = false;
         this.renderQueued = false;
         this.forceRenderQueued = false;
         this.cachedLayout = null;
         this.pendingAspectRefresh = false;
+        this.aspectReflowTimer = null;
+        this.aspectReflowNeeded = false;
 
         this.topSpacer = null;
         this.windowGrid = null;
@@ -49,6 +52,9 @@ class Gallery {
         this.ensureWindowStructure();
         this.bindEvents();
         this.applyLayoutModeClass();
+        this.imagePreloader.onAspect((url, img) => {
+            this.adoptAspectFromUrl(url, img);
+        });
         this.loadImages();
     }
 
@@ -212,6 +218,9 @@ class Gallery {
             const newImages = await this.imageService.loadMorePhotos();
             if (newImages.length > 0) {
                 this.cachedLayout = null;
+                if (this.isMasonry) {
+                    this.warmUnknownAspects();
+                }
                 this.scheduleRefresh(true);
                 document.dispatchEvent(new CustomEvent('galleryUpdated'));
                 window.setTimeout(() => this.checkIfNeedsMoreContent(), 60);
@@ -406,12 +415,18 @@ class Gallery {
     }
 
     positionItem(node, index, layout) {
+        if (this.morphFreeze) {
+            return;
+        }
+
         if (layout.mode !== 'masonry') {
             node.style.left = '';
             node.style.top = '';
             node.style.width = '';
             node.style.height = '';
             node.style.transform = '';
+            node.style.transformOrigin = '';
+            node.style.opacity = '';
             return;
         }
 
@@ -429,6 +444,10 @@ class Gallery {
     getOrCreateItem(image, absoluteIndex, layout) {
         const existing = this.mountedItems.get(image.id);
         if (existing) {
+            const img = existing.querySelector('.gallery-item-image');
+            if (this.adoptNaturalAspect(image, img)) {
+                this.scheduleAspectReflow();
+            }
             return existing;
         }
         return this.createGalleryItem(image, absoluteIndex, layout);
@@ -451,12 +470,25 @@ class Gallery {
         if (cached) {
             img.src = url;
             item.classList.add('loaded', 'instant');
+            const cachedImg = this.imagePreloader.getLoadedImage(url);
+            if (this.adoptNaturalAspect(image, cachedImg || img)) {
+                this.scheduleAspectReflow();
+            } else if (!img.complete) {
+                img.addEventListener('load', () => {
+                    this.imagePreloader.markLoaded(url, img);
+                    if (this.adoptNaturalAspect(image, img)) {
+                        this.scheduleAspectReflow();
+                    }
+                }, { once: true });
+            }
         } else {
             const loadPromise = new Promise((resolve) => {
                 img.addEventListener('load', () => {
-                    this.imagePreloader.markLoaded(url);
+                    this.imagePreloader.markLoaded(url, img);
                     item.classList.add('loaded');
-                    this.captureNaturalAspect(item.dataset.imageId, img);
+                    if (this.adoptNaturalAspect(image, img)) {
+                        this.scheduleAspectReflow();
+                    }
                     resolve(img);
                 }, { once: true });
 
@@ -470,6 +502,9 @@ class Gallery {
 
             this.imagePreloader.registerPending(url, loadPromise);
             img.src = url;
+            if (this.isMorphing) {
+                item.classList.add('loaded', 'instant');
+            }
         }
 
         item.setAttribute('tabindex', '0');
@@ -510,27 +545,80 @@ class Gallery {
     }
 
     /**
-     * Photos uploaded before dimensions were recorded arrive without a size.
-     * The first thumbnail load supplies the real ratio; masonry reflows once
-     * on the next frame rather than once per image.
+     * Photos uploaded before dimensions were recorded arrive as 4:3. Record
+     * the real ratio whenever a thumbnail is available — including grid
+     * mode and prefetched off-screen images — so masonry does not crop
+     * portraits that were below the first viewport.
      */
-    captureNaturalAspect(imageId, img) {
-        if (!this.isMasonry || !imageId) return;
-        const image = this.imageService.getImageById(imageId);
-        if (!image || image.aspectRatioKnown) return;
-        if (!img.naturalWidth || !img.naturalHeight) return;
-
-        image.aspectRatio = img.naturalWidth / img.naturalHeight;
+    adoptNaturalAspect(image, img) {
+        if (!image || image.aspectRatioKnown) return false;
+        const width = img?.naturalWidth;
+        const height = img?.naturalHeight;
+        if (!width || !height) return false;
+        image.aspectRatio = width / height;
         image.aspectRatioKnown = true;
+        return true;
+    }
 
-        if (this.pendingAspectRefresh) return;
-        this.pendingAspectRefresh = true;
-        requestAnimationFrame(() => {
-            this.pendingAspectRefresh = false;
-            if (this.isMorphing) return;
+    adoptAspectFromUrl(url, img) {
+        if (!url || !img) return;
+        const images = this.imageService.images || [];
+        let changed = false;
+        for (const image of images) {
+            if (image.thumbnailUrl === url && this.adoptNaturalAspect(image, img)) {
+                changed = true;
+            }
+        }
+        if (changed) this.scheduleAspectReflow();
+    }
+
+    harvestKnownAspects() {
+        const images = this.imageService.images || [];
+        let changed = false;
+        for (const image of images) {
+            if (image.aspectRatioKnown) continue;
+            const mounted = this.mountedItems.get(image.id);
+            const mountedImg = mounted?.querySelector('.gallery-item-image');
+            if (this.adoptNaturalAspect(image, mountedImg)) {
+                changed = true;
+                continue;
+            }
+            const cached = this.imagePreloader.getLoadedImage(image.thumbnailUrl);
+            if (this.adoptNaturalAspect(image, cached)) {
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    /**
+     * Kick off thumbs for anything still missing a ratio. Completions land
+     * through the preloader callback and reflow masonry in one pass.
+     */
+    warmUnknownAspects() {
+        const urls = (this.imageService.images || [])
+            .filter((image) => !image.aspectRatioKnown && image.thumbnailUrl)
+            .map((image) => image.thumbnailUrl);
+        if (urls.length === 0) return;
+        this.imagePreloader.prefetch(urls, { concurrency: 6 });
+    }
+
+    scheduleAspectReflow() {
+        if (!this.isMasonry) return;
+        this.aspectReflowNeeded = true;
+        if (this.isMorphing || this.aspectReflowTimer != null) return;
+        this.aspectReflowTimer = window.setTimeout(() => {
+            this.aspectReflowTimer = null;
+            if (!this.aspectReflowNeeded || !this.isMasonry || this.isMorphing) return;
+            this.aspectReflowNeeded = false;
             this.cachedLayout = null;
+            const images = this.imageService.images || [];
+            if (this.shouldAnimateLayout()) {
+                void this.morphLayout(images);
+                return;
+            }
             this.renderVisibleWindow(true);
-        });
+        }, 48);
     }
 
     getImageFallbackSrc() {
@@ -547,6 +635,9 @@ class Gallery {
             .filter(Boolean);
         if (urls.length > 0) {
             this.imagePreloader.prefetch(urls, { concurrency: 4 });
+        }
+        if (this.isMasonry) {
+            this.warmUnknownAspects();
         }
     }
 
@@ -738,10 +829,12 @@ class Gallery {
         this.emitLayoutChange();
 
         const images = this.imageService.images || [];
-        const animate = options.animate !== false
-            && images.length > 0
-            && !this.prefersReducedMotion()
-            && this.windowGrid.querySelector('.gallery-item');
+        if (next === 'masonry') {
+            this.harvestKnownAspects();
+            this.warmUnknownAspects();
+        }
+
+        const animate = options.animate !== false && this.shouldAnimateLayout();
 
         if (!animate) {
             this.cachedLayout = null;
@@ -749,7 +842,14 @@ class Gallery {
             return;
         }
 
-        await window.UIAnimation.run(() => this.morphLayout(images));
+        await this.morphLayout(images);
+    }
+
+    shouldAnimateLayout() {
+        const images = this.imageService.images || [];
+        return images.length > 0
+            && !this.prefersReducedMotion()
+            && Boolean(this.windowGrid?.querySelector('.gallery-item'));
     }
 
     prefersReducedMotion() {
@@ -761,71 +861,98 @@ class Gallery {
         const grid = this.windowGrid;
 
         try {
-            const before = this.captureRects();
-            const previousHeight = grid.offsetHeight;
+            this.harvestKnownAspects();
+            const before = this.captureContentRects();
+            const spacerTop = this.windowGrid.classList.contains('is-masonry')
+                ? 0
+                : (this.topSpacer?.offsetHeight || 0);
+            const previousHeight = spacerTop
+                + grid.offsetHeight
+                + (this.bottomSpacer?.offsetHeight || 0);
 
             this.cachedLayout = null;
             const layout = this.getLayout();
             const nextRange = this.visibleRange(layout, images.length);
+            const prevStart = this.renderState.startIndex >= 0
+                ? this.renderState.startIndex
+                : nextRange.startIndex;
+            const prevEnd = this.renderState.endIndex > prevStart
+                ? this.renderState.endIndex
+                : nextRange.endIndex;
             const union = {
-                startIndex: Math.min(this.renderState.startIndex >= 0 ? this.renderState.startIndex : nextRange.startIndex, nextRange.startIndex),
-                endIndex: Math.max(this.renderState.endIndex, nextRange.endIndex)
+                startIndex: Math.min(prevStart, nextRange.startIndex),
+                endIndex: Math.max(prevEnd, nextRange.endIndex)
             };
+            const after = this.rectsFromLayout(layout, union.startIndex, union.endIndex);
 
-            this.renderVisibleWindow(true, union);
-            const after = this.captureRects();
-
-            const nodes = Array.from(grid.querySelectorAll('.gallery-item'));
-            const maxHeight = Math.max(previousHeight, grid.offsetHeight);
-            grid.style.height = `${maxHeight}px`;
+            // Collapse spacers and lock into absolute space in the same turn
+            // as the invert, so the destination grid is never painted first.
+            this.topSpacer.style.height = '0px';
+            this.bottomSpacer.style.height = '0px';
+            grid.style.height = `${Math.max(previousHeight, layout.totalHeight)}px`;
             grid.classList.add('is-morphing', 'is-masonry');
 
+            this.morphFreeze = true;
+            this.syncNodes(images, union.startIndex, union.endIndex, layout);
+            this.morphFreeze = false;
+
+            const nodes = Array.from(grid.querySelectorAll('.gallery-item'));
             for (const node of nodes) {
-                const id = node.dataset.imageId;
-                const from = before.get(id);
+                const id = String(node.dataset.imageId);
                 const to = after.get(id);
                 if (!to) continue;
-
-                const origin = from || { ...to, top: to.top + 24 };
-                this.freezeAt(node, origin);
-                if (!from) node.style.opacity = '0';
+                node.classList.add('loaded', 'instant');
+                const from = before.get(id) || this.growInPlace(to);
+                this.invertTo(node, from, to);
             }
 
-            // Flush the frozen positions before the targets are applied so the
-            // browser has two distinct states to interpolate between.
+            // Flush the inverted positions before the targets are applied so
+            // the browser has two distinct states to interpolate between.
             void grid.offsetHeight;
 
             for (const node of nodes) {
-                const to = after.get(node.dataset.imageId);
+                const to = after.get(String(node.dataset.imageId));
                 if (!to) continue;
-                this.freezeAt(node, to);
-                node.style.opacity = '1';
+                this.playTo(node);
             }
 
             await this.waitForMorph(grid);
 
             for (const node of nodes) {
                 node.style.transform = '';
+                node.style.transformOrigin = '';
                 node.style.opacity = '';
             }
         } finally {
+            this.morphFreeze = false;
             grid.classList.remove('is-morphing');
             this.isMorphing = false;
             this.cachedLayout = null;
             grid.style.height = '';
             this.renderVisibleWindow(true);
             this.checkIfNeedsMoreContent();
+            if (this.aspectReflowNeeded) {
+                this.scheduleAspectReflow();
+            }
         }
     }
 
-    captureRects() {
+    /**
+     * Tile boxes in content space (above the window grid's spacer). That
+     * lets the morph drop the spacer without the tiles jumping with it.
+     */
+    captureContentRects() {
         const rects = new Map();
         const base = this.windowGrid.getBoundingClientRect();
+        const spacer = this.windowGrid.classList.contains('is-masonry')
+            ? 0
+            : (this.topSpacer?.offsetHeight || 0);
+
         for (const node of this.windowGrid.querySelectorAll('.gallery-item')) {
             const rect = node.getBoundingClientRect();
-            rects.set(node.dataset.imageId, {
+            rects.set(String(node.dataset.imageId), {
                 left: rect.left - base.left,
-                top: rect.top - base.top,
+                top: rect.top - base.top + spacer,
                 width: rect.width,
                 height: rect.height
             });
@@ -833,31 +960,89 @@ class Gallery {
         return rects;
     }
 
-    freezeAt(node, rect) {
-        node.style.left = '0px';
-        node.style.top = '0px';
-        node.style.width = `${rect.width}px`;
-        node.style.height = `${rect.height}px`;
-        node.style.transform = `translate(${rect.left}px, ${rect.top}px)`;
+    rectsFromLayout(layout, startIndex, endIndex) {
+        const rects = new Map();
+        const images = this.imageService.images || [];
+
+        for (let i = startIndex; i < endIndex; i++) {
+            const image = images[i];
+            if (!image) continue;
+
+            if (layout.mode === 'masonry') {
+                const rect = layout.rects[i];
+                if (!rect) continue;
+                rects.set(String(image.id), {
+                    left: rect.left,
+                    top: rect.top,
+                    width: rect.width,
+                    height: rect.height
+                });
+                continue;
+            }
+
+            const col = i % layout.columns;
+            const row = Math.floor(i / layout.columns);
+            rects.set(String(image.id), {
+                left: col * (layout.columnWidth + layout.gap),
+                top: row * layout.rowSpan,
+                width: layout.columnWidth,
+                height: layout.rowHeight
+            });
+        }
+
+        return rects;
+    }
+
+    /**
+     * A tile that was not on screen should grow downward from its dest
+     * cell instead of flying out of the top-left photo.
+     */
+    growInPlace(to) {
+        const placeholderHeight = to.width / GalleryLayout.GRID_ASPECT;
+        return {
+            left: to.left,
+            top: to.top,
+            width: to.width,
+            height: Math.min(to.height, placeholderHeight)
+        };
+    }
+
+    invertTo(node, from, to) {
+        const sx = to.width ? from.width / to.width : 1;
+        const sy = to.height ? from.height / to.height : 1;
+        node.style.left = `${to.left}px`;
+        node.style.top = `${to.top}px`;
+        node.style.width = `${to.width}px`;
+        node.style.height = `${to.height}px`;
+        node.style.transformOrigin = 'top left';
+        node.style.transform = `translate(${from.left - to.left}px, ${from.top - to.top}px) scale(${sx}, ${sy})`;
+    }
+
+    playTo(node) {
+        node.style.transform = 'translate(0px, 0px) scale(1, 1)';
     }
 
     waitForMorph(grid) {
         return new Promise((resolve) => {
             let settled = false;
+            let quietTimer = null;
             const finish = () => {
                 if (settled) return;
                 settled = true;
                 grid.removeEventListener('transitionend', onEnd);
-                window.clearTimeout(timer);
+                window.clearTimeout(quietTimer);
+                window.clearTimeout(hardStop);
                 resolve();
             };
             const onEnd = (event) => {
-                if (event.propertyName === 'transform' && event.target.classList.contains('gallery-item')) {
-                    window.clearTimeout(timer);
-                    timer = window.setTimeout(finish, 60);
-                }
+                if (event.propertyName !== 'transform') return;
+                if (!event.target.classList.contains('gallery-item')) return;
+                window.clearTimeout(quietTimer);
+                quietTimer = window.setTimeout(finish, 60);
             };
-            let timer = window.setTimeout(finish, 700);
+            // Many tiles (5–6 columns) fire transitionend at slightly
+            // different times; never let that postpone the hard stop.
+            const hardStop = window.setTimeout(finish, 700);
             grid.addEventListener('transitionend', onEnd);
         });
     }
@@ -886,9 +1071,21 @@ class Gallery {
         this.columns = next;
         this.galleryContainer.dataset.columns = String(next);
         this.storeColumnPreference(next);
-        this.cachedLayout = null;
-        this.scheduleRefresh(true);
         this.emitLayoutChange();
+
+        if (this.isMorphing) {
+            this.cachedLayout = null;
+            return;
+        }
+
+        const images = this.imageService.images || [];
+        if (!this.shouldAnimateLayout()) {
+            this.cachedLayout = null;
+            this.scheduleRefresh(true);
+            return;
+        }
+
+        void this.morphLayout(images);
     }
 
     storeColumnPreference(value) {

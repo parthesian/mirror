@@ -17,7 +17,7 @@ class Modal {
         this.modalCameraIconMobile = document.getElementById('modal-camera-icon-mobile');
         this.modalTimestamp = document.getElementById('modal-timestamp');
         this.globeContainer = document.getElementById('modal-globe');
-        this.closeBtn = document.getElementById('close-modal');
+        this.modalContent = this.modal?.querySelector('.modal-content');
         this.prevBtn = document.getElementById('prev-btn');
         this.nextBtn = document.getElementById('next-btn');
         
@@ -64,17 +64,13 @@ class Modal {
     init() {
         this.bindEvents();
         this.addSwipeSupport();
+        this.addDismissGesture();
     }
 
     /**
      * Bind event listeners
      */
     bindEvents() {
-        // View modal events
-        this.closeBtn.addEventListener('click', () => {
-            this.close();
-        });
-
         this.prevBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             this.showPreviousImage();
@@ -86,13 +82,9 @@ class Modal {
         });
 
         this.modal.addEventListener('click', (e) => {
-            if (e.target === this.modal) {
-                this.close();
-            }
-        });
-
-        this.modal.querySelector('.modal-content').addEventListener('click', (e) => {
-            e.stopPropagation();
+            if (!this.isOpen) return;
+            if (this.isKeepOpenTarget(e.target)) return;
+            this.close();
         });
 
         this.globeContainer?.addEventListener('click', (e) => {
@@ -215,7 +207,20 @@ class Modal {
 
         this.updateNavigationButtons();
 
-        this.closeBtn.focus();
+        this.modal.focus({ preventScroll: true });
+    }
+
+    /**
+     * The photo and its globe stay interactive. Everything else — metadata,
+     * padding, the dimmed field — dismisses the overlay.
+     */
+    isKeepOpenTarget(target) {
+        if (!target || !target.closest) return false;
+        return Boolean(
+            target.closest('#modal-image') ||
+            target.closest('#modal-globe') ||
+            target.closest('.nav-btn')
+        );
     }
 
     /**
@@ -823,6 +828,58 @@ class Modal {
                 }
             }
         });
+    }
+
+    /**
+     * Pull down past the top of the overlay to return to the gallery.
+     * The globe keeps its own drag, so a pull there does not dismiss.
+     */
+    addDismissGesture() {
+        const scroller = this.modalContent || this.modal;
+        if (!scroller) return;
+
+        let startX = 0;
+        let startY = 0;
+        let startScroll = 0;
+        let tracking = false;
+        let wheelPull = 0;
+
+        scroller.addEventListener('touchstart', (e) => {
+            if (!this.isOpen || e.touches.length !== 1) return;
+            if (e.target.closest?.('#modal-globe')) {
+                tracking = false;
+                return;
+            }
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+            startScroll = scroller.scrollTop || 0;
+            tracking = startScroll <= 1;
+        }, { passive: true });
+
+        scroller.addEventListener('touchend', (e) => {
+            if (!this.isOpen || !tracking) return;
+            tracking = false;
+            const touch = e.changedTouches[0];
+            const dx = touch.clientX - startX;
+            const dy = touch.clientY - startY;
+            if (startScroll <= 1 && dy > 72 && dy > Math.abs(dx) * 1.15) {
+                this.close();
+            }
+        }, { passive: true });
+
+        scroller.addEventListener('wheel', (e) => {
+            if (!this.isOpen) return;
+            const atTop = (scroller.scrollTop || 0) <= 0;
+            if (atTop && e.deltaY < 0) {
+                wheelPull += -e.deltaY;
+                if (wheelPull > 140) {
+                    wheelPull = 0;
+                    this.close();
+                }
+                return;
+            }
+            wheelPull = 0;
+        }, { passive: true });
     }
 
     /**

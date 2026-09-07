@@ -5,7 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>आईना</title>
     <link rel="icon" type="image/svg+xml" href="mirror.svg">
-    <link rel="stylesheet" href="styles.css?v=20260907f">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css?v=20260907p">
     <script type="importmap">
     {
         "imports": {
@@ -45,9 +48,7 @@
         <div id="cm-sectors" class="cm-layer cm-layer-sectors" role="tablist" aria-label="Control sections"></div>
         <div id="cm-options" class="cm-layer cm-layer-options" aria-label="Section options"></div>
         <div id="cm-leaf" class="cm-layer cm-layer-leaf" aria-label="Filter values"></div>
-        <div id="cm-readout" class="cm-readout" aria-live="polite"></div>
         <button id="cm-hub" class="cm-hub" type="button" aria-expanded="false" aria-controls="cm-sectors" aria-label="Open control menu">
-            <span class="cm-hub-label">CONTROL</span>
             <span class="cm-hub-mark" aria-hidden="true"></span>
         </button>
     </div>
@@ -95,9 +96,8 @@
     <div id="globe-preload-container" class="globe-container hidden" style="position: absolute; top: -9999px; left: -9999px; width: 160px; height: 160px;"></div>
 
     <!-- Modal for fullscreen view -->
-    <div id="modal" class="modal hidden">
+    <div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Photo" tabindex="-1">
         <div class="modal-content">
-            <button id="close-modal" class="close-btn">&times;</button>
             <div class="modal-image-container">
                 <img id="modal-image" src="" alt="">
             </div>
@@ -135,18 +135,18 @@
     <script src="js/uiAnimation.js?v=20260907f"></script>
     <script src="js/exposureDial.js?v=20260907d"></script>
     <script src="js/imageService.js?v=20260907d"></script>
-    <script src="js/imagePreloader.js?v=20260406e"></script>
+    <script src="js/imagePreloader.js?v=20260907i"></script>
     <script src="js/flipboard.js?v=20260907f"></script>
     <script src="js/galleryLayout.js?v=20260907d"></script>
-    <script src="js/gallery.js?v=20260907d"></script>
+    <script src="js/gallery.js?v=20260907i"></script>
     <script src="js/globeService.js?v=20260907a"></script>
     <script src="js/customCalendar.js?v=20260406e"></script>
     <script src="js/timeline.js?v=20260907d"></script>
-    <script src="js/viewMode.js?v=20260907d"></script>
-    <script src="js/modal.js?v=20260907d"></script>
+    <script src="js/viewMode.js?v=20260907l"></script>
+    <script src="js/modal.js?v=20260907k"></script>
     <script src="js/filmEffects.js?v=20260406e"></script>
     <script src="js/globeExplorer.js?v=20260907d"></script>
-    <script src="js/controlMenu.js?v=20260907f"></script>
+    <script src="js/controlMenu.js?v=20260907p"></script>
     <script src="js/app.js?v=20260907f"></script>
 </body>
 </html>
