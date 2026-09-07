@@ -73,6 +73,14 @@ class ImageService {
         return 640;
     }
 
+    isDerivedThumbUrl(url, id) {
+        if (!url) {
+            return true;
+        }
+        return url.includes('/cdn-cgi/image/')
+            && url.includes(`/api/photos/${encodeURIComponent(id)}/image`);
+    }
+
     setThumbEdge(edge) {
         const next = Number(edge) || 640;
         if (next === this.thumbEdge) {
@@ -80,6 +88,9 @@ class ImageService {
         }
         this.thumbEdge = next;
         for (const image of this.imagesById.values()) {
+            if (!this.isDerivedThumbUrl(image.thumbnailUrl, image.id)) {
+                continue;
+            }
             image.thumbnailUrl = this.buildPhotoAssetUrl(image.id, 'thumb');
         }
         return true;

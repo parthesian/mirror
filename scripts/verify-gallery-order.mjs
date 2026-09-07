@@ -137,6 +137,11 @@ assert(sandbox.window.ImageService.thumbEdgeFor(400, 2) === 640, 'wide tiles kee
 assert(service.setThumbEdge(320) === true, 'setThumbEdge reports a change');
 assert(service.thumbEdge === 320, 'thumbEdge is stored');
 assert(service.setThumbEdge(320) === false, 'setThumbEdge is a no-op at the same edge');
+service.imagesById.set('custom', { id: 'custom', thumbnailUrl: '/mock-thumb/custom' });
+service.imagesById.set('derived', { id: 'derived', thumbnailUrl: service.buildPhotoAssetUrl('derived', 'thumb') });
+service.setThumbEdge(480);
+assert(service.imagesById.get('custom').thumbnailUrl === '/mock-thumb/custom', 'custom thumbs are not rewritten');
+assert(service.imagesById.get('derived').thumbnailUrl.includes('width=480'), 'derived thumbs follow the new edge');
 service.countryFilter = 'Japan';
 assert(service.filterKey().includes('Japan'), 'filterKey reflects the active country');
 service.countryFilter = null;
