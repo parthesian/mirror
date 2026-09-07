@@ -1,4 +1,8 @@
 import { createRequire } from 'module';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import vm from 'vm';
 
 const require = createRequire(import.meta.url);
 const GalleryOrder = require('../js/galleryOrder.js');
@@ -90,4 +94,32 @@ assert(
     'a tile lands anyway once the landing budget is spent'
 );
 
-console.log('gallery-order, location-model, and flipboard checks passed');
+const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+const indexHtml = fs.readFileSync(path.join(repoRoot, 'index.html'), 'utf8');
+assert(!indexHtml.includes('js/customCalendar.js'), 'public gallery must not load the admin calendar');
+assert(indexHtml.includes('format=auto') === false, 'thumb format=auto is derived in JS, not hardcoded in HTML');
+
+const imageServiceSrc = fs.readFileSync(path.join(repoRoot, 'js/imageService.js'), 'utf8');
+const photosLibSrc = fs.readFileSync(path.join(repoRoot, 'functions/_lib/photos.js'), 'utf8');
+assert(imageServiceSrc.includes('format=auto'), 'client thumb URLs must request format=auto');
+assert(photosLibSrc.includes('format=auto'), 'server thumb URLs must request format=auto');
+
+const sandbox = {
+    window: { GalleryOrder: GalleryOrder, CONFIG: { API_BASE_URL: '' } },
+    console
+};
+vm.createContext(sandbox);
+vm.runInContext(imageServiceSrc, sandbox);
+const service = new sandbox.window.ImageService();
+assert(service.buildPhotoAssetUrl('abc', 'thumb').includes('format=auto'), 'thumb URL includes format=auto');
+assert(!service.buildPhotoAssetUrl('abc', 'full').includes('cdn-cgi/image'), 'full URL stays untransformed');
+service.countryFilter = 'Japan';
+assert(service.filterKey().includes('Japan'), 'filterKey reflects the active country');
+service.countryFilter = null;
+assert(service.filterKey() !== service.filterKey() + 'x', 'filterKey is stable for the same filters');
+const emptyKey = service.filterKey();
+service.locationFilter = 'Kyoto';
+assert(service.filterKey() !== emptyKey, 'filterKey changes when a filter is applied');
+
+console.log('gallery-order, location-model, flipboard, and image-url checks passed');
