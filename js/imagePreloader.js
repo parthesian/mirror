@@ -98,15 +98,15 @@ class ImageLoadQueue {
 
     retryStuck(images) {
         for (const img of images) {
-            if (!img || !img.isConnected || img.complete) {
+            if (!img || !img.isConnected || img.naturalWidth) {
                 continue;
             }
             const url = img.dataset.loadUrl || img.getAttribute('src');
             if (!url) {
                 continue;
             }
+            img.dataset.retrying = '1';
             img.removeAttribute('src');
-            delete img.dataset.loadUrl;
             this.assign(img, url, 0);
         }
     }

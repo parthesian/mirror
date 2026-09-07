@@ -560,6 +560,7 @@ class Gallery {
     }
 
     bindThumbLoad(item, img, image, url, priority) {
+        let attempts = 0;
         const markReady = () => {
             this.imagePreloader.markLoaded(url, img);
             item.classList.add('loaded');
@@ -568,12 +569,22 @@ class Gallery {
             }
         };
 
-        img.addEventListener('load', markReady, { once: true });
+        img.addEventListener('load', markReady);
         img.addEventListener('error', () => {
+            if (img.dataset.retrying === '1') {
+                delete img.dataset.retrying;
+                return;
+            }
+            const intended = img.dataset.loadUrl || url;
+            attempts += 1;
+            if (intended && attempts < 3) {
+                this.loadQueue.assign(img, intended, 0);
+                return;
+            }
             this.imagePreloader.markFailed(url);
             img.src = this.getImageFallbackSrc();
             item.classList.add('loaded');
-        }, { once: true });
+        });
 
         const cached = this.imagePreloader.isImageLoaded(url);
         if (cached) {
