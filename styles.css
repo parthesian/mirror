@@ -2405,22 +2405,6 @@ body.exposure-3 .btn-secondary {
         display: none !important;
     }
     
-    /* Mobile close button - fixed at top-right, always visible (modal only; globe uses .globe-explorer-toolbar) */
-    .modal .close-btn {
-        position: fixed;
-        top: max(0.5rem, env(safe-area-inset-top, 0px)); /* Stay close to top edge, respect safe areas */
-        right: max(0.5rem, env(safe-area-inset-right, 0px)); /* Stay close to right edge, respect safe areas */
-        width: 35px;
-        height: 35px;
-        min-width: 35px; /* Prevent squishing */
-        min-height: 35px; /* Prevent squishing */
-        font-size: 1rem;
-        flex-shrink: 0; /* Prevent the button from shrinking */
-        border-radius: 50% !important; /* Force circular shape */
-        z-index: 1002; /* Ensure it stays above other content */
-        margin: 0; /* Remove margins since we're using fixed positioning */
-    }
-    
     /* Mobile modal - proper vertical flow with scrolling */
     .modal-content {
         flex-direction: column;
@@ -2440,7 +2424,7 @@ body.exposure-3 .btn-secondary {
         max-width: 100%;
         height: auto;
         flex: 0 0 auto; /* Don't grow or shrink, use natural size */
-        margin-top: 3rem; /* Increased space above image to clear the X button */
+        margin-top: max(0.75rem, env(safe-area-inset-top, 0px));
         margin-bottom: 1rem; /* Space below image */
     }
     
