@@ -13,15 +13,21 @@
  */
 
 const CM_BASE = {
-    hub: 74,
-    ringA: 160,
-    ringB: 246,
-    ringC: 330,
-    outer: 366,
-    nodeA: 46,
-    nodeB: 44,
-    nodeC: 52
+    hub: 78,
+    ringA: 172,
+    ringB: 262,
+    ringC: 350,
+    outer: 410,
+    nodeA: 56,
+    nodeB: 54,
+    // The leaf ring carries place names, so its nodes are sized to hold two
+    // short words rather than to pack the arc.
+    nodeC: 78
 };
+
+/* Leaf arc limits. The paging handles live just outside them at each end. */
+const LEAF_TOP = 76;
+const LEAF_BOTTOM = 14;
 
 const SECTIONS = [
     { id: 'filter', label: 'FILTER' },
@@ -108,7 +114,7 @@ class ControlMenu {
      * Spread n nodes across the quadrant, first item nearest the right edge
      * so the list reads top-to-bottom.
      */
-    anglesFor(count, pad = 11) {
+    anglesFor(count, pad = 14) {
         if (count <= 0) return [];
         if (count === 1) return [45];
         const lo = pad;
@@ -217,16 +223,29 @@ class ControlMenu {
         this.renderReadout();
     }
 
+    /**
+     * Type size for a node. A circle only offers its diameter at the middle,
+     * so a label is sized to keep its longest *word* on one line — otherwise
+     * names like COUNTRY break as "COUNT / RY".
+     */
+    fitFont(size, label) {
+        const longest = String(label || '')
+            .split(/\s+/)
+            .reduce((max, word) => Math.max(max, word.length), 1);
+        // Helvetica caps plus the 0.04em tracking run about 0.78em per glyph.
+        const byWord = (size - 10) / (longest * 0.78);
+        return Math.max(6.5, Math.min(size * 0.2, 11, byWord));
+    }
+
     node({ label, sub, size, radius, angle, active, open, title, onClick, onHover }) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'cm-node';
-        btn.style.fontSize = `${Math.max(5.5, 7 * this.scale)}px`;
+        btn.style.fontSize = `${this.fitFont(size, label)}px`;
 
         const text = document.createElement('span');
         text.className = 'cm-sector-label';
         text.textContent = label;
-        text.style.whiteSpace = sub ? 'nowrap' : 'normal';
         btn.appendChild(text);
 
         if (sub) {
@@ -271,8 +290,10 @@ class ControlMenu {
                 size: this.geometry.nodeA,
                 radius: this.geometry.ringA,
                 angle: angles[index],
+                // Drilled-in sections read as outlined, never filled: the
+                // solid fill is reserved for the value actually in effect,
+                // so a glance at the menu shows state rather than navigation.
                 open: this.section === section.id,
-                active: this.section === section.id,
                 title: `${section.label} options`,
                 onClick: () => this.selectSection(section.id)
             });
@@ -369,20 +390,23 @@ class ControlMenu {
         const size = this.geometry.nodeC;
         const radius = this.geometry.ringC;
         // Angular pitch that keeps neighbouring nodes from touching.
-        this.leafStep = Math.max(10, ((size * 1.2) / radius) * (180 / Math.PI));
-        const top = 90 - 6;
-        this.leafCapacity = Math.floor((90 - 12) / this.leafStep) + 1;
+        this.leafStep = Math.max(10, ((size * 1.12) / radius) * (180 / Math.PI));
+        // The arc stops short of both edges so the paging handles have room
+        // at the ends without clipping against the viewport.
+        const top = LEAF_TOP;
+        const bottom = LEAF_BOTTOM;
+        this.leafCapacity = Math.max(1, Math.floor((top - bottom) / this.leafStep) + 1);
         this.leafOffset = Math.max(0, Math.min(this.leafOffset, Math.max(0, options.length - this.leafCapacity)));
 
         const filters = this.globeExplorer?.getSelectedFilters?.() || {};
 
         options.forEach((item, index) => {
             const angle = top - (index - this.leafOffset) * this.leafStep;
-            if (angle < 2 || angle > 92) return;
+            if (angle < bottom - 1 || angle > top + 1) return;
 
             const isActive = filters[this.filterType] === item.value;
             const node = this.node({
-                label: this.shorten(item.label, 14),
+                label: this.shorten(item.label, 16),
                 sub: String(item.count),
                 size,
                 radius,
@@ -402,32 +426,39 @@ class ControlMenu {
         });
 
         if (options.length > this.leafCapacity) {
-            this.leafLayer.appendChild(this.rotateHandle(-1, 90 - 1));
-            this.leafLayer.appendChild(this.rotateHandle(1, 1));
+            const page = Math.max(1, this.leafCapacity - 1);
+            this.leafLayer.appendChild(this.rotateHandle(-page, 87.5, this.leafOffset > 0));
+            const atEnd = this.leafOffset >= options.length - this.leafCapacity;
+            this.leafLayer.appendChild(this.rotateHandle(page, 4.5, !atEnd));
         }
     }
 
-    rotateHandle(direction, angle) {
-        const size = Math.max(18, 22 * this.scale);
+    /**
+     * Handles page by a screenful; the wheel still steps one at a time.
+     */
+    rotateHandle(delta, angle, enabled) {
+        const size = Math.max(20, 24 * this.scale);
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'cm-node cm-node-rotate';
-        btn.textContent = direction < 0 ? '−' : '+';
-        btn.style.fontSize = `${Math.max(8, 11 * this.scale)}px`;
-        btn.title = direction < 0 ? 'Earlier options' : 'More options';
+        btn.textContent = delta < 0 ? '\u2191' : '\u2193';
+        btn.style.fontSize = `${Math.max(9, 12 * this.scale)}px`;
+        btn.title = delta < 0 ? 'Previous options' : 'More options';
         btn.setAttribute('aria-label', btn.title);
+        btn.disabled = !enabled;
+        if (!enabled) btn.style.opacity = '0.25';
         this.place(btn, this.geometry.ringC, angle, size);
         btn.addEventListener('click', (event) => {
             event.stopPropagation();
-            this.rotateLeaf(direction);
+            this.rotateLeaf(delta);
         });
         return btn;
     }
 
-    rotateLeaf(direction) {
+    rotateLeaf(delta) {
         const total = this.leafItems?.length || 0;
         const max = Math.max(0, total - (this.leafCapacity || 1));
-        const next = Math.max(0, Math.min(max, this.leafOffset + direction));
+        const next = Math.max(0, Math.min(max, this.leafOffset + delta));
         if (next === this.leafOffset) return;
         this.leafOffset = next;
         this.renderFilterLeafOnly();

@@ -34,11 +34,13 @@
     <!-- Radial CONTROL menu: quarter circle anchored to the bottom-right corner -->
     <div id="control-menu" class="control-menu collapsed" data-section="">
         <div class="cm-backdrop" aria-hidden="true"></div>
+        <!-- Painted widest first so each smaller disc stacks on top and the
+             shared corner origin reads as interlocking layers. -->
         <div class="cm-rings" aria-hidden="true">
-            <span class="cm-ring cm-ring-hub"></span>
-            <span class="cm-ring cm-ring-a"></span>
-            <span class="cm-ring cm-ring-b"></span>
             <span class="cm-ring cm-ring-c"></span>
+            <span class="cm-ring cm-ring-b"></span>
+            <span class="cm-ring cm-ring-a"></span>
+            <span class="cm-ring cm-ring-hub"></span>
         </div>
         <div id="cm-sectors" class="cm-layer cm-layer-sectors" role="tablist" aria-label="Control sections"></div>
         <div id="cm-options" class="cm-layer cm-layer-options" aria-label="Section options"></div>

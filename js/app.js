@@ -66,6 +66,7 @@ class PhotoGalleryApp {
             window.timeline = this.timeline;
             window.viewMode = this.viewMode;
             window.imageService = this.imageService;
+            window.globeExplorer = this.globeExplorer;
             window.controlMenu = this.controlMenu;
         } catch (error) {
             console.error('Error initializing components:', error);

@@ -1032,18 +1032,22 @@ body.exposure-3 .scroll-loading p {
     gap: 0.55rem;
 }
 
+/* The icon precedes the name in the DOM (so screen readers hit the label,
+   then the name), but renders after it. Pinning every cell to row 1 keeps
+   auto-placement from pushing the name onto a second line. */
 .modal-camera-row::before {
-    grid-column: 1;
+    grid-area: 1 / 1;
 }
 
 .modal-camera-row #modal-camera-name {
-    grid-column: 2;
+    grid-area: 1 / 2;
     text-align: right;
 }
 
 .modal-camera-icon-wrap {
-    grid-column: 3;
+    grid-area: 1 / 3;
     display: inline-flex;
+    align-items: center;
     flex-shrink: 0;
     color: var(--ink-soft, #888);
 }
@@ -3424,13 +3428,17 @@ body.exposure-3  { --leak-opacity: 0.35; }
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    padding: 2rem;
+    /* Clears the floating toolbar so a long panel never starts underneath
+       the close button. */
+    padding: 4.75rem 2rem 2rem;
     overflow-y: auto;
 }
 
+/* Auto margins centre a short panel but, unlike justify-content, do not clip
+   the top of one that overflows. */
 .globe-explorer-panel-inner {
     text-align: left;
+    margin: auto 0;
 }
 
 .globe-explorer-hint {
@@ -3667,10 +3675,15 @@ body.exposure-3 .globe-explorer-panel {
     font-family: 'Helvetica Neue', Arial, sans-serif;
     text-transform: uppercase;
     /* Radii are overwritten by JS to match the viewport. */
-    --cm-r-hub: 76px;
-    --cm-r-a: 168px;
-    --cm-r-b: 260px;
-    --cm-r-c: 340px;
+    --cm-r-hub: 78px;
+    --cm-r-a: 172px;
+    --cm-r-b: 262px;
+    --cm-r-c: 350px;
+    /* One tint ramp drives every layer, so the menu keeps the same contrast
+       against the page whether the exposure is black or white. */
+    --cm-scrim: color-mix(in srgb, var(--ink, #333) 5%, transparent);
+    --cm-edge: color-mix(in srgb, var(--ink, #333) 26%, transparent);
+    --cm-edge-strong: color-mix(in srgb, var(--ink, #333) 55%, transparent);
     transition: opacity var(--dur-mid) var(--ease);
 }
 
@@ -3693,10 +3706,19 @@ body.ui-animating .control-menu {
     width: calc(var(--cm-radius, var(--cm-r-c)) * 2);
     height: calc(var(--cm-radius, var(--cm-r-c)) * 2);
     border-radius: 50%;
-    background: var(--surface, rgba(240, 240, 240, 0.72));
+    /* The surface token alone matches the page too closely at the extreme
+       exposures, so the disc is lifted off it with an ink tint that deepens
+       toward the corner. */
+    background:
+        radial-gradient(circle at 50% 50%,
+            color-mix(in srgb, var(--ink, #333) 13%, var(--surface, rgba(240, 240, 240, 0.72))) 0%,
+            color-mix(in srgb, var(--ink, #333) 7%, var(--surface, rgba(240, 240, 240, 0.72))) 60%,
+            color-mix(in srgb, var(--ink, #333) 3%, var(--surface, rgba(240, 240, 240, 0.72))) 100%);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
-    box-shadow: 0 0 60px rgba(0, 0, 0, 0.18);
+    /* Hairline outer edge so the disc reads as the outermost ring rather
+       than an accidental shadow across the photos. */
+    border: 1px solid var(--cm-edge);
     opacity: 1;
     transform: scale(1);
     transform-origin: 100% 100%;
@@ -3717,11 +3739,14 @@ body.ui-animating .control-menu {
     pointer-events: none;
 }
 
+/* Each ring is a filled disc, not an outline. Stacking them widest-first
+   makes the tint accumulate toward the corner, so the shared origin reads as
+   interlocking layers instead of four unrelated circles. */
 .cm-ring {
     position: absolute;
     border-radius: 50%;
-    border: 1px solid var(--line, #999);
-    opacity: 0.5;
+    border: 1px solid var(--cm-edge);
+    background: var(--cm-scrim);
     transform-origin: 100% 100%;
     transition: transform var(--dur-slow) var(--ease), opacity var(--dur-mid) var(--ease);
 }
@@ -3746,8 +3771,11 @@ body.ui-animating .control-menu {
     width: calc(var(--cm-r-hub) * 2);
     height: calc(var(--cm-r-hub) * 2);
     border-radius: 50%;
-    border: 1px solid var(--line, #999);
-    background: var(--surface, rgba(240, 240, 240, 0.72));
+    border: 1px solid var(--cm-edge-strong);
+    /* Tinted with ink so the closed hub reads as a surface at every
+       exposure instead of matching the page behind it. Collapsed, this disc
+       is the only affordance on screen, so it carries the most contrast. */
+    background: color-mix(in srgb, var(--ink, #333) 15%, var(--surface, rgba(240, 240, 240, 0.72)));
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     color: var(--ink, #333);
@@ -3757,32 +3785,41 @@ body.ui-animating .control-menu {
     transition: background var(--dur-mid) var(--ease), border-color var(--dur-mid) var(--ease);
 }
 
+/* The hub button is 2r square and centred on the viewport corner, so its
+   own centre — not its edges — is the origin these offsets work from. */
 .cm-hub-label {
     position: absolute;
-    right: calc(var(--cm-r-hub) + 12px);
-    bottom: calc(var(--cm-r-hub) * 0.52);
+    left: 50%;
+    top: 50%;
     font-size: 0.6rem;
-    letter-spacing: 0.22em;
+    letter-spacing: 0.2em;
     white-space: nowrap;
-    transform: rotate(-45deg);
-    transform-origin: 100% 50%;
+    color: var(--ink, #333);
+    transform: translate(-50%, -50%)
+               translate(calc(var(--cm-r-hub) * -0.44), calc(var(--cm-r-hub) * -0.44))
+               rotate(-45deg);
     transition: opacity var(--dur-fast) var(--ease);
 }
 
 .cm-hub-mark {
+    --mark-scale: 1;
     position: absolute;
-    right: calc(var(--cm-r-hub) + 14px);
-    bottom: calc(var(--cm-r-hub) + 14px);
+    left: 50%;
+    top: 50%;
     width: 9px;
     height: 9px;
     border-radius: 50%;
-    border: 1px solid currentColor;
+    border: 1px solid var(--ink-soft, #888);
+    transform: translate(-50%, -50%)
+               translate(calc(var(--cm-r-hub) * -0.80), calc(var(--cm-r-hub) * -0.80))
+               scale(var(--mark-scale));
     transition: background var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
 }
 
 .control-menu:not(.collapsed) .cm-hub-mark {
-    background: currentColor;
-    transform: scale(0.72);
+    background: var(--ink, #333);
+    border-color: var(--ink, #333);
+    --mark-scale: 0.72;
 }
 
 .cm-hub:hover {
@@ -3803,13 +3840,13 @@ body.ui-animating .control-menu {
     justify-content: center;
     text-align: center;
     border-radius: 50%;
-    border: 1px solid var(--line, #999);
-    background: transparent;
-    color: var(--ink-dim, #666);
+    border: 1px solid var(--cm-edge);
+    background: var(--cm-scrim);
+    color: var(--ink, #333);
     cursor: pointer;
     padding: 2px;
-    line-height: 1.1;
-    letter-spacing: 0.08em;
+    line-height: 1.15;
+    letter-spacing: 0.04em;
     overflow: hidden;
     transform-origin: 50% 50%;
     transition: color var(--dur-fast) var(--ease),
@@ -3821,7 +3858,8 @@ body.ui-animating .control-menu {
 
 .cm-node:hover {
     color: var(--ink, #111);
-    border-color: var(--ink, #333);
+    border-color: var(--cm-edge-strong);
+    background: color-mix(in srgb, var(--ink, #333) 12%, transparent);
     transform: scale(1.07);
 }
 
@@ -3830,15 +3868,24 @@ body.ui-animating .control-menu {
     outline-offset: 2px;
 }
 
+/* Selected value: filled so it reads at a glance from across the arc. */
 .cm-node.is-active {
-    color: var(--ink, #111);
+    color: var(--surface-solid, #eee);
     border-color: var(--ink, #333);
-    background: color-mix(in srgb, var(--ink, #333) 12%, transparent);
+    background: var(--ink, #333);
 }
 
+/* Section currently drilled into: outlined, not filled, so it stays visually
+   subordinate to the value the user actually picked. */
 .cm-node.is-open {
-    border-color: var(--ink, #333);
+    border-color: var(--cm-edge-strong);
+    background: color-mix(in srgb, var(--ink, #333) 10%, transparent);
     color: var(--ink, #111);
+}
+
+.cm-node.is-open.is-active {
+    color: var(--surface-solid, #eee);
+    background: var(--ink, #333);
 }
 
 .cm-node-count {
@@ -3848,23 +3895,31 @@ body.ui-animating .control-menu {
     letter-spacing: 0.04em;
 }
 
-/* Sector labels read outward along the radius, echoing a lens barrel. */
 .cm-sector-label {
     display: block;
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 /* ── readout ── */
 
+/* Parked to the left of the outermost ring so it never sits under a node.
+   It lands on photos rather than on the disc, so it carries its own plate. */
 .cm-readout {
     position: absolute;
-    right: calc(var(--cm-r-c) * 0.30);
-    bottom: 14px;
-    max-width: 190px;
+    right: calc(var(--cm-radius, var(--cm-r-c)) + 14px);
+    bottom: 18px;
+    white-space: nowrap;
     text-align: right;
     font-size: 0.56rem;
     letter-spacing: 0.16em;
-    color: var(--ink-soft, #888);
+    color: var(--ink-dim, #666);
+    padding: 7px 12px;
+    border: 1px solid var(--cm-edge);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ink, #333) 8%, var(--surface, rgba(240, 240, 240, 0.72)));
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     pointer-events: none;
     opacity: 0;
     transition: opacity var(--dur-mid) var(--ease);
@@ -3913,11 +3968,24 @@ body.ui-animating .control-menu {
     text-align: center;
     font-size: 0.52rem;
     letter-spacing: 0.16em;
-    color: var(--ink-soft, #888);
-    border: 1px dashed var(--line, #999);
+    color: var(--ink-dim, #666);
+    border: 1px dashed var(--cm-edge);
     border-radius: 50%;
-    opacity: 0.6;
     pointer-events: none;
+}
+
+/* On a narrow viewport the disc spans nearly the full width, so there is no
+   room beside it: the readout moves above the arc instead. */
+@media (max-width: 768px) {
+    .cm-readout {
+        right: auto;
+        left: var(--gutter);
+        bottom: calc(var(--cm-radius, var(--cm-r-c)) + 12px);
+        max-width: calc(100vw - var(--gutter) * 2);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-align: left;
+    }
 }
 
 /* A filter selection is live: mark the hub so the state is visible closed. */
@@ -3999,6 +4067,11 @@ body.exposure-0 .timeline-sidebar.timeline-popout .timeline-month.active {
         flex: 1;
         min-height: 50vh;
         min-width: 0;
+    }
+
+    /* Stacked below the scene here, so the toolbar is no longer above it. */
+    .globe-explorer-panel {
+        padding: 1.5rem;
     }
 
     .globe-explorer-toolbar {
