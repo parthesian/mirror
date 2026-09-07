@@ -69,6 +69,7 @@ const sequence = Flipboard.pickIntermediates(pool, 'a.jpg', 'd.jpg', 4);
 assert(sequence[sequence.length - 1] === 'd.jpg', 'flipboard must land on the destination thumb');
 assert(sequence.slice(0, -1).every((url) => pool.includes(url)), 'intermediates come from the loaded pool');
 assert(Flipboard.pickIntermediates([], 'a.jpg', 'z.jpg', 3).join(',') === 'z.jpg', 'empty pool still lands on dest');
+assert(typeof Flipboard.animateWindow === 'function', 'flipboard exposes window animation');
 
 const preloader = {
     loaded: new Set(['a.jpg', 'b.jpg', 'full.jpg']),

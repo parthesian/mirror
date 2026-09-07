@@ -186,23 +186,120 @@ class Timeline {
         this.revealButton.setAttribute('aria-expanded', 'false');
     }
 
-    updateSidebarPosition() {
+    prefersReducedMotion() {
+        return Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
+    }
+
+    clearSlideWait() {
+        if (this.slideTimer) {
+            clearTimeout(this.slideTimer);
+            this.slideTimer = 0;
+        }
+        if (this.onSlideEnd && this.container) {
+            this.container.removeEventListener('transitionend', this.onSlideEnd);
+        }
+        this.onSlideEnd = null;
+    }
+
+    waitForSlide(callback) {
+        if (!this.container) {
+            callback();
+            return;
+        }
+        this.clearSlideWait();
+        const done = (event) => {
+            if (event && event.target !== this.container) return;
+            if (event && event.propertyName && event.propertyName !== 'transform') return;
+            this.clearSlideWait();
+            callback();
+        };
+        this.onSlideEnd = done;
+        this.container.addEventListener('transitionend', done);
+        this.slideTimer = window.setTimeout(() => done(), 560);
+    }
+
+    slideAway() {
         if (!this.container) return;
-
-        const isRandomView = this.imageService?.viewMode === 'random'
-            || document.body.classList.contains('view-random');
-        const showTimeline = window.innerWidth > 768 && !isRandomView;
-        document.body.classList.toggle('has-timeline', showTimeline);
-
-        if (!showTimeline) {
-            this.container.style.left = '';
-            this.container.style.display = 'none';
-            this.container.setAttribute('aria-hidden', 'true');
-            this.container.classList.remove('timeline-popout');
-            this.updateRevealButton();
+        this.clearSlideWait();
+        if (window.innerWidth <= 768 || this.prefersReducedMotion()) {
+            this.hideImmediately();
             return;
         }
 
+        this.container.style.display = '';
+        this.container.classList.add('is-animated');
+        this.container.setAttribute('aria-hidden', 'true');
+        requestAnimationFrame(() => {
+            this.container.classList.add('is-offstage');
+        });
+        document.body.classList.remove('has-timeline');
+        this.waitForSlide(() => this.hideImmediately());
+    }
+
+    slideIn() {
+        if (!this.container) return;
+        this.clearSlideWait();
+        if (window.innerWidth <= 768 || this.prefersReducedMotion()) {
+            this.updateSidebarPosition();
+            return;
+        }
+
+        this.container.style.display = '';
+        this.container.classList.add('is-offstage');
+        this.container.classList.remove('is-animated');
+        document.body.classList.add('has-timeline');
+        this.placeSidebar();
+        this.container.setAttribute('aria-hidden', 'false');
+        requestAnimationFrame(() => {
+            this.container.classList.add('is-animated');
+            requestAnimationFrame(() => {
+                this.container.classList.remove('is-offstage');
+            });
+        });
+        this.waitForSlide(() => {
+            this.container.classList.remove('is-animated');
+        });
+    }
+
+    hideImmediately() {
+        if (!this.container) return;
+        this.clearSlideWait();
+        this.container.classList.remove('is-animated');
+        this.container.classList.add('is-offstage');
+        this.container.style.left = '';
+        this.container.style.display = 'none';
+        this.container.setAttribute('aria-hidden', 'true');
+        this.container.classList.remove('timeline-popout');
+        document.body.classList.remove('has-timeline');
+        this.updateRevealButton();
+    }
+
+    settleAfterSlide(isRandom) {
+        if (!this.container) return;
+        // An in-flight slide finishes on transitionend. Ending it here
+        // would snap the rail once the flipboard promise resolves.
+        if (this.container.classList.contains('is-animated')) {
+            if (isRandom) {
+                this.waitForSlide(() => this.hideImmediately());
+            } else {
+                this.waitForSlide(() => {
+                    this.container.classList.remove('is-animated');
+                    this.container.classList.remove('is-offstage');
+                    this.updateSidebarPosition();
+                });
+            }
+            return;
+        }
+        if (isRandom || window.innerWidth <= 768) {
+            this.hideImmediately();
+            return;
+        }
+        this.container.classList.remove('is-offstage');
+        this.updateSidebarPosition();
+    }
+
+    placeSidebar() {
+        if (!this.container) return;
         const timelineWidth = Math.round(
             parseFloat(window.getComputedStyle(this.container).width) || this.container.offsetWidth || 60
         );
@@ -222,6 +319,25 @@ class Timeline {
         this.container.style.display = '';
         this.container.setAttribute('aria-hidden', 'false');
         this.updateRevealButton();
+    }
+
+    updateSidebarPosition() {
+        if (!this.container) return;
+        if (this.container.classList.contains('is-animated')) {
+            return;
+        }
+
+        const isRandomView = this.imageService?.viewMode === 'random'
+            || document.body.classList.contains('view-random');
+        const showTimeline = window.innerWidth > 768 && !isRandomView;
+        document.body.classList.toggle('has-timeline', showTimeline);
+
+        if (!showTimeline) {
+            this.hideImmediately();
+            return;
+        }
+
+        this.placeSidebar();
     }
 
     setYearCollapsed(year, collapsed) {

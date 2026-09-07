@@ -504,30 +504,50 @@ class Gallery {
                 previousImages: previous.slice(start, end),
                 nextImages: next.slice(start, end),
                 preloader: this.imagePreloader,
-                thumbCandidates
+                thumbCandidates,
+                onTileLanded: (item, index, image) => {
+                    this.rebindOne(item, image);
+                }
             });
             this.rebindMountedWindow(nodes, next.slice(start, end));
+            this.checkIfNeedsMoreContent();
+            return;
         }
 
         this.cachedLayout = null;
         this.scheduleRefresh(true);
     }
 
+    rebindOne(node, image) {
+        if (!node || !image) {
+            return;
+        }
+        this.bindItemMetadata(node, image);
+        const img = node.querySelector('.gallery-item-image');
+        if (img && image.thumbnailUrl && !this.sameImageUrl(img.src, image.thumbnailUrl)) {
+            img.src = image.thumbnailUrl;
+        }
+        node.classList.add('loaded', 'instant');
+        this.mountedItems.set(image.id, node);
+    }
+
+    sameImageUrl(left, right) {
+        if (!left || !right) {
+            return false;
+        }
+        if (left === right) {
+            return true;
+        }
+        try {
+            return new URL(left, window.location.href).href === new URL(right, window.location.href).href;
+        } catch (error) {
+            return false;
+        }
+    }
+
     rebindMountedWindow(nodes, nextImages) {
         this.mountedItems.clear();
-        nodes.forEach((node, index) => {
-            const image = nextImages[index];
-            if (!image) {
-                return;
-            }
-            this.bindItemMetadata(node, image);
-            const img = node.querySelector('.gallery-item-image');
-            if (img && image.thumbnailUrl && img.src !== image.thumbnailUrl) {
-                img.src = image.thumbnailUrl;
-            }
-            node.classList.add('loaded', 'instant');
-            this.mountedItems.set(image.id, node);
-        });
+        nodes.forEach((node, index) => this.rebindOne(node, nextImages[index]));
     }
 
     // ── UI state ──

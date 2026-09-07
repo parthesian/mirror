@@ -104,6 +104,9 @@ const Flipboard = {
         flap.style.transition = `transform ${this.FLAP_MS}ms linear`;
         item.classList.add('flipboard-out');
         await this.wait(this.FLAP_MS);
+        // Match the flap to the face underneath so resetting the hinge
+        // does not cover the destination with the previous tick.
+        flapImg.src = img.currentSrc || img.src || nextUrl;
         item.classList.remove('flipboard-out');
         flap.style.transition = 'none';
         flap.style.transform = 'rotateX(0deg)';
@@ -125,7 +128,8 @@ const Flipboard = {
             previousImages = [],
             nextImages = [],
             preloader,
-            thumbCandidates = []
+            thumbCandidates = [],
+            onTileLanded
         } = options;
 
         const nodes = Array.from(items || []);
@@ -156,9 +160,9 @@ const Flipboard = {
                 return Promise.resolve();
             }
 
-            const destReady = typeof preloader.preloadImage === 'function'
-                ? preloader.preloadImage(destUrl)
-                : prefetchPromise;
+            if (typeof preloader.preloadImage === 'function') {
+                void preloader.preloadImage(destUrl);
+            }
             const tickCount = this.MIN_TICKS + Math.floor(Math.random() * (this.MAX_TICKS - this.MIN_TICKS + 1));
             const sequence = this.pickIntermediates(pool, currentUrl, destUrl, tickCount)
                 .filter((url) => url !== destUrl && preloader.isImageLoaded(url));
@@ -167,9 +171,22 @@ const Flipboard = {
                 for (const url of sequence) {
                     await this.flipOnce(item, img, url);
                 }
-                await destReady;
-                if (destUrl) {
-                    await this.flipOnce(item, img, destUrl);
+                // Keep flapping cached faces if dest is still arriving so the
+                // board never sits still, then land on dest as the last tick.
+                let extras = 0;
+                while (destUrl && !preloader.isImageLoaded(destUrl) && extras < this.MAX_TICKS) {
+                    const filler = sequence[extras % Math.max(sequence.length, 1)]
+                        || pool[extras % Math.max(pool.length, 1)];
+                    if (filler && filler !== destUrl) {
+                        await this.flipOnce(item, img, filler);
+                    }
+                    extras += 1;
+                }
+                await this.flipOnce(item, img, destUrl);
+                this.removeFlap(item);
+                item.classList.remove('flipboard-busy');
+                if (typeof onTileLanded === 'function') {
+                    onTileLanded(item, index, dest);
                 }
             });
         });

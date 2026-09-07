@@ -13,6 +13,7 @@ class ViewMode {
         this.timeline = timeline;
         this.button = document.getElementById('randomize-btn');
         this.isTransitioning = false;
+        this.pendingMode = null;
         this.syncDocument();
         this.bindEvents();
     }
@@ -57,6 +58,7 @@ class ViewMode {
         const next = mode === 'random' ? 'random' : 'chrono';
         const refresh = options.refresh !== false;
         if (this.isTransitioning) {
+            this.pendingMode = next;
             return;
         }
         const previousImages = this.imageService.images.slice();
@@ -75,10 +77,17 @@ class ViewMode {
         }
 
         this.isTransitioning = true;
-        this.button?.setAttribute('disabled', 'true');
         try {
-            // Flip in the current layout first so timeline show/hide does not
-            // resize columns mid-animation. Document chrome updates after.
+            // Start the timeline slide with the first flap so the rail does
+            // not sit still and then snap after the board finishes.
+            if (next === 'random') {
+                document.body.classList.add('view-random');
+                this.timeline?.slideAway();
+            } else {
+                document.body.classList.remove('view-random');
+                this.timeline?.slideIn();
+            }
+
             if (typeof this.gallery.transitionToNewOrder === 'function') {
                 await this.gallery.transitionToNewOrder(previousImages);
             } else {
@@ -93,8 +102,12 @@ class ViewMode {
             }));
         } finally {
             this.isTransitioning = false;
-            this.button?.removeAttribute('disabled');
             this.syncButton();
+            const queued = this.pendingMode;
+            this.pendingMode = null;
+            if (queued && queued !== this.mode) {
+                void this.setMode(queued);
+            }
         }
     }
 
@@ -120,6 +133,10 @@ class ViewMode {
         const isRandom = this.mode === 'random';
         document.body.classList.toggle('view-random', isRandom);
         this.syncButton();
+        if (typeof this.timeline?.settleAfterSlide === 'function') {
+            this.timeline.settleAfterSlide(isRandom);
+            return;
+        }
         this.timeline?.updateSidebarPosition();
     }
 
