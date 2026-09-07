@@ -953,8 +953,6 @@ body.exposure-1 .scroll-loading p {
     display: block;
     width: 1em;
     height: 1em;
-    /* The DSLR glyph sits low in its viewBox; nudge it to the text center. */
-    transform: translateY(-0.06em);
 }
 
 /* Error message */
