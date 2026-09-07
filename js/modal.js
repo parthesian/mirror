@@ -473,6 +473,7 @@ class Modal {
         this.modalContent.classList.add('modal-photo-placed');
         container.style.height = `${Math.round(box.height)}px`;
         container.style.marginTop = `${offset}px`;
+        this.modalContent.style.setProperty('--modal-photo-w', `${Math.round(box.width)}px`);
         this._photoLayoutReady = true;
 
         if (animate) {
@@ -511,6 +512,7 @@ class Modal {
         this.modalContent.classList.remove('modal-layout-animating', 'modal-photo-placed');
         this.modalImageContainer.style.height = '';
         this.modalImageContainer.style.marginTop = '';
+        this.modalContent.style.removeProperty('--modal-photo-w');
     }
 
     /**

@@ -519,6 +519,7 @@ body.exposure-1 .scroll-loading p {
     }
 
     .modal-content.modal-layout-animating .modal-image-container,
+    .modal-content.modal-layout-animating .modal-info,
     .modal-content.modal-layout-animating #modal-globe {
         transition: none;
     }
@@ -903,15 +904,16 @@ body.exposure-1 .scroll-loading p {
     display: none;
 }
 
-/* Quiet facts: no labels, no rules. Description sits left; values stack
-   flush right and wrap inside the panel instead of spilling. */
+/* Quiet facts: no labels, no rules. Title and values share one left
+   edge and one line-height so the camera row does not sit tighter. */
 .modal-metadata {
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
-    gap: 0.28rem;
+    align-items: flex-start;
+    gap: 0.32rem;
     max-width: 100%;
     font-size: 0.78rem;
+    line-height: 1.35;
     color: var(--ink-dim, #666);
 }
 
@@ -919,7 +921,8 @@ body.exposure-1 .scroll-loading p {
     display: block;
     max-width: 100%;
     min-width: 0;
-    text-align: right;
+    text-align: left;
+    line-height: 1.35;
     overflow-wrap: anywhere;
 }
 
@@ -931,17 +934,17 @@ body.exposure-1 .scroll-loading p {
     display: flex;
     flex-direction: row-reverse;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: flex-end;
     gap: 0.4rem;
     max-width: 100%;
-    line-height: 1;
+    line-height: 1.35;
 }
 
 .modal-camera-row #modal-camera-name {
     min-width: 0;
-    text-align: right;
+    text-align: left;
     overflow-wrap: anywhere;
-    line-height: 1;
+    line-height: 1.35;
 }
 
 .modal-camera-icon-wrap {
@@ -2055,7 +2058,9 @@ body.exposure-1 .btn-secondary {
         flex-direction: column;
         gap: 0; /* Remove gap, use margins instead for better control */
         padding: 1rem;
-        padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px) + 80px); /* Extra padding for bottom address bars */
+        /* Room under the last fact/globe so a short viewport can scroll
+           past it instead of pinning chrome to the home-indicator. */
+        padding-bottom: calc(2.75rem + env(safe-area-inset-bottom, 0px) + 64px);
         height: 100vh; /* Full viewport height */
         overflow-y: auto;
         align-items: stretch;
@@ -2084,10 +2089,21 @@ body.exposure-1 .btn-secondary {
         max-width: 100%;
     }
 
+    .modal-content.modal-photo-placed .modal-info {
+        width: min(100%, var(--modal-photo-w, 100%));
+        max-width: 100%;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
     .modal-content.modal-layout-animating .modal-image-container {
         transition:
             height var(--dur-slow) var(--ease),
             margin-top var(--dur-slow) var(--ease);
+    }
+
+    .modal-content.modal-layout-animating .modal-info {
+        transition: width var(--dur-slow) var(--ease);
     }
 
     .modal-content.modal-layout-animating #modal-globe {
@@ -2108,7 +2124,7 @@ body.exposure-1 .btn-secondary {
         width: 100%;
         max-width: 100%;
         margin: 0 auto;
-        padding: 0.35rem 0 0.5rem;
+        padding: 0.35rem 0 2.25rem;
         flex: 0 0 auto;
         order: 2;
         gap: 0.5rem;
@@ -2143,15 +2159,6 @@ body.exposure-1 .btn-secondary {
         text-align: left;
     }
 
-    #modal .modal-camera-row {
-        flex-direction: row;
-        justify-content: flex-start;
-    }
-
-    #modal .modal-camera-row #modal-camera-name {
-        text-align: left;
-    }
-
     /* Match the copy block height so the globe sits beside the facts
        instead of below them. Scoped to the photo modal, not the explorer. */
     #modal-globe:not(.hidden) {
@@ -2180,7 +2187,7 @@ body.exposure-1 .btn-secondary {
     
     .modal-content {
         padding: 0.5rem;
-        padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px) + 80px); /* Extra padding for bottom address bars */
+        padding-bottom: calc(2.5rem + env(safe-area-inset-bottom, 0px) + 64px);
     }
     
     .modal-image-container {
@@ -2188,7 +2195,7 @@ body.exposure-1 .btn-secondary {
     }
     
     .modal-info {
-        padding: 0.5rem 0;
+        padding: 0.5rem 0 2.25rem;
     }
     
     /* Mobile upload modal adjustments */
