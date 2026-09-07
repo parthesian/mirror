@@ -41,10 +41,11 @@ class PhotoGalleryApp {
             // Initialize services
             this.imageService = new ImageService();
             this.imagePreloader = new ImagePreloader();
+            this.globeService = new GlobeService();
             
             // Initialize UI components
-            this.gallery = new Gallery(this.imageService, this.imagePreloader);
-            this.modal = new Modal(this.imageService, this.imagePreloader);
+            this.gallery = new Gallery(this.imageService, this.imagePreloader, this.globeService);
+            this.modal = new Modal(this.imageService, this.imagePreloader, this.globeService);
             this.timeline = new Timeline(this.imageService, this.gallery);
             this.viewMode = new ViewMode(this.imageService, this.gallery, this.timeline);
             this.filmEffects = new FilmEffects();
