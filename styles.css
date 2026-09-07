@@ -1031,22 +1031,31 @@ body.exposure-3 .scroll-loading p {
     transform: none;
 }
 
-.gallery-item.flipboard-out .gallery-item-image,
-.gallery-item.flipboard-in .gallery-item-image {
+.gallery-item.flipboard-busy .gallery-item-image {
     opacity: 1;
-    will-change: transform;
+    transition: none;
+}
+
+.flipboard-flap {
+    position: absolute;
+    inset: 0;
+    transform-origin: 50% 100%;
     backface-visibility: hidden;
-    transform-origin: center center;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 2;
 }
 
-.gallery-item.flipboard-out .gallery-item-image {
-    transform: rotateX(-88deg);
-    transition: transform 70ms linear;
+.flipboard-flap-image {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+    object-position: center center;
 }
 
-.gallery-item.flipboard-in .gallery-item-image {
-    transform: rotateX(0deg);
-    transition: transform 70ms linear;
+.gallery-item.flipboard-out .flipboard-flap {
+    transform: rotateX(-90deg);
 }
 
 /* Respect reduced motion preferences */
@@ -1055,8 +1064,7 @@ body.exposure-3 .scroll-loading p {
         transition: none;
     }
 
-    .gallery-item.flipboard-out .gallery-item-image,
-    .gallery-item.flipboard-in .gallery-item-image {
+    .gallery-item.flipboard-out .flipboard-flap {
         transform: none;
         transition: none;
     }

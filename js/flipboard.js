@@ -1,21 +1,32 @@
 /**
  * Airport-style split-flap transition for gallery reorder.
  *
- * Visible tiles stay put and flip through already-decoded thumbnails,
- * then land on the photo that actually occupies that slot after shuffle.
- * Only missing destination thumbs are fetched — intermediates never hit
- * the network — so the board can start immediately.
+ * Visible tiles stay put. Each flap face is a thumbnail already in the
+ * preloader (or the destination once it arrives). Full-size hover
+ * prefetches are never used as faces. Missing destinations are fetched
+ * once, as a single concurrent batch, while the board is already flipping
+ * through cache.
  */
 const Flipboard = {
+    FLAP_MS: 52,
+    STAGGER_MS: 12,
+    MIN_TICKS: 4,
+    MAX_TICKS: 6,
+
     prefersReducedMotion() {
         return Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
     },
 
-    loadedThumbUrls(preloader) {
-        if (!preloader?.loadedImages) {
-            return [];
+    /**
+     * Only collection thumbnails that are already decoded.
+     * Hover-prefetched full images are excluded on purpose.
+     */
+    loadedThumbUrls(preloader, thumbCandidates = []) {
+        const unique = Array.from(new Set((thumbCandidates || []).filter(Boolean)));
+        if (!preloader) {
+            return unique;
         }
-        return Array.from(preloader.loadedImages.keys()).filter(Boolean);
+        return unique.filter((url) => preloader.isImageLoaded(url));
     },
 
     pickIntermediates(pool, currentUrl, destUrl, count) {
@@ -49,23 +60,53 @@ const Flipboard = {
         return new Promise((resolve) => window.setTimeout(resolve, ms));
     },
 
-    flipOnce(item, img, url) {
-        return new Promise((resolve) => {
-            const finish = () => {
-                item.classList.remove('flipboard-out', 'flipboard-in');
-                resolve();
-            };
+    nextFrame() {
+        return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    },
 
-            item.classList.add('flipboard-out');
-            window.setTimeout(() => {
-                if (url && img.src !== url) {
-                    img.src = url;
-                }
-                item.classList.remove('flipboard-out');
-                item.classList.add('flipboard-in');
-                window.setTimeout(finish, 70);
-            }, 70);
-        });
+    ensureFlap(item) {
+        let flap = item.querySelector('.flipboard-flap');
+        if (flap) {
+            return flap;
+        }
+        flap = document.createElement('div');
+        flap.className = 'flipboard-flap';
+        flap.setAttribute('aria-hidden', 'true');
+        const flapImg = document.createElement('img');
+        flapImg.className = 'flipboard-flap-image';
+        flapImg.alt = '';
+        flapImg.decoding = 'async';
+        flap.appendChild(flapImg);
+        item.appendChild(flap);
+        return flap;
+    },
+
+    removeFlap(item) {
+        item.querySelector('.flipboard-flap')?.remove();
+        item.classList.remove('flipboard-out', 'flipboard-in');
+    },
+
+    async flipOnce(item, img, nextUrl) {
+        if (!nextUrl || img.src === nextUrl) {
+            return;
+        }
+
+        const flap = this.ensureFlap(item);
+        const flapImg = flap.querySelector('.flipboard-flap-image');
+        flapImg.src = img.currentSrc || img.src;
+        item.classList.remove('flipboard-out');
+        flap.style.transition = 'none';
+        flap.style.transform = 'rotateX(0deg)';
+        img.src = nextUrl;
+
+        await this.nextFrame();
+        await this.nextFrame();
+        flap.style.transition = `transform ${this.FLAP_MS}ms linear`;
+        item.classList.add('flipboard-out');
+        await this.wait(this.FLAP_MS);
+        item.classList.remove('flipboard-out');
+        flap.style.transition = 'none';
+        flap.style.transform = 'rotateX(0deg)';
     },
 
     async prefetchDestinations(preloader, urls) {
@@ -73,7 +114,9 @@ const Flipboard = {
         if (!missing.length) {
             return [];
         }
-        return preloader.preloadBatch(missing, { concurrency: Math.min(6, missing.length) });
+        return preloader.preloadBatch(missing, {
+            concurrency: Math.min(8, missing.length)
+        });
     },
 
     async animateWindow(options = {}) {
@@ -81,7 +124,8 @@ const Flipboard = {
             items,
             previousImages = [],
             nextImages = [],
-            preloader
+            preloader,
+            thumbCandidates = []
         } = options;
 
         const nodes = Array.from(items || []);
@@ -90,8 +134,6 @@ const Flipboard = {
         }
 
         const destUrls = nextImages.map((image) => image?.thumbnailUrl).filter(Boolean);
-        // Kick every missing destination now so later tiles do not wait on a
-        // second-wave fetch. Intermediates stay cache-only.
         const prefetchPromise = this.prefetchDestinations(preloader, destUrls);
 
         if (this.prefersReducedMotion()) {
@@ -99,7 +141,10 @@ const Flipboard = {
             return false;
         }
 
-        const pool = this.loadedThumbUrls(preloader);
+        const candidateThumbs = thumbCandidates.length
+            ? thumbCandidates
+            : [...previousImages, ...nextImages].map((image) => image?.thumbnailUrl);
+        const pool = this.loadedThumbUrls(preloader, candidateThumbs);
         nodes.forEach((item) => item.classList.add('flipboard-busy'));
 
         const runs = nodes.map((item, index) => {
@@ -114,15 +159,12 @@ const Flipboard = {
             const destReady = typeof preloader.preloadImage === 'function'
                 ? preloader.preloadImage(destUrl)
                 : prefetchPromise;
-            const tickCount = 4 + Math.floor(Math.random() * 3);
+            const tickCount = this.MIN_TICKS + Math.floor(Math.random() * (this.MAX_TICKS - this.MIN_TICKS + 1));
             const sequence = this.pickIntermediates(pool, currentUrl, destUrl, tickCount)
-                .filter((url) => url !== destUrl);
+                .filter((url) => url !== destUrl && preloader.isImageLoaded(url));
 
-            return this.wait(index * 18).then(async () => {
+            return this.wait(index * this.STAGGER_MS).then(async () => {
                 for (const url of sequence) {
-                    if (!preloader.isImageLoaded(url)) {
-                        continue;
-                    }
                     await this.flipOnce(item, img, url);
                 }
                 await destReady;
@@ -134,7 +176,8 @@ const Flipboard = {
 
         await Promise.all(runs);
         nodes.forEach((item) => {
-            item.classList.remove('flipboard-busy', 'flipboard-out', 'flipboard-in');
+            this.removeFlap(item);
+            item.classList.remove('flipboard-busy');
         });
         return true;
     }

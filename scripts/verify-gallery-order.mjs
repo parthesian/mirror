@@ -70,4 +70,12 @@ assert(sequence[sequence.length - 1] === 'd.jpg', 'flipboard must land on the de
 assert(sequence.slice(0, -1).every((url) => pool.includes(url)), 'intermediates come from the loaded pool');
 assert(Flipboard.pickIntermediates([], 'a.jpg', 'z.jpg', 3).join(',') === 'z.jpg', 'empty pool still lands on dest');
 
+const preloader = {
+    loaded: new Set(['a.jpg', 'b.jpg', 'full.jpg']),
+    isImageLoaded(url) { return this.loaded.has(url); }
+};
+const thumbsOnly = Flipboard.loadedThumbUrls(preloader, ['a.jpg', 'b.jpg', 'missing.jpg']);
+assert(thumbsOnly.join(',') === 'a.jpg,b.jpg', 'flip faces are loaded thumbs only');
+assert(!thumbsOnly.includes('full.jpg'), 'full-size hover prefetches stay out of the flap pool');
+
 console.log('gallery-order, location-model, and flipboard checks passed');
