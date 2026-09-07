@@ -54,6 +54,7 @@ class Modal {
         this.isNavigating = false;
         this._photoLayoutReady = false;
         this._layoutAnimTimer = 0;
+        this._resizeTimer = 0;
         this._safeAreaTop = null;
         
         // Globe integration — share the gallery preload instance so the
@@ -100,10 +101,8 @@ class Modal {
 
         window.addEventListener('resize', () => {
             if (!this.isOpen) return;
-            this._safeAreaTop = null;
-            const image = this.imageService.getImageById(this.currentImageId);
-            if (image) this.applyPhotoPlacement(image, { animate: false });
-            this.syncModalGlobeSize();
+            window.clearTimeout(this._resizeTimer);
+            this._resizeTimer = window.setTimeout(() => this.onViewportChange(), 120);
         }, { passive: true });
 
         // Upload modal events
@@ -249,12 +248,7 @@ class Modal {
 
         // Keep globe instance alive for reuse across modal opens, but
         // stop the hidden 60fps loop until the next photo needs it.
-        if (this.globeContainer) {
-            this.globeService?.pause?.(this.globeContainer);
-            this.globeContainer.classList.add('hidden');
-            this.globeContainer.style.width = '';
-            this.globeContainer.style.height = '';
-        }
+        this.hideModalGlobe();
         
         // Hide modal
         this.modal.classList.remove('active');
@@ -367,6 +361,28 @@ class Modal {
             && !this.globeContainer.classList.contains('hidden')
             && this.globeContainer.firstChild
         );
+    }
+
+    hideModalGlobe() {
+        if (!this.globeContainer) {
+            return;
+        }
+        this.globeService?.pause?.(this.globeContainer);
+        this.globeContainer.classList.add('hidden');
+        this.globeContainer.style.width = '';
+        this.globeContainer.style.height = '';
+    }
+
+    onViewportChange() {
+        if (!this.isOpen) {
+            return;
+        }
+        this._safeAreaTop = null;
+        const image = this.imageService.getImageById(this.currentImageId);
+        if (image) {
+            this.applyPhotoPlacement(image, { animate: false });
+        }
+        this.syncModalGlobeSize();
     }
 
     getPhotoAspect(image) {
@@ -612,9 +628,7 @@ class Modal {
             
             // If unsupported or failed, container will likely be empty; keep hidden
             if (!this.globeContainer.firstChild) {
-                this.globeContainer.classList.add('hidden');
-                this.globeContainer.style.width = '';
-                this.globeContainer.style.height = '';
+                this.hideModalGlobe();
             } else {
                 this.globeContainer.setAttribute('title', 'Open globe explorer at this location');
                 this.syncModalGlobeSize();
@@ -623,7 +637,7 @@ class Modal {
             console.warn('Modal.updateGlobe error:', e);
             if (this.globeService && this.globeContainer) {
                 this.globeService.destroy(this.globeContainer);
-                this.globeContainer.classList.add('hidden');
+                this.hideModalGlobe();
             }
         }
     }
