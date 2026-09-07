@@ -2936,6 +2936,9 @@ body.exposure-1  .globe-explorer { background: rgba(255, 255, 255, 0.98); color:
     --cm-scrim: color-mix(in srgb, var(--ink, #333) 5%, transparent);
     --cm-edge: color-mix(in srgb, var(--ink, #333) 26%, transparent);
     --cm-edge-strong: color-mix(in srgb, var(--ink, #333) 55%, transparent);
+    --cm-orb: 42px;
+    --cm-orb-inset: 3.4rem;
+    --cm-orb-dock: 0.38rem;
     transition: opacity var(--dur-mid) var(--ease);
 }
 
@@ -3012,6 +3015,21 @@ body.ui-animating .control-menu {
     position: absolute;
     right: 0;
     bottom: 0;
+}
+
+/* While the orb slides into or out of the corner, clicks in the empty
+   square between it and the corner count as hub clicks. */
+.cm-hub-catch {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: calc(var(--cm-orb-inset) + var(--cm-orb));
+    height: calc(var(--cm-orb-inset) + var(--cm-orb));
+    pointer-events: none;
+}
+
+.control-menu.is-animating.collapsed .cm-hub-catch {
+    pointer-events: auto;
 }
 
 /* ── hub ── */
@@ -3285,6 +3303,7 @@ body.ui-animating .control-menu {
 /* On a narrow viewport the disc spans nearly the full width, so there is no
    room beside it: the readout moves above the arc instead. */
 @media (max-width: 768px) {
+    .control-menu,
     .cm-hub {
         --cm-orb: 44px;
         --cm-orb-inset: 2.2rem;
