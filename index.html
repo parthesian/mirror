@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260907s">
+    <link rel="stylesheet" href="styles.css?v=20260907y">
     <script type="importmap">
     {
         "imports": {
@@ -39,6 +39,7 @@
         <div id="cm-sectors" class="cm-layer cm-layer-sectors" role="tablist" aria-label="Control sections"></div>
         <div id="cm-options" class="cm-layer cm-layer-options" aria-label="Section options"></div>
         <div id="cm-leaf" class="cm-layer cm-layer-leaf" aria-label="Filter values"></div>
+        <div id="cm-hub-catch" class="cm-hub-catch" aria-hidden="true"></div>
         <button id="cm-hub" class="cm-hub" type="button" aria-expanded="false" aria-controls="cm-sectors" aria-label="Open control menu">
             <span class="cm-hub-mark" aria-hidden="true"></span>
         </button>
@@ -75,11 +76,6 @@
             </div>
             <div class="globe-explorer-scene" id="globe-explorer-scene"></div>
             <div id="globe-intersect-picker" class="globe-intersect-picker hidden" aria-label="Choose nearby location"></div>
-            <div class="globe-explorer-panel" id="globe-explorer-panel">
-                <div class="globe-explorer-panel-inner">
-                    <div id="globe-panel-content"></div>
-                </div>
-            </div>
         </div>
     </div>
 
@@ -93,20 +89,24 @@
                 <img id="modal-image" src="" alt="">
             </div>
             <div class="modal-info">
-                <p id="modal-description"></p>
-                <div class="modal-metadata">
-                    <span id="modal-location" class="metadata-item" aria-label="Place"></span>
-                    <span id="modal-country" class="metadata-item hidden" aria-label="Country"></span>
-                    <span id="modal-timestamp" class="metadata-item" aria-label="Date"></span>
-                    <div id="modal-camera-row" class="modal-camera-row metadata-item hidden" aria-label="Camera">
-                        <span class="modal-camera-icon-wrap" aria-hidden="true">
-                            <svg id="modal-camera-icon-dslr" class="modal-camera-svg" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                            <svg id="modal-camera-icon-mobile" class="modal-camera-svg hidden" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-                        </span>
-                        <span id="modal-camera-name"></span>
+                <div class="modal-details">
+                    <div class="modal-copy">
+                        <p id="modal-description"></p>
+                        <div class="modal-metadata">
+                            <span id="modal-location" class="metadata-item" aria-label="Place"></span>
+                            <span id="modal-country" class="metadata-item hidden" aria-label="Country"></span>
+                            <span id="modal-timestamp" class="metadata-item" aria-label="Date"></span>
+                            <div id="modal-camera-row" class="modal-camera-row metadata-item hidden" aria-label="Camera">
+                                <span class="modal-camera-icon-wrap" aria-hidden="true">
+                                    <svg id="modal-camera-icon-dslr" class="modal-camera-svg" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 6 24 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                                    <svg id="modal-camera-icon-mobile" class="modal-camera-svg hidden" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                                </span>
+                                <span id="modal-camera-name"></span>
+                            </div>
+                        </div>
                     </div>
+                    <div id="modal-globe" class="globe-container hidden"></div>
                 </div>
-                <div id="modal-globe" class="globe-container hidden"></div>
                 <div class="modal-nav-buttons">
                     <button id="prev-btn" class="nav-btn">&lt;</button>
                     <button id="next-btn" class="nav-btn">&gt;</button>
@@ -134,10 +134,10 @@
     <script src="js/customCalendar.js?v=20260406e"></script>
     <script src="js/timeline.js?v=20260907d"></script>
     <script src="js/viewMode.js?v=20260907l"></script>
-    <script src="js/modal.js?v=20260907r"></script>
+    <script src="js/modal.js?v=20260907t"></script>
     <script src="js/filmEffects.js?v=20260406e"></script>
-    <script src="js/globeExplorer.js?v=20260907q"></script>
-    <script src="js/controlMenu.js?v=20260907s"></script>
+    <script src="js/globeExplorer.js?v=20260907r"></script>
+    <script src="js/controlMenu.js?v=20260907u"></script>
     <script src="js/app.js?v=20260907f"></script>
 </body>
 </html>

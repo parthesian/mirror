@@ -7,7 +7,7 @@
  * the bottom edge and 90° runs up the right edge.
  *
  *   hub  → open/close
- *   ring A → sections (filter, globe, layout, order, exposure)
+ *   ring A → sections (globe, filter, layout, order, exposure)
  *   ring B → that section's options
  *   ring C → leaf values, rotatable when the list is longer than the arc
  */
@@ -30,17 +30,19 @@ const LEAF_TOP = 76;
 const LEAF_BOTTOM = 14;
 
 const SECTIONS = [
-    { id: 'filter', label: 'FILTER' },
     { id: 'globe', label: 'GLOBE' },
+    { id: 'filter', label: 'FILTER' },
     { id: 'layout', label: 'LAYOUT' },
     { id: 'order', label: 'ORDER' },
     { id: 'exposure', label: 'EXPOSE' }
 ];
 
+// Painted right-to-left on the quarter-circle (index 0 nearest 90°),
+// so +1 sits on the right and -1 on the left.
 const EXPOSURE_OPTIONS = [
-    { id: -1, label: '-1' },
+    { id: 1, label: '+1' },
     { id: 0, label: '0' },
-    { id: 1, label: '+1' }
+    { id: -1, label: '-1' }
 ];
 
 const FILTER_TYPES = [
@@ -60,6 +62,7 @@ class ControlMenu {
         if (!this.root) return;
 
         this.hub = document.getElementById('cm-hub');
+        this.hubCatch = document.getElementById('cm-hub-catch');
         this.sectorLayer = document.getElementById('cm-sectors');
         this.optionLayer = document.getElementById('cm-options');
         this.leafLayer = document.getElementById('cm-leaf');
@@ -152,6 +155,7 @@ class ControlMenu {
 
     bindEvents() {
         this.hub.addEventListener('click', () => this.toggle());
+        this.hubCatch?.addEventListener('click', () => this.toggle());
 
         document.addEventListener('keydown', (event) => {
             if (event.key === 'Escape' && this.isOpen && !this.isAnimating) {
@@ -190,8 +194,12 @@ class ControlMenu {
         });
     }
 
+    setAnimating(value) {
+        this.isAnimating = Boolean(value);
+        this.root.classList.toggle('is-animating', this.isAnimating);
+    }
+
     toggle() {
-        if (this.isAnimating) return;
         if (this.isOpen) this.close();
         else this.open();
     }
@@ -224,30 +232,34 @@ class ControlMenu {
      * quarter-circle expands. Closing reverses that: shrink, then slide home.
      */
     open() {
-        if (this.isOpen || this.isAnimating) return;
+        if (this.isOpen && !this.isAnimating) return;
+        this.clearPhase();
         this.isOpen = true;
-        this.isAnimating = true;
+        this.setAnimating(true);
         this.hub.setAttribute('aria-expanded', 'true');
         this.hub.setAttribute('aria-label', 'Close control menu');
 
         const instant = this.prefersReducedMotion();
+        const alreadyDocked = this.root.classList.contains('is-docked');
         this.root.classList.add('is-docked');
 
         this.globeExplorer?.prefetch?.();
-        this.after(instant ? 0 : this.slideMs, () => {
+        this.after(instant || alreadyDocked ? 0 : this.slideMs, () => {
             this.root.classList.remove('collapsed');
             this.render();
             this.after(instant ? 0 : this.expandMs, () => {
-                this.isAnimating = false;
+                this.setAnimating(false);
             });
         });
     }
 
     close() {
-        if (!this.isOpen || this.isAnimating) return;
+        if (!this.isOpen && !this.isAnimating) return;
+        this.clearPhase();
         this.isOpen = false;
-        this.isAnimating = true;
+        this.setAnimating(true);
         this.section = null;
+        const alreadyCollapsed = this.root.classList.contains('collapsed');
         this.root.classList.add('collapsed');
         this.root.dataset.section = '';
         this.hub.setAttribute('aria-expanded', 'false');
@@ -255,10 +267,10 @@ class ControlMenu {
         this.render();
 
         const instant = this.prefersReducedMotion();
-        this.after(instant ? 0 : this.expandMs, () => {
+        this.after(instant || alreadyCollapsed ? 0 : this.expandMs, () => {
             this.root.classList.remove('is-docked');
             this.after(instant ? 0 : this.slideMs, () => {
-                this.isAnimating = false;
+                this.setAnimating(false);
             });
         });
     }
