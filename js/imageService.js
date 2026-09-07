@@ -106,6 +106,7 @@ class ImageService {
             width,
             height,
             aspectRatio: width && height ? width / height : (4 / 3),
+            aspectRatioKnown: Boolean(width && height),
             latitude: photo.latitude ?? null,
             longitude: photo.longitude ?? null,
             country: photo.country || '',
@@ -124,6 +125,8 @@ class ImageService {
         const id = photo.id || photo.photoId || `img-${Date.now()}-${Math.random()}`;
         const timestamp = photo.takenAt || photo.timestamp || photo.createdAt || new Date().toISOString();
         const uploadedAt = photo.uploadedAt || timestamp;
+        const width = Number(photo.width) || null;
+        const height = Number(photo.height) || null;
 
         return {
             id,
@@ -134,9 +137,12 @@ class ImageService {
             url: this.buildPhotoAssetUrl(id, 'full'),
             thumbnailUrl: this.buildPhotoAssetUrl(id, 'thumb'),
             storageKey: '',
-            width: null,
-            height: null,
-            aspectRatio: 4 / 3,
+            width,
+            height,
+            aspectRatio: width && height ? width / height : (4 / 3),
+            // Rows without stored dimensions fall back to 4:3 until the
+            // thumbnail loads and reports its natural size.
+            aspectRatioKnown: Boolean(width && height),
             latitude: null,
             longitude: null,
             country: '',

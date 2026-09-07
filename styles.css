@@ -3834,6 +3834,27 @@ body.ui-animating .control-menu {
     transition: opacity var(--dur-mid) var(--ease);
 }
 
+.cm-node-rotate {
+    letter-spacing: 0;
+    font-weight: 700;
+    opacity: 0.75;
+}
+
+.cm-leaf-hint {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 0.52rem;
+    letter-spacing: 0.16em;
+    color: var(--ink-soft, #888);
+    border: 1px dashed var(--line, #999);
+    border-radius: 50%;
+    opacity: 0.6;
+    pointer-events: none;
+}
+
 /* A filter selection is live: mark the hub so the state is visible closed. */
 .control-menu.has-filter .cm-hub {
     border-color: var(--ink, #333);
@@ -3841,6 +3862,11 @@ body.ui-animating .control-menu {
 
 .control-menu.has-filter .cm-hub-label {
     color: var(--ink, #111);
+}
+
+/* The globe button is the only chrome the menu can overlap when open. */
+.control-menu:not(.collapsed) ~ .header .rail-right {
+    opacity: 1;
 }
 
 /* Timeline popout mirrors filter popup tone per exposure */

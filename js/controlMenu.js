@@ -1,0 +1,582 @@
+/**
+ * CONTROL — a quarter-circle radial menu anchored to the bottom-right corner.
+ *
+ * Geometry: every layer is a circle centred exactly on the viewport corner, so
+ * only its top-left quadrant is visible and concentric radii read as
+ * interlocking arcs. Node placement is polar: an angle of 0° runs left along
+ * the bottom edge and 90° runs up the right edge.
+ *
+ *   hub  → open/close
+ *   ring A → sections (filter, layout, order, exposure)
+ *   ring B → that section's options
+ *   ring C → leaf values, rotatable when the list is longer than the arc
+ */
+
+const CM_BASE = {
+    hub: 74,
+    ringA: 160,
+    ringB: 246,
+    ringC: 330,
+    outer: 366,
+    nodeA: 46,
+    nodeB: 44,
+    nodeC: 52
+};
+
+const SECTIONS = [
+    { id: 'filter', label: 'FILTER' },
+    { id: 'layout', label: 'LAYOUT' },
+    { id: 'order', label: 'ORDER' },
+    { id: 'exposure', label: 'EXPOSE' }
+];
+
+const FILTER_TYPES = [
+    { id: 'country', label: 'COUNTRY' },
+    { id: 'state', label: 'REGION' },
+    { id: 'location', label: 'PLACE' }
+];
+
+class ControlMenu {
+    constructor({ gallery, viewMode, globeExplorer, imageService }) {
+        this.gallery = gallery;
+        this.viewMode = viewMode;
+        this.globeExplorer = globeExplorer;
+        this.imageService = imageService;
+
+        this.root = document.getElementById('control-menu');
+        if (!this.root) return;
+
+        this.hub = document.getElementById('cm-hub');
+        this.sectorLayer = document.getElementById('cm-sectors');
+        this.optionLayer = document.getElementById('cm-options');
+        this.leafLayer = document.getElementById('cm-leaf');
+        this.readout = document.getElementById('cm-readout');
+
+        this.isOpen = false;
+        this.section = null;
+        this.filterType = 'country';
+        this.leafOffset = 0;
+        this.leafStep = 13;
+        this.hoverLabel = '';
+        this.scale = 1;
+        this.geometry = { ...CM_BASE };
+
+        this.applyGeometry();
+        this.bindEvents();
+        this.render();
+    }
+
+    // ── geometry ──
+
+    /**
+     * The menu is sized to the smaller viewport dimension so the outermost
+     * ring always stays on screen; every radius and node scales together.
+     */
+    applyGeometry() {
+        const limit = Math.min(
+            window.innerWidth * 0.92,
+            window.innerHeight * 0.84,
+            CM_BASE.outer
+        );
+        this.scale = Math.max(0.55, limit / CM_BASE.outer);
+
+        const g = {};
+        for (const [key, value] of Object.entries(CM_BASE)) {
+            g[key] = value * this.scale;
+        }
+        this.geometry = g;
+
+        this.root.style.setProperty('--cm-r-hub', `${g.hub}px`);
+        this.root.style.setProperty('--cm-r-a', `${g.ringA}px`);
+        this.root.style.setProperty('--cm-r-b', `${g.ringB}px`);
+        this.root.style.setProperty('--cm-r-c', `${g.ringC}px`);
+        this.root.style.setProperty('--cm-radius', `${g.outer}px`);
+    }
+
+    /**
+     * Place a node at polar (radius, angle) measured from the corner.
+     */
+    place(el, radius, angleDeg, size) {
+        const rad = (angleDeg * Math.PI) / 180;
+        el.style.right = `${radius * Math.cos(rad) - size / 2}px`;
+        el.style.bottom = `${radius * Math.sin(rad) - size / 2}px`;
+        el.style.width = `${size}px`;
+        el.style.height = `${size}px`;
+    }
+
+    /**
+     * Spread n nodes across the quadrant, first item nearest the right edge
+     * so the list reads top-to-bottom.
+     */
+    anglesFor(count, pad = 11) {
+        if (count <= 0) return [];
+        if (count === 1) return [45];
+        const lo = pad;
+        const hi = 90 - pad;
+        const step = (hi - lo) / (count - 1);
+        return Array.from({ length: count }, (_, i) => hi - i * step);
+    }
+
+    // ── events ──
+
+    bindEvents() {
+        this.hub.addEventListener('click', () => this.toggle());
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && this.isOpen) {
+                event.preventDefault();
+                this.close();
+                this.hub.focus();
+            }
+        });
+
+        document.addEventListener('pointerdown', (event) => {
+            if (!this.isOpen) return;
+            if (this.root.contains(event.target)) return;
+            this.close();
+        });
+
+        window.addEventListener('resize', () => {
+            this.applyGeometry();
+            this.render();
+        }, { passive: true });
+
+        // Wheel over the leaf ring rotates it through a long option list.
+        this.leafLayer.addEventListener('wheel', (event) => {
+            if (!this.leafItems || this.leafItems.length <= this.leafCapacity) return;
+            event.preventDefault();
+            this.rotateLeaf(event.deltaY > 0 ? 1 : -1);
+        }, { passive: false });
+
+        document.addEventListener('exposureChange', () => this.renderOptions());
+        document.addEventListener('viewModeChange', () => this.renderOptions());
+        document.addEventListener('galleryLayoutChange', () => this.renderOptions());
+        document.addEventListener('galleryFilterChange', () => {
+            this.syncFilterState();
+            this.render();
+        });
+    }
+
+    toggle() {
+        if (this.isOpen) this.close();
+        else this.open();
+    }
+
+    open() {
+        this.isOpen = true;
+        this.root.classList.remove('collapsed');
+        this.hub.setAttribute('aria-expanded', 'true');
+        this.hub.setAttribute('aria-label', 'Close control menu');
+        this.render();
+    }
+
+    close() {
+        this.isOpen = false;
+        this.section = null;
+        this.root.classList.add('collapsed');
+        this.root.dataset.section = '';
+        this.hub.setAttribute('aria-expanded', 'false');
+        this.hub.setAttribute('aria-label', 'Open control menu');
+        this.render();
+    }
+
+    async selectSection(id) {
+        this.section = this.section === id ? null : id;
+        this.root.dataset.section = this.section || '';
+        this.leafOffset = 0;
+
+        if (this.section === 'filter') {
+            await this.ensureFilterData();
+        }
+        this.render();
+    }
+
+    async ensureFilterData() {
+        if (!this.globeExplorer || this.globeExplorer.hasFilterData) return;
+        this.setReadout('LOADING PLACES');
+        try {
+            await this.globeExplorer.ensureFilterData();
+        } catch (error) {
+            console.error('ControlMenu: failed to load filter data', error);
+        }
+        this.render();
+    }
+
+    syncFilterState() {
+        const filters = this.globeExplorer?.getSelectedFilters?.() || {};
+        const active = Boolean(filters.country || filters.state || filters.location);
+        this.root.classList.toggle('has-filter', active);
+    }
+
+    // ── rendering ──
+
+    render() {
+        this.syncFilterState();
+        this.renderSections();
+        this.renderOptions();
+        this.renderReadout();
+    }
+
+    node({ label, sub, size, radius, angle, active, open, title, onClick, onHover }) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'cm-node';
+        btn.style.fontSize = `${Math.max(5.5, 7 * this.scale)}px`;
+
+        const text = document.createElement('span');
+        text.className = 'cm-sector-label';
+        text.textContent = label;
+        text.style.whiteSpace = sub ? 'nowrap' : 'normal';
+        btn.appendChild(text);
+
+        if (sub) {
+            const count = document.createElement('span');
+            count.className = 'cm-node-count';
+            count.textContent = sub;
+            btn.appendChild(count);
+            btn.style.flexDirection = 'column';
+        }
+
+        if (active) btn.classList.add('is-active');
+        if (open) btn.classList.add('is-open');
+        if (title) {
+            btn.title = title;
+            btn.setAttribute('aria-label', title);
+        }
+
+        this.place(btn, radius, angle, size);
+
+        btn.addEventListener('click', (event) => {
+            event.stopPropagation();
+            onClick();
+        });
+        if (onHover) {
+            btn.addEventListener('pointerenter', () => onHover());
+            btn.addEventListener('focus', () => onHover());
+            btn.addEventListener('pointerleave', () => this.setHover(''));
+            btn.addEventListener('blur', () => this.setHover(''));
+        }
+
+        return btn;
+    }
+
+    renderSections() {
+        this.sectorLayer.innerHTML = '';
+        if (!this.isOpen) return;
+
+        const angles = this.anglesFor(SECTIONS.length, 12);
+        SECTIONS.forEach((section, index) => {
+            const node = this.node({
+                label: section.label,
+                size: this.geometry.nodeA,
+                radius: this.geometry.ringA,
+                angle: angles[index],
+                open: this.section === section.id,
+                active: this.section === section.id,
+                title: `${section.label} options`,
+                onClick: () => this.selectSection(section.id)
+            });
+            node.setAttribute('role', 'tab');
+            node.setAttribute('aria-selected', this.section === section.id ? 'true' : 'false');
+            this.sectorLayer.appendChild(node);
+        });
+    }
+
+    renderOptions() {
+        if (!this.optionLayer) return;
+        this.optionLayer.innerHTML = '';
+        this.leafLayer.innerHTML = '';
+        this.leafItems = null;
+
+        if (!this.isOpen || !this.section) {
+            this.renderReadout();
+            return;
+        }
+
+        switch (this.section) {
+            case 'filter':
+                this.renderFilterOptions();
+                break;
+            case 'layout':
+                this.renderLayoutOptions();
+                break;
+            case 'order':
+                this.renderOrderOptions();
+                break;
+            case 'exposure':
+                this.renderExposureOptions();
+                break;
+            default:
+                break;
+        }
+
+        this.renderReadout();
+    }
+
+    renderFilterOptions() {
+        const filters = this.globeExplorer?.getSelectedFilters?.() || {};
+        const entries = [...FILTER_TYPES.map((t) => ({ ...t })), { id: 'clear', label: 'CLEAR' }];
+        const angles = this.anglesFor(entries.length, 10);
+
+        entries.forEach((entry, index) => {
+            if (entry.id === 'clear') {
+                const hasFilter = Boolean(filters.country || filters.state || filters.location);
+                const node = this.node({
+                    label: 'CLEAR',
+                    size: this.geometry.nodeB,
+                    radius: this.geometry.ringB,
+                    angle: angles[index],
+                    title: 'Clear all filters',
+                    onClick: () => this.globeExplorer?.clearFilters?.()
+                });
+                node.disabled = !hasFilter;
+                node.style.opacity = hasFilter ? '' : '0.35';
+                this.optionLayer.appendChild(node);
+                return;
+            }
+
+            const selected = filters[entry.id];
+            const node = this.node({
+                label: entry.label,
+                sub: selected ? this.shorten(selected, 12) : '',
+                size: this.geometry.nodeB,
+                radius: this.geometry.ringB,
+                angle: angles[index],
+                active: Boolean(selected),
+                open: this.filterType === entry.id,
+                title: selected ? `${entry.label}: ${selected}` : `Filter by ${entry.label.toLowerCase()}`,
+                onClick: () => {
+                    this.filterType = entry.id;
+                    this.leafOffset = 0;
+                    this.renderOptions();
+                }
+            });
+            this.optionLayer.appendChild(node);
+        });
+
+        this.renderFilterLeaf();
+    }
+
+    renderFilterLeaf() {
+        const options = this.globeExplorer?.getFilterOptions?.(this.filterType) || [];
+        this.leafItems = options;
+
+        if (!options.length) {
+            this.leafLayer.appendChild(this.emptyLeafHint());
+            return;
+        }
+
+        const size = this.geometry.nodeC;
+        const radius = this.geometry.ringC;
+        // Angular pitch that keeps neighbouring nodes from touching.
+        this.leafStep = Math.max(10, ((size * 1.2) / radius) * (180 / Math.PI));
+        const top = 90 - 6;
+        this.leafCapacity = Math.floor((90 - 12) / this.leafStep) + 1;
+        this.leafOffset = Math.max(0, Math.min(this.leafOffset, Math.max(0, options.length - this.leafCapacity)));
+
+        const filters = this.globeExplorer?.getSelectedFilters?.() || {};
+
+        options.forEach((item, index) => {
+            const angle = top - (index - this.leafOffset) * this.leafStep;
+            if (angle < 2 || angle > 92) return;
+
+            const isActive = filters[this.filterType] === item.value;
+            const node = this.node({
+                label: this.shorten(item.label, 14),
+                sub: String(item.count),
+                size,
+                radius,
+                angle,
+                active: isActive,
+                title: `${item.label} — ${item.count} photo${item.count === 1 ? '' : 's'}`,
+                onClick: () => {
+                    if (isActive) {
+                        this.globeExplorer?.clearFilters?.();
+                        return;
+                    }
+                    this.globeExplorer?.applyFilterOption?.(this.filterType, item);
+                },
+                onHover: () => this.setHover(`${item.label} · ${item.count}`)
+            });
+            this.leafLayer.appendChild(node);
+        });
+
+        if (options.length > this.leafCapacity) {
+            this.leafLayer.appendChild(this.rotateHandle(-1, 90 - 1));
+            this.leafLayer.appendChild(this.rotateHandle(1, 1));
+        }
+    }
+
+    rotateHandle(direction, angle) {
+        const size = Math.max(18, 22 * this.scale);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'cm-node cm-node-rotate';
+        btn.textContent = direction < 0 ? '−' : '+';
+        btn.style.fontSize = `${Math.max(8, 11 * this.scale)}px`;
+        btn.title = direction < 0 ? 'Earlier options' : 'More options';
+        btn.setAttribute('aria-label', btn.title);
+        this.place(btn, this.geometry.ringC, angle, size);
+        btn.addEventListener('click', (event) => {
+            event.stopPropagation();
+            this.rotateLeaf(direction);
+        });
+        return btn;
+    }
+
+    rotateLeaf(direction) {
+        const total = this.leafItems?.length || 0;
+        const max = Math.max(0, total - (this.leafCapacity || 1));
+        const next = Math.max(0, Math.min(max, this.leafOffset + direction));
+        if (next === this.leafOffset) return;
+        this.leafOffset = next;
+        this.renderFilterLeafOnly();
+    }
+
+    renderFilterLeafOnly() {
+        this.leafLayer.innerHTML = '';
+        this.renderFilterLeaf();
+    }
+
+    emptyLeafHint() {
+        const hint = document.createElement('div');
+        hint.className = 'cm-leaf-hint';
+        hint.textContent = this.globeExplorer?.hasFilterData ? 'NO OPTIONS' : 'LOADING';
+        this.place(hint, this.geometry.ringC, 45, this.geometry.nodeC * 1.6);
+        return hint;
+    }
+
+    renderLayoutOptions() {
+        const mode = this.gallery?.layoutMode || 'grid';
+        const modes = [
+            { id: 'grid', label: 'GRID' },
+            { id: 'masonry', label: 'MASONRY' }
+        ];
+        const angles = this.anglesFor(modes.length, 22);
+
+        modes.forEach((entry, index) => {
+            this.optionLayer.appendChild(this.node({
+                label: entry.label,
+                size: this.geometry.nodeB,
+                radius: this.geometry.ringB,
+                angle: angles[index],
+                active: mode === entry.id,
+                title: entry.id === 'masonry'
+                    ? 'Masonry: keep each photo\u2019s true proportions'
+                    : 'Grid: uniform 4:3 tiles',
+                onClick: () => this.gallery?.setLayoutMode(entry.id)
+            }));
+        });
+
+        this.renderColumnLeaf();
+    }
+
+    renderColumnLeaf() {
+        if (window.innerWidth <= 768) {
+            const hint = document.createElement('div');
+            hint.className = 'cm-leaf-hint';
+            hint.textContent = 'COLUMNS AUTO';
+            this.place(hint, this.geometry.ringC, 45, this.geometry.nodeC * 1.8);
+            this.leafLayer.appendChild(hint);
+            return;
+        }
+
+        const counts = [2, 3, 4, 5, 6];
+        const angles = this.anglesFor(counts.length, 12);
+        const current = this.gallery?.columns;
+
+        counts.forEach((count, index) => {
+            this.leafLayer.appendChild(this.node({
+                label: String(count),
+                size: this.geometry.nodeC * 0.72,
+                radius: this.geometry.ringC,
+                angle: angles[index],
+                active: current === count,
+                title: `${count} columns`,
+                onClick: () => this.gallery?.setColumns(count),
+                onHover: () => this.setHover(`${count} COLUMNS`)
+            }));
+        });
+    }
+
+    renderOrderOptions() {
+        const mode = this.viewMode?.mode || 'chrono';
+        const modes = [
+            { id: 'chrono', label: 'CHRONO' },
+            { id: 'random', label: 'SHUFFLE' }
+        ];
+        const angles = this.anglesFor(modes.length, 22);
+
+        modes.forEach((entry, index) => {
+            this.optionLayer.appendChild(this.node({
+                label: entry.label,
+                size: this.geometry.nodeB,
+                radius: this.geometry.ringB,
+                angle: angles[index],
+                active: mode === entry.id,
+                title: entry.id === 'random' ? 'Shuffle the gallery' : 'Newest first',
+                onClick: () => this.viewMode?.setMode(entry.id, { forceRefresh: entry.id === 'random' })
+            }));
+        });
+    }
+
+    renderExposureOptions() {
+        const values = [3, 2, 1, 0, -1, -2, -3];
+        const angles = this.anglesFor(values.length, 8);
+        const current = window.exposureDial?.getExposure?.();
+
+        values.forEach((value, index) => {
+            this.optionLayer.appendChild(this.node({
+                label: value > 0 ? `+${value}` : String(value),
+                size: this.geometry.nodeB * 0.82,
+                radius: this.geometry.ringB,
+                angle: angles[index],
+                active: current === value,
+                title: `Exposure ${value > 0 ? `+${value}` : value}`,
+                onClick: () => window.exposureDial?.setExposure(value),
+                onHover: () => this.setHover(`EV ${value > 0 ? `+${value}` : value}`)
+            }));
+        });
+    }
+
+    // ── readout ──
+
+    setHover(label) {
+        this.hoverLabel = label;
+        this.renderReadout();
+    }
+
+    setReadout(text) {
+        if (this.readout) this.readout.textContent = text;
+    }
+
+    renderReadout() {
+        if (!this.readout) return;
+
+        if (this.hoverLabel) {
+            this.readout.textContent = this.hoverLabel;
+            return;
+        }
+
+        const parts = [];
+        const filterLabel = this.globeExplorer?.getActiveFilterLabel?.() || 'ALL';
+        parts.push(filterLabel === 'ALL' ? 'ALL PHOTOS' : filterLabel);
+
+        if (this.gallery) {
+            const mode = this.gallery.layoutMode === 'masonry' ? 'MASONRY' : 'GRID';
+            parts.push(window.innerWidth > 768 ? `${mode} ${this.gallery.columns}` : mode);
+        }
+        if (this.viewMode?.mode === 'random') {
+            parts.push('SHUFFLED');
+        }
+
+        this.readout.textContent = parts.join('  ·  ');
+    }
+
+    shorten(value, max) {
+        const text = String(value || '').toUpperCase();
+        return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+    }
+}
+
+window.ControlMenu = ControlMenu;

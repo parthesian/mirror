@@ -1,5 +1,5 @@
 /**
- * Gallery - windowed grid that only mounts viewport-near images.
+ * Gallery - windowed grid/masonry that only mounts viewport-near images.
  */
 class Gallery {
     constructor(imageService, imagePreloader) {
@@ -8,12 +8,11 @@ class Gallery {
         this.loadingElement = document.getElementById('loading');
         this.scrollLoadingElement = document.getElementById('scroll-loading');
         this.errorElement = document.getElementById('error-message');
-        this.zoomInBtn = document.getElementById('zoom-in-btn');
-        this.zoomOutBtn = document.getElementById('zoom-out-btn');
 
-        this.currentZoom = 4;
-        this.minZoom = 2;
-        this.maxZoom = 6;
+        this.minColumns = 2;
+        this.maxColumns = 6;
+        this.columns = 4;
+        this.layoutMode = 'grid';
 
         this.imagePreloader = imagePreloader || new ImagePreloader();
         this.globeService = new GlobeService();
@@ -25,13 +24,17 @@ class Gallery {
 
         this.renderState = {
             startIndex: -1,
-            endIndex: -1
+            endIndex: -1,
+            columns: 0,
+            mode: ''
         };
         this.mountedItems = new Map();
         this.isLoadingMore = false;
+        this.isMorphing = false;
         this.renderQueued = false;
         this.forceRenderQueued = false;
         this.cachedLayout = null;
+        this.pendingAspectRefresh = false;
 
         this.topSpacer = null;
         this.windowGrid = null;
@@ -41,20 +44,15 @@ class Gallery {
     }
 
     init() {
-        this.loadZoomPreference();
+        this.loadColumnPreference();
+        this.loadLayoutPreference();
         this.ensureWindowStructure();
         this.bindEvents();
+        this.applyLayoutModeClass();
         this.loadImages();
     }
 
     bindEvents() {
-        if (this.zoomInBtn) {
-            this.zoomInBtn.addEventListener('click', () => this.zoomIn());
-        }
-        if (this.zoomOutBtn) {
-            this.zoomOutBtn.addEventListener('click', () => this.zoomOut());
-        }
-
         document.addEventListener('keydown', (event) => {
             if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') {
                 return;
@@ -103,8 +101,6 @@ class Gallery {
             this.scheduleRefresh(columnsChanged);
             this.checkIfNeedsMoreContent();
         }, 200));
-
-        this.updateZoomState(false);
     }
 
     ensureWindowStructure() {
@@ -140,6 +136,9 @@ class Gallery {
             const shouldForce = this.forceRenderQueued;
             this.renderQueued = false;
             this.forceRenderQueued = false;
+            if (this.isMorphing) {
+                return;
+            }
             this.renderVisibleWindow(shouldForce);
             this.checkInfiniteScroll();
         });
@@ -227,42 +226,92 @@ class Gallery {
 
     // ── layout metrics (cached between scroll ticks) ──
 
+    get isMasonry() {
+        return this.layoutMode === 'masonry';
+    }
+
     getLayout() {
         if (this.cachedLayout) {
             return this.cachedLayout;
         }
 
         const containerWidth = this.galleryContainer.clientWidth || window.innerWidth;
-        const desktopGaps = { 1: 30, 2: 25, 3: 22, 4: 20, 5: 18, 6: 15 };
-        let columns, gap;
+        const images = this.imageService.images || [];
+        const metrics = GalleryLayout.metrics(containerWidth, this.columns);
 
-        if (window.innerWidth <= 480) {
-            gap = 10;
-            columns = Math.max(1, Math.floor((containerWidth + gap) / (120 + gap)));
-        } else if (window.innerWidth <= 768) {
-            gap = 15;
-            columns = Math.max(1, Math.floor((containerWidth + gap) / (150 + gap)));
-        } else {
-            columns = this.currentZoom;
-            gap = desktopGaps[this.currentZoom] || 15;
-        }
-
-        const itemWidth = Math.max(1, (containerWidth - gap * Math.max(columns - 1, 0)) / columns);
-        const rowHeight = itemWidth * 0.75;
-        const rowSpan = rowHeight + gap;
-        const overscanRows = Math.max(2, Math.ceil(window.innerHeight / Math.max(rowSpan, 1)));
+        const layout = this.isMasonry
+            ? GalleryLayout.masonry(images, metrics)
+            : GalleryLayout.grid(images.length, metrics);
 
         const containerRect = this.galleryContainer.getBoundingClientRect();
         const paddingTop = parseFloat(getComputedStyle(this.galleryContainer).paddingTop) || 0;
-        const contentTop = containerRect.top + (window.pageYOffset || document.documentElement.scrollTop) + paddingTop;
+        layout.contentTop = containerRect.top + (window.pageYOffset || document.documentElement.scrollTop) + paddingTop;
 
-        this.cachedLayout = { columns, gap, rowHeight, rowSpan, overscanRows, contentTop };
-        return this.cachedLayout;
+        const referenceRow = this.isMasonry
+            ? metrics.columnWidth / GalleryLayout.GRID_ASPECT + metrics.gap
+            : layout.rowSpan;
+        layout.overscan = Math.max(window.innerHeight, referenceRow * 2);
+
+        this.cachedLayout = layout;
+        return layout;
     }
 
-    // ── core renderer: incremental DOM diff ──
+    /**
+     * Index range to mount for the current scroll position, in layout space.
+     */
+    visibleRange(layout, imageCount) {
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const windowTop = scrollTop - layout.contentTop - layout.overscan;
+        const windowBottom = scrollTop - layout.contentTop + window.innerHeight + layout.overscan;
+        return GalleryLayout.rangeForViewport(
+            layout,
+            imageCount,
+            Math.max(0, windowTop),
+            Math.max(0, windowBottom)
+        );
+    }
 
-    renderVisibleWindow(force = false) {
+    /**
+     * Document-space Y of an image, and its inverse. The timeline scrubs by
+     * these instead of row arithmetic so it works in masonry too.
+     */
+    documentYForIndex(index) {
+        const layout = this.getLayout();
+        if (layout.mode === 'masonry') {
+            const rect = layout.rects[index];
+            return layout.contentTop + (rect ? rect.top : 0);
+        }
+        const row = Math.floor(index / layout.columns);
+        return layout.contentTop + row * layout.rowSpan;
+    }
+
+    indexAtDocumentY(y) {
+        const layout = this.getLayout();
+        const local = Math.max(0, y - layout.contentTop);
+        const count = (this.imageService.images || []).length;
+        if (count === 0) return 0;
+
+        if (layout.mode === 'masonry') {
+            let best = 0;
+            let bestTop = -Infinity;
+            for (let i = 0; i < layout.rects.length; i++) {
+                const rect = layout.rects[i];
+                if (!rect || rect.top > local) continue;
+                if (rect.top > bestTop) {
+                    bestTop = rect.top;
+                    best = i;
+                }
+            }
+            return Math.min(count - 1, best);
+        }
+
+        const row = Math.max(0, Math.floor(local / layout.rowSpan));
+        return Math.min(count - 1, row * layout.columns);
+    }
+
+    // ── core renderer ──
+
+    renderVisibleWindow(force = false, overrideRange = null) {
         const images = this.imageService.images;
         this.ensureWindowStructure();
 
@@ -272,82 +321,107 @@ class Gallery {
         }
 
         const layout = this.getLayout();
-        const totalRows = Math.ceil(images.length / layout.columns);
-        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-        const viewportTop = scrollTop;
-        const viewportBottom = viewportTop + window.innerHeight;
-
-        const visibleStartRow = Math.max(0, Math.floor(Math.max(0, viewportTop - layout.contentTop) / layout.rowSpan));
-        const visibleEndRow = Math.max(visibleStartRow, Math.floor(Math.max(0, viewportBottom - layout.contentTop) / layout.rowSpan));
-        const startRow = Math.max(0, visibleStartRow - layout.overscanRows);
-        const endRow = Math.min(totalRows - 1, visibleEndRow + layout.overscanRows);
-        const startIndex = startRow * layout.columns;
-        const endIndex = Math.min(images.length, (endRow + 1) * layout.columns);
+        const range = overrideRange || this.visibleRange(layout, images.length);
+        const { startIndex, endIndex } = range;
 
         const indicesChanged = startIndex !== this.renderState.startIndex ||
             endIndex !== this.renderState.endIndex;
-        const columnsChanged = layout.columns !== (this.renderState.columns || 0);
+        const shapeChanged = layout.columns !== this.renderState.columns ||
+            layout.mode !== this.renderState.mode;
 
-        this.applyWindowLayout(layout);
-        this.topSpacer.style.height = `${startRow * layout.rowSpan}px`;
-        const bottomRows = Math.max(0, totalRows - endRow - 1);
-        this.bottomSpacer.style.height = `${bottomRows * layout.rowSpan}px`;
+        this.applyContainerMetrics(layout, startIndex, endIndex, images.length);
 
-        if (!force && !indicesChanged) {
+        if (!force && !indicesChanged && !shapeChanged) {
             return;
         }
 
-        const prevStart = this.renderState.startIndex;
-        const prevEnd = this.renderState.endIndex;
+        this.syncNodes(images, startIndex, endIndex, layout);
 
-        if (prevStart === -1 || columnsChanged) {
-            this.fullRebuild(images, startIndex, endIndex, layout);
-        } else if (indicesChanged) {
-            this.incrementalUpdate(images, prevStart, prevEnd, startIndex, endIndex, layout);
-        }
-
-        this.renderState = { startIndex, endIndex, columns: layout.columns };
+        this.renderState = {
+            startIndex,
+            endIndex,
+            columns: layout.columns,
+            mode: layout.mode
+        };
         this.prefetchNearby(images, endIndex, layout.columns);
     }
 
-    fullRebuild(images, startIndex, endIndex, layout) {
-        const fragment = document.createDocumentFragment();
-
-        for (let i = startIndex; i < endIndex; i++) {
-            const node = this.getOrCreateItem(images[i], i, layout);
-            fragment.appendChild(node);
+    /**
+     * Grid holds its scroll height with spacers above and below the mounted
+     * slice; masonry positions tiles absolutely, so the window itself carries
+     * the full height instead.
+     */
+    applyContainerMetrics(layout, startIndex, endIndex, imageCount) {
+        if (layout.mode === 'masonry') {
+            this.windowGrid.classList.add('is-masonry');
+            this.windowGrid.style.gridTemplateColumns = '';
+            this.windowGrid.style.gap = '';
+            this.windowGrid.style.height = `${layout.totalHeight}px`;
+            this.topSpacer.style.height = '0px';
+            this.bottomSpacer.style.height = '0px';
+            return;
         }
 
-        this.windowGrid.innerHTML = '';
-        this.windowGrid.appendChild(fragment);
+        this.windowGrid.classList.remove('is-masonry');
+        this.windowGrid.style.height = '';
+        this.windowGrid.style.gridTemplateColumns = `repeat(${layout.columns}, minmax(0, 1fr))`;
+        this.windowGrid.style.gap = `${layout.gap}px`;
+
+        const startRow = Math.floor(startIndex / layout.columns);
+        const endRow = Math.ceil(endIndex / layout.columns) - 1;
+        const bottomRows = Math.max(0, layout.rows - endRow - 1);
+        this.topSpacer.style.height = `${startRow * layout.rowSpan}px`;
+        this.bottomSpacer.style.height = `${bottomRows * layout.rowSpan}px`;
     }
 
-    incrementalUpdate(images, prevStart, prevEnd, nextStart, nextEnd, layout) {
-        if (nextStart < prevStart) {
-            const fragment = document.createDocumentFragment();
-            for (let i = nextStart; i < Math.min(prevStart, nextEnd); i++) {
-                fragment.appendChild(this.getOrCreateItem(images[i], i, layout));
+    /**
+     * Reconcile the mounted slice against the desired index range, keeping
+     * DOM order equal to index order because grid placement depends on it.
+     */
+    syncNodes(images, startIndex, endIndex, layout) {
+        const desired = [];
+        for (let i = startIndex; i < endIndex; i++) {
+            if (images[i]) desired.push(i);
+        }
+
+        const wanted = new Set(desired.map((i) => images[i].id));
+        for (const child of Array.from(this.windowGrid.children)) {
+            if (!wanted.has(child.dataset.imageId)) {
+                child.remove();
             }
-            this.windowGrid.insertBefore(fragment, this.windowGrid.firstChild);
         }
 
-        if (nextEnd > prevEnd) {
-            const fragment = document.createDocumentFragment();
-            for (let i = Math.max(prevEnd, nextStart); i < nextEnd; i++) {
-                fragment.appendChild(this.getOrCreateItem(images[i], i, layout));
+        let cursor = this.windowGrid.firstElementChild;
+        for (const index of desired) {
+            const image = images[index];
+            const node = this.getOrCreateItem(image, index, layout);
+            this.positionItem(node, index, layout);
+
+            if (cursor === node) {
+                cursor = node.nextElementSibling;
+                continue;
             }
-            this.windowGrid.appendChild(fragment);
+            this.windowGrid.insertBefore(node, cursor);
+        }
+    }
+
+    positionItem(node, index, layout) {
+        if (layout.mode !== 'masonry') {
+            node.style.left = '';
+            node.style.top = '';
+            node.style.width = '';
+            node.style.height = '';
+            node.style.transform = '';
+            return;
         }
 
-        while (this.windowGrid.firstChild && prevStart < nextStart) {
-            this.windowGrid.removeChild(this.windowGrid.firstChild);
-            prevStart++;
-        }
-
-        while (this.windowGrid.lastChild && prevEnd > nextEnd) {
-            this.windowGrid.removeChild(this.windowGrid.lastChild);
-            prevEnd--;
-        }
+        const rect = layout.rects[index];
+        if (!rect) return;
+        node.style.left = `${rect.left}px`;
+        node.style.top = `${rect.top}px`;
+        node.style.width = `${rect.width}px`;
+        node.style.height = `${rect.height}px`;
+        node.style.transform = '';
     }
 
     // ── item creation ──
@@ -382,6 +456,7 @@ class Gallery {
                 img.addEventListener('load', () => {
                     this.imagePreloader.markLoaded(url);
                     item.classList.add('loaded');
+                    this.captureNaturalAspect(item.dataset.imageId, img);
                     resolve(img);
                 }, { once: true });
 
@@ -434,6 +509,30 @@ class Gallery {
         return item;
     }
 
+    /**
+     * Photos uploaded before dimensions were recorded arrive without a size.
+     * The first thumbnail load supplies the real ratio; masonry reflows once
+     * on the next frame rather than once per image.
+     */
+    captureNaturalAspect(imageId, img) {
+        if (!this.isMasonry || !imageId) return;
+        const image = this.imageService.getImageById(imageId);
+        if (!image || image.aspectRatioKnown) return;
+        if (!img.naturalWidth || !img.naturalHeight) return;
+
+        image.aspectRatio = img.naturalWidth / img.naturalHeight;
+        image.aspectRatioKnown = true;
+
+        if (this.pendingAspectRefresh) return;
+        this.pendingAspectRefresh = true;
+        requestAnimationFrame(() => {
+            this.pendingAspectRefresh = false;
+            if (this.isMorphing) return;
+            this.cachedLayout = null;
+            this.renderVisibleWindow(true);
+        });
+    }
+
     getImageFallbackSrc() {
         return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgdmlld0JveD0iMCAwIDQwMCAzMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0xNzUgMTI1SDE4NVYxMzVIMTc1VjEyNVoiIGZpbGw9IiM5Q0EzQUYiLz4KPHA+SW1hZ2UgTm90IEZvdW5kPC9wPgo8L3N2Zz4K';
     }
@@ -449,13 +548,6 @@ class Gallery {
         if (urls.length > 0) {
             this.imagePreloader.prefetch(urls, { concurrency: 4 });
         }
-    }
-
-    // ── layout helpers ──
-
-    applyWindowLayout(layout) {
-        this.windowGrid.style.gridTemplateColumns = `repeat(${layout.columns}, minmax(0, 1fr))`;
-        this.windowGrid.style.gap = `${layout.gap}px`;
     }
 
     // ── modal ──
@@ -510,6 +602,11 @@ class Gallery {
                 }
             });
             this.rebindMountedWindow(nodes, next.slice(start, end));
+            // A shuffle reorders aspect ratios, so masonry has to re-solve.
+            if (this.isMasonry) {
+                this.cachedLayout = null;
+                this.renderVisibleWindow(true);
+            }
             this.checkIfNeedsMoreContent();
             return;
         }
@@ -585,11 +682,14 @@ class Gallery {
         this.mountedItems.clear();
         this.topSpacer.style.height = '0px';
         this.bottomSpacer.style.height = '0px';
-        this.renderState = { startIndex: -1, endIndex: -1 };
+        this.windowGrid.style.height = '';
+        this.renderState = { startIndex: -1, endIndex: -1, columns: 0, mode: '' };
     }
 
     showEmptyState() {
         this.ensureWindowStructure();
+        this.windowGrid.classList.remove('is-masonry');
+        this.windowGrid.style.height = '';
         this.windowGrid.innerHTML = `
             <div class="empty-state" style="text-align: center; padding: 3rem; color: #666;">
                 <h3>_______</h3>
@@ -613,55 +713,214 @@ class Gallery {
         this.getGalleryItems().forEach((item) => item.classList.remove('highlighted'));
     }
 
-    // ── zoom ──
+    // ── layout mode ──
+
+    applyLayoutModeClass() {
+        document.body.classList.toggle('layout-masonry', this.isMasonry);
+        document.body.classList.toggle('layout-grid', !this.isMasonry);
+    }
+
+    /**
+     * Swap grid and masonry with a FLIP morph: capture where every mounted
+     * tile is, let the new layout decide where it should be, then animate the
+     * gap. The union of both index ranges stays mounted for the duration so
+     * no tile pops out mid-flight.
+     */
+    async setLayoutMode(mode, options = {}) {
+        const next = mode === 'masonry' ? 'masonry' : 'grid';
+        if (next === this.layoutMode || this.isMorphing) {
+            return;
+        }
+
+        this.layoutMode = next;
+        this.storeLayoutPreference(next);
+        this.applyLayoutModeClass();
+        this.emitLayoutChange();
+
+        const images = this.imageService.images || [];
+        const animate = options.animate !== false
+            && images.length > 0
+            && !this.prefersReducedMotion()
+            && this.windowGrid.querySelector('.gallery-item');
+
+        if (!animate) {
+            this.cachedLayout = null;
+            this.renderVisibleWindow(true);
+            return;
+        }
+
+        await window.UIAnimation.run(() => this.morphLayout(images));
+    }
+
+    prefersReducedMotion() {
+        return Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
+    }
+
+    async morphLayout(images) {
+        this.isMorphing = true;
+        const grid = this.windowGrid;
+
+        try {
+            const before = this.captureRects();
+            const previousHeight = grid.offsetHeight;
+
+            this.cachedLayout = null;
+            const layout = this.getLayout();
+            const nextRange = this.visibleRange(layout, images.length);
+            const union = {
+                startIndex: Math.min(this.renderState.startIndex >= 0 ? this.renderState.startIndex : nextRange.startIndex, nextRange.startIndex),
+                endIndex: Math.max(this.renderState.endIndex, nextRange.endIndex)
+            };
+
+            this.renderVisibleWindow(true, union);
+            const after = this.captureRects();
+
+            const nodes = Array.from(grid.querySelectorAll('.gallery-item'));
+            const maxHeight = Math.max(previousHeight, grid.offsetHeight);
+            grid.style.height = `${maxHeight}px`;
+            grid.classList.add('is-morphing', 'is-masonry');
+
+            for (const node of nodes) {
+                const id = node.dataset.imageId;
+                const from = before.get(id);
+                const to = after.get(id);
+                if (!to) continue;
+
+                const origin = from || { ...to, top: to.top + 24 };
+                this.freezeAt(node, origin);
+                if (!from) node.style.opacity = '0';
+            }
+
+            // Flush the frozen positions before the targets are applied so the
+            // browser has two distinct states to interpolate between.
+            void grid.offsetHeight;
+
+            for (const node of nodes) {
+                const to = after.get(node.dataset.imageId);
+                if (!to) continue;
+                this.freezeAt(node, to);
+                node.style.opacity = '1';
+            }
+
+            await this.waitForMorph(grid);
+
+            for (const node of nodes) {
+                node.style.transform = '';
+                node.style.opacity = '';
+            }
+        } finally {
+            grid.classList.remove('is-morphing');
+            this.isMorphing = false;
+            this.cachedLayout = null;
+            grid.style.height = '';
+            this.renderVisibleWindow(true);
+            this.checkIfNeedsMoreContent();
+        }
+    }
+
+    captureRects() {
+        const rects = new Map();
+        const base = this.windowGrid.getBoundingClientRect();
+        for (const node of this.windowGrid.querySelectorAll('.gallery-item')) {
+            const rect = node.getBoundingClientRect();
+            rects.set(node.dataset.imageId, {
+                left: rect.left - base.left,
+                top: rect.top - base.top,
+                width: rect.width,
+                height: rect.height
+            });
+        }
+        return rects;
+    }
+
+    freezeAt(node, rect) {
+        node.style.left = '0px';
+        node.style.top = '0px';
+        node.style.width = `${rect.width}px`;
+        node.style.height = `${rect.height}px`;
+        node.style.transform = `translate(${rect.left}px, ${rect.top}px)`;
+    }
+
+    waitForMorph(grid) {
+        return new Promise((resolve) => {
+            let settled = false;
+            const finish = () => {
+                if (settled) return;
+                settled = true;
+                grid.removeEventListener('transitionend', onEnd);
+                window.clearTimeout(timer);
+                resolve();
+            };
+            const onEnd = (event) => {
+                if (event.propertyName === 'transform' && event.target.classList.contains('gallery-item')) {
+                    window.clearTimeout(timer);
+                    timer = window.setTimeout(finish, 60);
+                }
+            };
+            let timer = window.setTimeout(finish, 700);
+            grid.addEventListener('transitionend', onEnd);
+        });
+    }
+
+    emitLayoutChange() {
+        document.dispatchEvent(new CustomEvent('galleryLayoutChange', {
+            detail: { mode: this.layoutMode, columns: this.columns }
+        }));
+    }
+
+    // ── columns ──
 
     zoomIn() {
-        if (this.currentZoom > this.minZoom) {
-            this.currentZoom--;
-            this.updateZoomState();
-        }
+        this.setColumns(this.columns - 1);
     }
 
     zoomOut() {
-        if (this.currentZoom < this.maxZoom) {
-            this.currentZoom++;
-            this.updateZoomState();
-        }
+        this.setColumns(this.columns + 1);
     }
 
-    updateZoomState(refresh = true) {
-        for (let i = 1; i <= 6; i++) {
-            this.galleryContainer.classList.remove(`zoom-${i}`);
+    setColumns(value) {
+        const next = Math.min(this.maxColumns, Math.max(this.minColumns, Number(value) || this.columns));
+        if (next === this.columns) {
+            return;
         }
-        this.galleryContainer.classList.add(`zoom-${this.currentZoom}`);
-
-        if (this.zoomInBtn) this.zoomInBtn.disabled = this.currentZoom <= this.minZoom;
-        if (this.zoomOutBtn) this.zoomOutBtn.disabled = this.currentZoom >= this.maxZoom;
-        this.storeZoomPreference(this.currentZoom);
-
-        if (refresh) {
-            this.cachedLayout = null;
-            this.scheduleRefresh(true);
-        }
+        this.columns = next;
+        this.galleryContainer.dataset.columns = String(next);
+        this.storeColumnPreference(next);
+        this.cachedLayout = null;
+        this.scheduleRefresh(true);
+        this.emitLayoutChange();
     }
 
-    storeZoomPreference(value) {
+    storeColumnPreference(value) {
         try { localStorage.setItem('mirror-zoom', value.toString()); }
         catch (e) { /* ignore */ }
     }
 
-    loadZoomPreference() {
+    loadColumnPreference() {
         try {
             const stored = localStorage.getItem('mirror-zoom');
             if (stored !== null) {
                 const value = parseInt(stored, 10);
-                if (value >= this.minZoom && value <= this.maxZoom) {
-                    this.currentZoom = value;
-                    return true;
+                if (value >= this.minColumns && value <= this.maxColumns) {
+                    this.columns = value;
                 }
             }
         } catch (e) { /* ignore */ }
-        return false;
+        this.galleryContainer.dataset.columns = String(this.columns);
+    }
+
+    storeLayoutPreference(mode) {
+        try { localStorage.setItem('mirror-layout', mode); }
+        catch (e) { /* ignore */ }
+    }
+
+    loadLayoutPreference() {
+        try {
+            const stored = localStorage.getItem('mirror-layout');
+            if (stored === 'masonry' || stored === 'grid') {
+                this.layoutMode = stored;
+            }
+        } catch (e) { /* ignore */ }
     }
 
     // ── keyboard scroll ──

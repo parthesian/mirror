@@ -1,84 +1,34 @@
 /**
- * Exposure Dial Controller
- * Handles the exposure dial functionality and theme switching
+ * Exposure state.
+ *
+ * The dial itself now lives in the radial CONTROL menu, so this class owns
+ * the value, the persisted preference and the body theme class, and renders
+ * nothing. Anything that wants to drive exposure calls setExposure().
  */
-
 class ExposureDial {
     constructor() {
-        this.currentExposure = -3; // Default exposure value for first-time visitors
         this.exposureValues = [-3, -2, -1, 0, 1, 2, 3];
-        
-        this.init();
-    }
+        this.currentExposure = -3;
 
-    init() {
-        this.dialElement = document.getElementById('exposure-dial');
-        this.dialMarks = this.dialElement.querySelectorAll('.dial-mark');
-        
-        // Load saved preference first, or use default if none exists
         if (!this.loadExposurePreference()) {
-            // Only set default if no preference was loaded
             this.setExposure(-3);
         }
-        
-        // Add event listeners
-        this.addEventListeners();
-    }
 
-    addEventListeners() {
-        // Add click listeners to dial marks
-        this.dialMarks.forEach(mark => {
-            mark.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const value = parseInt(mark.dataset.value);
-                this.setExposure(value);
-            });
-        });
-
-        // Add click listener to dial container for dragging functionality
-        this.dialElement.addEventListener('mousedown', this.handleMouseDown.bind(this));
-        
-        // Add keyboard support
         document.addEventListener('keydown', this.handleKeyDown.bind(this));
     }
 
-    handleMouseDown(e) {
-        e.preventDefault();
-        
-        const rect = this.dialElement.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-        
-        const handleMouseMove = (e) => {
-            const angle = this.calculateAngle(e.clientX, e.clientY, centerX, centerY);
-            const exposure = this.angleToExposure(angle);
-            this.setExposure(exposure);
-        };
-        
-        const handleMouseUp = () => {
-            document.removeEventListener('mousemove', handleMouseMove);
-            document.removeEventListener('mouseup', handleMouseUp);
-        };
-        
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
-    }
-
     handleKeyDown(e) {
-        // Only handle keys when no input is focused
-        if (document.activeElement.tagName === 'INPUT' || 
-            document.activeElement.tagName === 'TEXTAREA') {
+        const tag = document.activeElement?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA') {
             return;
         }
-
-        // Don't handle exposure controls when modal is open
-        if (window.app && window.app.modal && window.app.modal.isModalOpen()) {
+        if (window.app?.modal?.isModalOpen()) {
             return;
         }
 
         let newExposure = this.currentExposure;
-        
-        switch(e.key) {
+
+        switch (e.key) {
             case 'ArrowRight':
                 e.preventDefault();
                 newExposure = Math.min(3, this.currentExposure + 1);
@@ -87,101 +37,33 @@ class ExposureDial {
                 e.preventDefault();
                 newExposure = Math.max(-3, this.currentExposure - 1);
                 break;
+            default:
+                return;
         }
-        
+
         if (newExposure !== this.currentExposure) {
             this.setExposure(newExposure);
         }
     }
 
-    calculateAngle(mouseX, mouseY, centerX, centerY) {
-        const deltaX = mouseX - centerX;
-        const deltaY = mouseY - centerY;
-        let angle = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
-        
-        // Normalize angle to 0-360 degrees
-        if (angle < 0) angle += 360;
-        
-        // Adjust so 0 degrees is at the top (12 o'clock position)
-        angle = (angle + 270) % 360;
-        
-        return angle;
-    }
-
-    angleToExposure(angle) {
-        // Map angles to exposure values
-        // 0° = 0, 45° = +1, 90° = +2, 135° = +3
-        // 315° = -1, 270° = -2, 225° = -3
-        
-        const exposureAngles = {
-            0: 0,     // 0°
-            45: 1,    // 45°
-            90: 2,    // 90°
-            135: 3,   // 135°
-            225: -3,  // 225°
-            270: -2,  // 270°
-            315: -1   // 315°
-        };
-        
-        // Find the closest angle
-        let closestAngle = 0;
-        let minDiff = 360;
-        
-        for (const [targetAngle, exposure] of Object.entries(exposureAngles)) {
-            const diff = Math.min(
-                Math.abs(angle - targetAngle),
-                Math.abs(angle - targetAngle + 360),
-                Math.abs(angle - targetAngle - 360)
-            );
-            
-            if (diff < minDiff) {
-                minDiff = diff;
-                closestAngle = parseInt(targetAngle);
-            }
-        }
-        
-        return exposureAngles[closestAngle];
-    }
-
     setExposure(value) {
-        if (!this.exposureValues.includes(value)) {
+        const next = Number(value);
+        if (!this.exposureValues.includes(next)) {
             console.warn(`Invalid exposure value: ${value}`);
             return;
         }
-        
-        this.currentExposure = value;
-        
-        // Update dial visual state
-        this.updateDialVisual();
-        
-        // Apply theme
-        this.applyTheme(value);
-        
-        // Store preference
-        this.storeExposurePreference(value);
-        
-        // Dispatch custom event
-        this.dispatchExposureChangeEvent(value);
-    }
 
-    updateDialVisual() {
-        // Update dial data attribute for CSS pointer positioning
-        this.dialElement.setAttribute('data-exposure', this.currentExposure);
-        
-        // Update active mark
-        this.dialMarks.forEach(mark => {
-            const markValue = parseInt(mark.dataset.value);
-            mark.classList.toggle('active', markValue === this.currentExposure);
-        });
+        this.currentExposure = next;
+        this.applyTheme(next);
+        this.storeExposurePreference(next);
+        this.dispatchExposureChangeEvent(next);
     }
 
     applyTheme(exposure) {
-        // Remove all existing exposure classes
-        document.body.className = document.body.className.replace(/exposure-[-\d]+/g, '');
-        
-        // Add new exposure class
-        const exposureClass = `exposure-${exposure}`;
-        document.body.classList.add(exposureClass);
+        for (const value of this.exposureValues) {
+            document.body.classList.remove(`exposure-${value}`);
+        }
+        document.body.classList.add(`exposure-${exposure}`);
     }
 
     storeExposurePreference(value) {
@@ -196,7 +78,7 @@ class ExposureDial {
         try {
             const stored = localStorage.getItem('mirror-exposure');
             if (stored !== null) {
-                const value = parseInt(stored);
+                const value = parseInt(stored, 10);
                 if (this.exposureValues.includes(value)) {
                     this.setExposure(value);
                     return true;
@@ -209,25 +91,21 @@ class ExposureDial {
     }
 
     dispatchExposureChangeEvent(value) {
-        const event = new CustomEvent('exposureChange', {
+        document.dispatchEvent(new CustomEvent('exposureChange', {
             detail: { exposure: value }
-        });
-        document.dispatchEvent(event);
+        }));
     }
 
-    // Public API methods
     getExposure() {
         return this.currentExposure;
     }
 
     increaseExposure() {
-        const newValue = Math.min(3, this.currentExposure + 1);
-        this.setExposure(newValue);
+        this.setExposure(Math.min(3, this.currentExposure + 1));
     }
 
     decreaseExposure() {
-        const newValue = Math.max(-3, this.currentExposure - 1);
-        this.setExposure(newValue);
+        this.setExposure(Math.max(-3, this.currentExposure - 1));
     }
 
     resetExposure() {
@@ -235,12 +113,10 @@ class ExposureDial {
     }
 }
 
-// Initialize exposure dial when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     window.exposureDial = new ExposureDial();
 });
 
-// Export for module systems
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = ExposureDial;
 }

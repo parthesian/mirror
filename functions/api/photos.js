@@ -16,7 +16,7 @@ async function listPhotos(context) {
         return errorResponse('Invalid cursor supplied.', 400);
     }
 
-    const cols = 'id, taken_at, uploaded_at';
+    const cols = 'id, taken_at, uploaded_at, width, height';
     const clauses = [];
     const bindings = [];
 

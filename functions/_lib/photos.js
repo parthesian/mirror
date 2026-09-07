@@ -62,14 +62,18 @@ export function buildThumbnailStorageKey(storageKey = '') {
 }
 
 /**
- * Minimal row for gallery list pagination: sorting keys + display date only.
- * Thumbnail/full URLs are derived on the client from `id`.
+ * Minimal row for gallery list pagination: sorting keys, display date, and
+ * intrinsic size. Thumbnail/full URLs are derived on the client from `id`.
+ * Width/height ride along because the masonry layout needs a real aspect
+ * ratio before the image bytes arrive.
  */
 export function mapPhotoListRecord(record) {
     return {
         id: record.id,
         takenAt: record.taken_at,
-        uploadedAt: record.uploaded_at
+        uploadedAt: record.uploaded_at,
+        width: record.width ?? null,
+        height: record.height ?? null
     };
 }
 

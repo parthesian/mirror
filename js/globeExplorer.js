@@ -1585,7 +1585,56 @@ class GlobeExplorer {
         return window.LocationModel.groupTrips(locs);
     }
 
-    // ── filtering ──
+    // ── filtering: public API for the radial control menu ──
+
+    /**
+     * The geo feed backs both the globe and the filter lists. Callers await
+     * this before reading options; repeat calls are free once it has landed.
+     */
+    async ensureFilterData() {
+        await this._fetchLocations();
+        return this.locations;
+    }
+
+    get hasFilterData() {
+        return this._geoFetchedOnce;
+    }
+
+    getFilterOptions(type) {
+        if (!this._geoFetchedOnce) return [];
+        return this._getOptionsForType(type);
+    }
+
+    getSelectedFilters() {
+        return { ...(this.selectedFilters || { country: '', state: '', location: '' }) };
+    }
+
+    getActiveFilterLabel() {
+        return this._formatSelectedFiltersLabel();
+    }
+
+    async applyFilterOption(type, item) {
+        this._setFilterSelectionFromOption(type, item, false);
+        const selected = this._getMostSpecificFilterSelection();
+        if (!selected) {
+            await this._clearFilter();
+            return;
+        }
+        await this._applyFilter(selected.type, selected.value);
+    }
+
+    async clearFilters() {
+        await this._clearFilter();
+    }
+
+    _emitFilterChange() {
+        document.dispatchEvent(new CustomEvent('galleryFilterChange', {
+            detail: {
+                filters: this.getSelectedFilters(),
+                label: this.getActiveFilterLabel()
+            }
+        }));
+    }
 
     _renderFilterMenu() {
         if (!this.filterTypeList || !this.filterOptionList) return;
@@ -1874,6 +1923,7 @@ class GlobeExplorer {
         }
         this.imageService.takenFromFilter = takenFrom || null;
         this.imageService.takenToFilter = takenTo || null;
+        this._emitFilterChange();
         if (window.gallery) {
             await window.gallery.loadImages();
         }
@@ -1890,6 +1940,7 @@ class GlobeExplorer {
         this.imageService.takenFromFilter = null;
         this.imageService.takenToFilter = null;
         this._renderFilterMenu();
+        this._emitFilterChange();
         if (window.gallery) {
             await window.gallery.loadImages();
         }
