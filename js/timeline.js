@@ -17,6 +17,8 @@ class Timeline {
         this.toggleAllBtn = null;
         this.enabledKeys = new Set();
         this.lockedKey = null;
+        this._enabledFilterKey = '';
+        this._enabledMonthsPromise = null;
         if (!this.container) return;
 
         this.updateSidebarPosition();
@@ -405,6 +407,27 @@ class Timeline {
     async refreshEnabledMonths() {
         if (!this.monthElements.size) return;
 
+        const filterKey = JSON.stringify(this.getActiveFilters());
+        if (filterKey === this._enabledFilterKey && this.enabledKeys.size) {
+            return;
+        }
+
+        if (this._enabledMonthsPromise && this._enabledFilterKey === filterKey) {
+            return this._enabledMonthsPromise;
+        }
+
+        this._enabledFilterKey = filterKey;
+        this._enabledMonthsPromise = this._refreshEnabledMonthsInternal();
+        try {
+            await this._enabledMonthsPromise;
+        } finally {
+            if (this._enabledFilterKey === filterKey) {
+                this._enabledMonthsPromise = null;
+            }
+        }
+    }
+
+    async _refreshEnabledMonthsInternal() {
         if (!this.hasActiveFilters()) {
             const allKeys = new Set([...this.monthElements.keys()]);
             this.applyEnabledState(allKeys);
@@ -417,6 +440,7 @@ class Timeline {
             this.applyEnabledState(enabled);
         } catch (error) {
             console.error('Timeline: failed to refresh enabled months:', error);
+            this._enabledFilterKey = '';
         }
     }
 

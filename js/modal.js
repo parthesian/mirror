@@ -2,7 +2,7 @@
  * Modal - Handles the fullscreen image modal and navigation
  */
 class Modal {
-    constructor(imageService, imagePreloader) {
+    constructor(imageService, imagePreloader, globeService) {
         this.imageService = imageService;
         
         // View modal elements
@@ -52,8 +52,9 @@ class Modal {
         this.isUploadModalOpen = false;
         this.isNavigating = false;
         
-        // Globe integration
-        this.globeService = new GlobeService();
+        // Globe integration — share the gallery preload instance so the
+        // hidden warmup actually transfers into the modal.
+        this.globeService = globeService || new GlobeService();
         this.imagePreloader = imagePreloader || new ImagePreloader();
         
         this.init();
@@ -236,8 +237,10 @@ class Modal {
         this.currentImageId = null;
         this.isNavigating = false;
 
-        // Keep globe instance alive for reuse across modal opens.
+        // Keep globe instance alive for reuse across modal opens, but
+        // stop the hidden 60fps loop until the next photo needs it.
         if (this.globeContainer) {
+            this.globeService?.pause?.(this.globeContainer);
             this.globeContainer.classList.add('hidden');
             this.globeContainer.style.width = '';
             this.globeContainer.style.height = '';

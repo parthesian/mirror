@@ -13,6 +13,9 @@ class ImageService {
         this.nextCursor = null;
         this.activeLoadPromise = null;
         this.activeLoadKind = null;
+        this._loadSeq = 0;
+        this._abortController = null;
+        this._activeFilterKey = '';
         this.countryFilter = null;
         this.stateFilter = null;
         this.locationFilter = null;
@@ -59,7 +62,7 @@ class ImageService {
         const safeId = encodeURIComponent(id);
         const basePath = `/api/photos/${safeId}/image`;
         if (variant === 'thumb') {
-            return this.buildApiUrl(`/cdn-cgi/image/width=640,height=640,fit=scale-down,quality=82${basePath}`);
+            return this.buildApiUrl(`/cdn-cgi/image/width=640,height=640,fit=scale-down,quality=82,format=auto${basePath}`);
         }
         return this.buildApiUrl(basePath);
     }
@@ -239,6 +242,30 @@ class ImageService {
         return addedPhotos;
     }
 
+    filterKey() {
+        return [
+            this.countryFilter || '',
+            this.stateFilter || '',
+            this.locationFilter || '',
+            this.takenFromFilter || '',
+            this.takenToFilter || ''
+        ].join('\u0001');
+    }
+
+    _abortActiveLoad() {
+        if (this._abortController) {
+            this._abortController.abort();
+            this._abortController = null;
+        }
+    }
+
+    _loadSignal() {
+        if (!this._abortController) {
+            this._abortController = new AbortController();
+        }
+        return this._abortController.signal;
+    }
+
     /**
      * Request a page of photos from the API.
      * @param {string|null} cursor - Cursor for pagination
@@ -280,7 +307,8 @@ class ImageService {
             headers: {
                 'Content-Type': 'application/json'
             },
-            mode: 'cors'
+            mode: 'cors',
+            signal: this._loadSignal()
         });
 
         if (!response.ok) {
@@ -418,22 +446,24 @@ class ImageService {
      * @returns {Promise<Array>} Loaded image metadata
      */
     async fetchImages() {
-        if (this.activeLoadPromise) {
-            if (this.activeLoadKind === 'fetch') {
-                return this.activeLoadPromise;
-            }
-
-            await this.activeLoadPromise;
-            return this.images;
+        const key = this.filterKey();
+        if (this.activeLoadPromise && this.activeLoadKind === 'fetch' && this._activeFilterKey === key) {
+            return this.activeLoadPromise;
         }
 
+        this._abortActiveLoad();
+        const seq = ++this._loadSeq;
+        this._activeFilterKey = key;
         this.activeLoadKind = 'fetch';
-        this.activeLoadPromise = this.fetchImagesInternal();
+        const promise = this.fetchImagesInternal();
+        this.activeLoadPromise = promise;
         try {
-            return await this.activeLoadPromise;
+            return await promise;
         } finally {
-            this.activeLoadPromise = null;
-            this.activeLoadKind = null;
+            if (this._loadSeq === seq) {
+                this.activeLoadPromise = null;
+                this.activeLoadKind = null;
+            }
         }
     }
 
@@ -450,6 +480,9 @@ class ImageService {
 
             return this.images;
         } catch (error) {
+            if (error.name === 'AbortError') {
+                return this.images;
+            }
             console.error('Failed to fetch images:', error);
 
             if (error.name === 'TypeError' && error.message.includes('fetch')) {
@@ -475,21 +508,35 @@ class ImageService {
         }
 
         if (this.activeLoadPromise) {
-            if (this.activeLoadKind === 'loadMore') {
+            if (this.activeLoadKind === 'loadMore' && this._activeFilterKey === this.filterKey()) {
                 return this.activeLoadPromise;
             }
 
-            await this.activeLoadPromise;
-            return this.loadMorePhotos();
+            if (this.activeLoadKind === 'fetch') {
+                await this.activeLoadPromise;
+                return this.loadMorePhotos();
+            }
+
+            this._abortActiveLoad();
+            try {
+                await this.activeLoadPromise;
+            } catch {
+                // Superseded page load; start the current request below.
+            }
         }
 
+        const seq = ++this._loadSeq;
+        this._activeFilterKey = this.filterKey();
         this.activeLoadKind = 'loadMore';
-        this.activeLoadPromise = this.loadMorePhotosInternal();
+        const promise = this.loadMorePhotosInternal();
+        this.activeLoadPromise = promise;
         try {
-            return await this.activeLoadPromise;
+            return await promise;
         } finally {
-            this.activeLoadPromise = null;
-            this.activeLoadKind = null;
+            if (this._loadSeq === seq) {
+                this.activeLoadPromise = null;
+                this.activeLoadKind = null;
+            }
         }
     }
 
@@ -509,6 +556,9 @@ class ImageService {
 
             return addedPhotos;
         } catch (error) {
+            if (error.name === 'AbortError') {
+                return [];
+            }
             console.error('Failed to load more photos:', error);
             throw new Error(`Failed to load more photos: ${error.message}`);
         } finally {

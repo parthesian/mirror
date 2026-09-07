@@ -138,6 +138,7 @@ class GlobeService {
 
       const target = this._rotationForLatLng(coords.lat, coords.lon, THREE);
       instance.targetRotation = target;
+      this.resume(containerEl);
 
       containerEl.classList.remove('hidden');
     } catch (err) {
@@ -211,7 +212,9 @@ class GlobeService {
       targetRotation: { x: 0, y: 0 },
       rafId: null,
       onResize: null,
-      disposed: false
+      disposed: false,
+      paused: false,
+      tick: null
     };
 
     // Resize handler
@@ -227,7 +230,10 @@ class GlobeService {
 
     // Animate
     const animate = () => {
-      if (state.disposed) return;
+      if (state.disposed || state.paused) {
+        state.rafId = null;
+        return;
+      }
 
       // Ease current rotation toward target
       const ease = 0.08;
@@ -238,9 +244,44 @@ class GlobeService {
       state.rafId = requestAnimationFrame(animate);
     };
 
+    state.tick = animate;
     animate();
 
     return state;
+  }
+
+  /**
+   * Stop the RAF loop without disposing the compiled WebGL context.
+   * Hidden preloads keep shaders warm but should not paint at 60fps.
+   * @param {HTMLElement} containerEl - Instance container
+   */
+  pause(containerEl) {
+    const state = this.instances.get(containerEl);
+    if (!state || state.disposed) {
+      return;
+    }
+
+    state.paused = true;
+    if (state.rafId) {
+      cancelAnimationFrame(state.rafId);
+      state.rafId = null;
+    }
+  }
+
+  /**
+   * Resume a paused renderer after transfer or a visible update.
+   * @param {HTMLElement} containerEl - Instance container
+   */
+  resume(containerEl) {
+    const state = this.instances.get(containerEl);
+    if (!state || state.disposed) {
+      return;
+    }
+
+    state.paused = false;
+    if (!state.rafId && typeof state.tick === 'function') {
+      state.tick();
+    }
   }
 
   /**
@@ -254,7 +295,8 @@ class GlobeService {
       this.preloadLocation = locationOrOptions;
       
       await this.createOrUpdate(preloadContainer, locationOrOptions);
-      
+      this.pause(preloadContainer);
+
       this.isPreloaded = true;
     } catch (error) {
       console.error('GlobeService: Failed to preload globe:', error);
@@ -312,6 +354,7 @@ class GlobeService {
           };
           window.addEventListener('resize', preloadedInstance.onResize);
           
+          this.resume(targetContainer);
           targetContainer.classList.remove('hidden');
           
           this.preloadContainer = null;
