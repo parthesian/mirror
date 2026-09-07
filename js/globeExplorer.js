@@ -632,6 +632,7 @@ class GlobeExplorer {
             await this._fetchLocations();
             await this._initScene();
             this._setSceneRunning(true);
+            this.threeState?.onResize?.();
             if (focusLocation) {
                 await this._focusLocation(focusLocation);
             }
@@ -970,8 +971,10 @@ class GlobeExplorer {
             this.pointerGesture = {
                 x: e.clientX,
                 y: e.clientY,
+                pointerType: e.pointerType || 'mouse',
                 dragged: false,
-                hadWheel: false
+                hadWheel: false,
+                tapHandled: false
             };
             drag = {
                 x: e.clientX,
@@ -984,7 +987,8 @@ class GlobeExplorer {
             if (!drag) return;
             const dx = e.clientX - drag.x;
             const dy = e.clientY - drag.y;
-            if (this.pointerGesture && ((dx * dx + dy * dy) > 36)) {
+            const slop = (this.pointerGesture?.pointerType === 'touch') ? 18 : 6;
+            if (this.pointerGesture && ((dx * dx + dy * dy) > slop * slop)) {
                 this.pointerGesture.dragged = true;
                 this.lastManualRotateAt = Date.now();
                 if (this.autoRotateEnabled) {
@@ -1062,22 +1066,38 @@ class GlobeExplorer {
                 this.pointerGesture.hadWheel = true;
             }
         }, { passive: true });
-        const endDrag = () => {
-            this.lastPointerGesture = this.pointerGesture;
+        const endDrag = (e) => {
+            const gesture = this.pointerGesture;
+            this.lastPointerGesture = gesture;
+            const shouldTap = Boolean(
+                e
+                && e.type === 'pointerup'
+                && gesture
+                && !gesture.dragged
+                && !gesture.hadWheel
+                && (gesture.pointerType === 'touch' || gesture.pointerType === 'pen')
+            );
             this.pointerGesture = null;
             drag = null;
+            if (shouldTap) {
+                gesture.tapHandled = true;
+                this.lastPointerGesture = gesture;
+                handleGlobePick(e);
+            }
         };
         renderer.domElement.addEventListener('pointerup', endDrag);
-        renderer.domElement.addEventListener('pointerleave', endDrag);
+        renderer.domElement.addEventListener('pointercancel', endDrag);
+        renderer.domElement.addEventListener('pointerleave', (e) => {
+            if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+                return;
+            }
+            endDrag(e);
+        });
         renderer.domElement.addEventListener('mouseleave', () => {
             this._setHoverHighlight(null, null);
         });
 
-        renderer.domElement.addEventListener('click', (e) => {
-            const gesture = this.lastPointerGesture;
-            if (gesture?.dragged || gesture?.hadWheel) {
-                return;
-            }
+        const handleGlobePick = (e) => {
             const rect = renderer.domElement.getBoundingClientRect();
             mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
             mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -1188,7 +1208,19 @@ class GlobeExplorer {
             // If no point is selected, fallback to country polygons.
             this._hideIntersectPicker();
             applyCountryChoice();
-            return;
+        };
+
+        renderer.domElement.addEventListener('click', (e) => {
+            const gesture = this.lastPointerGesture;
+            if (gesture?.tapHandled) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+            if (gesture?.dragged || gesture?.hadWheel) {
+                return;
+            }
+            handleGlobePick(e);
         });
 
         const state = {
@@ -1764,7 +1796,19 @@ class GlobeExplorer {
         return null;
     }
 
+    _suppressGhostClick() {
+        const block = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+        };
+        document.addEventListener('click', block, true);
+        window.setTimeout(() => {
+            document.removeEventListener('click', block, true);
+        }, 450);
+    }
+
     async _applyFilter(filterType, filterValue, takenFrom = null, takenTo = null, label = '') {
+        this._suppressGhostClick();
         this.close();
         this.selectedFilterType = filterType;
         if (filterType === 'country') {

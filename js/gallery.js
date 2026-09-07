@@ -31,6 +31,7 @@ class Gallery {
         this.mountedItems = new Map();
         this.isLoadingMore = false;
         this.isMorphing = false;
+        this.isReordering = false;
         this.morphFreeze = false;
         this.renderQueued = false;
         this.forceRenderQueued = false;
@@ -143,7 +144,7 @@ class Gallery {
             const shouldForce = this.forceRenderQueued;
             this.renderQueued = false;
             this.forceRenderQueued = false;
-            if (this.isMorphing) {
+            if (this.isMorphing || this.isReordering) {
                 return;
             }
             this.renderVisibleWindow(shouldForce);
@@ -691,26 +692,31 @@ class Gallery {
             : [];
 
         if (end > start && nodes.length && window.Flipboard) {
-            const thumbCandidates = [...previous, ...next]
-                .map((image) => image?.thumbnailUrl)
-                .filter(Boolean);
-            await window.Flipboard.animateWindow({
-                items: nodes,
-                previousImages: previous.slice(start, end),
-                nextImages: next.slice(start, end),
-                preloader: this.imagePreloader,
-                thumbCandidates,
-                onTileLanded: (item, index, image) => {
-                    this.rebindOne(item, image);
+            this.isReordering = true;
+            try {
+                const thumbCandidates = [...previous, ...next]
+                    .map((image) => image?.thumbnailUrl)
+                    .filter(Boolean);
+                await window.Flipboard.animateWindow({
+                    items: nodes,
+                    previousImages: previous.slice(start, end),
+                    nextImages: next.slice(start, end),
+                    preloader: this.imagePreloader,
+                    thumbCandidates,
+                    onTileLanded: (item, index, image) => {
+                        this.rebindOne(item, image);
+                    }
+                });
+                this.rebindMountedWindow(nodes, next.slice(start, end));
+                // A shuffle reorders aspect ratios, so masonry has to re-solve.
+                if (this.isMasonry) {
+                    this.cachedLayout = null;
+                    this.renderVisibleWindow(true);
                 }
-            });
-            this.rebindMountedWindow(nodes, next.slice(start, end));
-            // A shuffle reorders aspect ratios, so masonry has to re-solve.
-            if (this.isMasonry) {
-                this.cachedLayout = null;
-                this.renderVisibleWindow(true);
+                this.checkIfNeedsMoreContent();
+            } finally {
+                this.isReordering = false;
             }
-            this.checkIfNeedsMoreContent();
             return;
         }
 

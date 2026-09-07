@@ -478,6 +478,7 @@ body.exposure-1 .scroll-loading p {
 .gallery-item.flipboard-busy:hover {
     pointer-events: none;
     transform: none;
+    will-change: transform;
 }
 
 .gallery-item.flipboard-busy .gallery-item-image {
@@ -493,6 +494,7 @@ body.exposure-1 .scroll-loading p {
     pointer-events: none;
     overflow: hidden;
     z-index: 2;
+    will-change: transform;
 }
 
 .flipboard-flap-image {
