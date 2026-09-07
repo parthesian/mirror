@@ -156,9 +156,9 @@ const Flipboard = {
                 return Promise.resolve();
             }
 
-            const destReady = typeof preloader.preloadImage === 'function'
-                ? preloader.preloadImage(destUrl)
-                : prefetchPromise;
+            if (typeof preloader.preloadImage === 'function') {
+                void preloader.preloadImage(destUrl);
+            }
             const tickCount = this.MIN_TICKS + Math.floor(Math.random() * (this.MAX_TICKS - this.MIN_TICKS + 1));
             const sequence = this.pickIntermediates(pool, currentUrl, destUrl, tickCount)
                 .filter((url) => url !== destUrl && preloader.isImageLoaded(url));
@@ -167,10 +167,18 @@ const Flipboard = {
                 for (const url of sequence) {
                     await this.flipOnce(item, img, url);
                 }
-                await destReady;
-                if (destUrl) {
-                    await this.flipOnce(item, img, destUrl);
+                // Keep flapping cached faces if dest is still arriving so the
+                // board never sits still, then land on dest as the last tick.
+                let extras = 0;
+                while (destUrl && !preloader.isImageLoaded(destUrl) && extras < this.MAX_TICKS) {
+                    const filler = sequence[extras % Math.max(sequence.length, 1)]
+                        || pool[extras % Math.max(pool.length, 1)];
+                    if (filler && filler !== destUrl) {
+                        await this.flipOnce(item, img, filler);
+                    }
+                    extras += 1;
                 }
+                await this.flipOnce(item, img, destUrl);
             });
         });
 

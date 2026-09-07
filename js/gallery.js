@@ -507,6 +507,8 @@ class Gallery {
                 thumbCandidates
             });
             this.rebindMountedWindow(nodes, next.slice(start, end));
+            this.checkIfNeedsMoreContent();
+            return;
         }
 
         this.cachedLayout = null;

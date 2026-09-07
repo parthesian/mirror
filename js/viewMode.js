@@ -13,6 +13,7 @@ class ViewMode {
         this.timeline = timeline;
         this.button = document.getElementById('randomize-btn');
         this.isTransitioning = false;
+        this.pendingMode = null;
         this.syncDocument();
         this.bindEvents();
     }
@@ -57,6 +58,7 @@ class ViewMode {
         const next = mode === 'random' ? 'random' : 'chrono';
         const refresh = options.refresh !== false;
         if (this.isTransitioning) {
+            this.pendingMode = next;
             return;
         }
         const previousImages = this.imageService.images.slice();
@@ -75,7 +77,6 @@ class ViewMode {
         }
 
         this.isTransitioning = true;
-        this.button?.setAttribute('disabled', 'true');
         try {
             // Start the timeline slide with the first flap so the rail does
             // not sit still and then snap after the board finishes.
@@ -101,8 +102,12 @@ class ViewMode {
             }));
         } finally {
             this.isTransitioning = false;
-            this.button?.removeAttribute('disabled');
             this.syncButton();
+            const queued = this.pendingMode;
+            this.pendingMode = null;
+            if (queued && queued !== this.mode) {
+                void this.setMode(queued);
+            }
         }
     }
 
