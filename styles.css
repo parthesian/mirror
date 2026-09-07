@@ -59,13 +59,13 @@ body {
 
 /* Semantic ink/line tokens per exposure. Chrome reads these instead of
    restating hex values for every control at every exposure step. */
-body.exposure--3 { --ink: #ffffff; --ink-dim: #cccccc; --ink-soft: #999999; --line: #666666; --surface: rgba(12, 12, 12, 0.74); --surface-solid: #0b0b0b; }
-body.exposure--2 { --ink: #ffffff; --ink-dim: #cccccc; --ink-soft: #999999; --line: #777777; --surface: rgba(26, 26, 26, 0.74); --surface-solid: #1b1b1b; }
-body.exposure--1 { --ink: #000000; --ink-dim: #333333; --ink-soft: #555555; --line: #999999; --surface: rgba(38, 38, 38, 0.68); --surface-solid: #4a4a4a; }
-body.exposure-0  { --ink: #333333; --ink-dim: #666666; --ink-soft: #808080; --line: #999999; --surface: rgba(236, 236, 236, 0.70); --surface-solid: #cfcfcf; }
-body.exposure-1  { --ink: #000000; --ink-dim: #666666; --ink-soft: #808080; --line: #aaaaaa; --surface: rgba(246, 246, 246, 0.74); --surface-solid: #e2e2e2; }
-body.exposure-2  { --ink: #000000; --ink-dim: #666666; --ink-soft: #888888; --line: #cccccc; --surface: rgba(250, 250, 250, 0.76); --surface-solid: #efefef; }
-body.exposure-3  { --ink: #000000; --ink-dim: #666666; --ink-soft: #888888; --line: #dddddd; --surface: rgba(255, 255, 255, 0.78); --surface-solid: #f7f7f7; }
+body.exposure--3 { --ink: #ffffff; --ink-dim: #cccccc; --ink-soft: #999999; --line: #666666; --surface: rgba(12, 12, 12, 0.74); --surface-solid: #0b0b0b; --on-ink: #0b0b0b; }
+body.exposure--2 { --ink: #ffffff; --ink-dim: #cccccc; --ink-soft: #999999; --line: #777777; --surface: rgba(26, 26, 26, 0.74); --surface-solid: #1b1b1b; --on-ink: #1b1b1b; }
+body.exposure--1 { --ink: #000000; --ink-dim: #333333; --ink-soft: #555555; --line: #999999; --surface: rgba(38, 38, 38, 0.68); --surface-solid: #4a4a4a; --on-ink: #f2f2f2; }
+body.exposure-0  { --ink: #333333; --ink-dim: #666666; --ink-soft: #808080; --line: #999999; --surface: rgba(236, 236, 236, 0.70); --surface-solid: #cfcfcf; --on-ink: #f2f2f2; }
+body.exposure-1  { --ink: #000000; --ink-dim: #666666; --ink-soft: #808080; --line: #aaaaaa; --surface: rgba(246, 246, 246, 0.74); --surface-solid: #e2e2e2; --on-ink: #f2f2f2; }
+body.exposure-2  { --ink: #000000; --ink-dim: #666666; --ink-soft: #888888; --line: #cccccc; --surface: rgba(250, 250, 250, 0.76); --surface-solid: #efefef; --on-ink: #f7f7f7; }
+body.exposure-3  { --ink: #000000; --ink-dim: #666666; --ink-soft: #888888; --line: #dddddd; --surface: rgba(255, 255, 255, 0.78); --surface-solid: #f7f7f7; --on-ink: #ffffff; }
 
 /* Header styles */
 .header {
@@ -3897,9 +3897,11 @@ body.ui-animating .control-menu {
     outline-offset: 2px;
 }
 
-/* Selected value: filled so it reads at a glance from across the arc. */
+/* Selected value: filled so it reads at a glance from across the arc.
+   --on-ink is the contrast color on that fill — at EV -1 the fill is
+   black and --surface-solid is also dark, which made -1 unreadable. */
 .cm-node.is-active {
-    color: var(--surface-solid, #eee);
+    color: var(--on-ink, #eee);
     border-color: var(--ink, #333);
     background: var(--ink, #333);
 }
@@ -3913,7 +3915,7 @@ body.ui-animating .control-menu {
 }
 
 .cm-node.is-open.is-active {
-    color: var(--surface-solid, #eee);
+    color: var(--on-ink, #eee);
     background: var(--ink, #333);
 }
 
