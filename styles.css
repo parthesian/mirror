@@ -31,9 +31,11 @@ body {
     --rail-center: calc(var(--gutter) + var(--rail-w) / 2);
     /* Horizontal space the grid gives up so the rail never overlaps a photo. */
     --rail-reserve: calc(var(--gutter) * 2 + var(--rail-w));
-    --grid-pad: 1.15rem;
+    --grid-pad: 1.1rem;
+    /* Space between the header block and the first photo row. */
+    --gallery-top: 0.45rem;
     /* Top edge of the first photo row; the rail starts on the same line. */
-    --rail-top: calc(var(--header-h) + var(--gutter) + var(--grid-pad));
+    --rail-top: calc(var(--header-h) + var(--gallery-top) + var(--grid-pad));
 
     --ctl: 30px;
     --ctl-sm: 24px;
@@ -53,8 +55,9 @@ body {
     :root {
         --gutter: 1.25rem;
         --chrome-top: 1.5rem;
-        --header-h: 3.7rem;
-        --grid-pad: 0.85rem;
+        --header-h: 3.55rem;
+        --grid-pad: 0.7rem;
+        --gallery-top: 0.25rem;
     }
 }
 
@@ -270,7 +273,7 @@ body.view-random .timeline-sidebar:not(.is-animated) {
 .main-content {
     max-width: 1400px;
     margin: 0 auto;
-    padding: var(--gutter);
+    padding: var(--gallery-top) var(--gutter) var(--gutter);
     position: relative;
     z-index: 2;
 }
@@ -2079,7 +2082,7 @@ body.exposure-1 .btn-secondary {
     }
 
     .main-content {
-        padding: 0.55rem 1rem 1rem;
+        padding: var(--gallery-top) 1rem 1rem;
     }
 
     /* Hide navigation buttons on mobile in modal */
@@ -3566,7 +3569,7 @@ body.exposure-0 .timeline-sidebar.timeline-popout .timeline-month.active {
         flex: 1;
         min-height: 50vh;
         min-width: 0;
-        margin: 0 1.1rem;
+        margin: 0 1.45rem;
     }
 
     .globe-explorer-toolbar {
