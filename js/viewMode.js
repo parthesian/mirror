@@ -77,8 +77,16 @@ class ViewMode {
         this.isTransitioning = true;
         this.button?.setAttribute('disabled', 'true');
         try {
-            // Flip in the current layout first so timeline show/hide does not
-            // resize columns mid-animation. Document chrome updates after.
+            // Start the timeline slide with the first flap so the rail does
+            // not sit still and then snap after the board finishes.
+            if (next === 'random') {
+                document.body.classList.add('view-random');
+                this.timeline?.slideAway();
+            } else {
+                document.body.classList.remove('view-random');
+                this.timeline?.slideIn();
+            }
+
             if (typeof this.gallery.transitionToNewOrder === 'function') {
                 await this.gallery.transitionToNewOrder(previousImages);
             } else {
@@ -120,6 +128,10 @@ class ViewMode {
         const isRandom = this.mode === 'random';
         document.body.classList.toggle('view-random', isRandom);
         this.syncButton();
+        if (typeof this.timeline?.settleAfterSlide === 'function') {
+            this.timeline.settleAfterSlide(isRandom);
+            return;
+        }
         this.timeline?.updateSidebarPosition();
     }
 
