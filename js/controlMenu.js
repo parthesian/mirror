@@ -7,7 +7,7 @@
  * the bottom edge and 90° runs up the right edge.
  *
  *   hub  → open/close
- *   ring A → sections (filter, globe, layout, order, exposure)
+ *   ring A → sections (globe, filter, layout, order, exposure)
  *   ring B → that section's options
  *   ring C → leaf values, rotatable when the list is longer than the arc
  */
@@ -30,17 +30,19 @@ const LEAF_TOP = 76;
 const LEAF_BOTTOM = 14;
 
 const SECTIONS = [
-    { id: 'filter', label: 'FILTER' },
     { id: 'globe', label: 'GLOBE' },
+    { id: 'filter', label: 'FILTER' },
     { id: 'layout', label: 'LAYOUT' },
     { id: 'order', label: 'ORDER' },
     { id: 'exposure', label: 'EXPOSE' }
 ];
 
+// Painted right-to-left on the quarter-circle (index 0 nearest 90°),
+// so +1 sits on the right and -1 on the left.
 const EXPOSURE_OPTIONS = [
-    { id: -1, label: '-1' },
+    { id: 1, label: '+1' },
     { id: 0, label: '0' },
-    { id: 1, label: '+1' }
+    { id: -1, label: '-1' }
 ];
 
 const FILTER_TYPES = [

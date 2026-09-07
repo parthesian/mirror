@@ -2887,26 +2887,6 @@ body.exposure-1 { --leak-opacity: 0.35; }
     filter: grayscale(1) contrast(1.05) brightness(0.9);
 }
 
-.globe-explorer-panel {
-    position: relative;
-    z-index: 2;
-    width: 280px;
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    /* Clears the floating toolbar so a long panel never starts underneath
-       the close button. */
-    padding: 4.75rem 2rem 2rem;
-    overflow-y: auto;
-}
-
-/* Auto margins centre a short panel but, unlike justify-content, do not clip
-   the top of one that overflows. */
-.globe-explorer-panel-inner {
-    text-align: left;
-    margin: auto 0;
-}
-
 .globe-explorer-hint {
     font-size: 0.85rem;
     font-weight: 300;
@@ -2915,199 +2895,10 @@ body.exposure-1 { --leak-opacity: 0.35; }
     text-transform: lowercase;
 }
 
-.globe-panel-country {
-    font-size: 1.25rem;
-    font-weight: 300;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    margin: 0 0 0.3rem 0;
-    line-height: 1.25;
-}
-
-.globe-panel-count {
-    font-size: 0.72rem;
-    font-weight: 300;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    opacity: 0.55;
-    margin: 0 0 1.4rem 0;
-}
-
-/* Small caps rule that separates the trip list from the heading. */
-.globe-panel-section {
-    font-size: 0.56rem;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    opacity: 0.45;
-    margin: 0 0 0.4rem 0;
-    padding-bottom: 0.45rem;
-    border-bottom: 1px solid currentColor;
-}
-
-.globe-panel-trips {
-    display: flex;
-    flex-direction: column;
-    margin-bottom: 1.5rem;
-}
-
-.globe-panel-trip {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    font-size: 0.8rem;
-    font-weight: 300;
-}
-
-.trip-date {
-    letter-spacing: 0.03em;
-}
-
-.trip-count {
-    opacity: 0.5;
-    font-size: 0.75rem;
-}
-
-.globe-panel-filter-btn {
-    display: block;
-    width: 100%;
-    padding: 0.68rem 1rem;
-    margin-bottom: 0.5rem;
-    background: transparent;
-    border: 1px solid currentColor;
-    border-radius: 0;
-    color: inherit;
-    font-family: 'Helvetica Neue', Arial, sans-serif;
-    font-size: 0.72rem;
-    font-weight: 400;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: background var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease);
-    opacity: 0.7;
-}
-
-.globe-panel-filter-btn:hover {
-    opacity: 1;
-    background: color-mix(in srgb, currentColor 12%, transparent);
-}
-
-/* The confirm action carries weight; the scope picker above stays quiet. */
-.globe-panel-filter-btn.is-primary {
-    opacity: 1;
-    background: color-mix(in srgb, currentColor 10%, transparent);
-}
-
-.globe-panel-filter-btn.is-primary:hover {
-    background: color-mix(in srgb, currentColor 22%, transparent);
-}
-
-.globe-panel-actions {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 0.6rem;
-    padding-top: 0.9rem;
-    border-top: 1px solid currentColor;
-}
-
-.globe-panel-filter-scope {
-    display: grid;
-    gap: 0.35rem;
-    font-size: 0.56rem;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    opacity: 0.72;
-    text-align: left;
-}
-
-.globe-panel-filter-scope select {
-    width: 100%;
-    border: 1px solid currentColor;
-    background: transparent;
-    color: inherit;
-    font-family: inherit;
-    font-size: 0.76rem;
-    letter-spacing: 0.06em;
-    text-transform: none;
-    padding: 0.48rem 0.5rem;
-    border-radius: 0;
-    outline: none;
-    opacity: 0.85;
-}
-
-.globe-panel-filter-scope select:focus {
-    opacity: 1;
-}
-
-/* Native option lists cannot inherit a translucent panel, so pin a
-   readable pair per panel tone. */
-body.exposure--1 .globe-panel-filter-scope select option {
-    background: #161616;
-    color: #ffffff;
-}
-
-body.exposure-0 .globe-panel-filter-scope select option,
-body.exposure-1 .globe-panel-filter-scope select option {
-    background: #ffffff;
-    color: #141414;
-}
-
-/* Trips read as a ledger: date on the left, count flush right. */
-.globe-panel-trip-link {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: baseline;
-    gap: 0.75rem;
-    width: 100%;
-    border: none;
-    border-bottom: 1px solid currentColor;
-    background: transparent;
-    color: inherit;
-    padding: 0.5rem 0;
-    cursor: pointer;
-    font-size: 0.78rem;
-    font-weight: 300;
-    opacity: 0.8;
-    text-align: left;
-    transition: opacity var(--dur-fast) var(--ease), padding-left var(--dur-fast) var(--ease);
-}
-
-.globe-panel-trip-link:hover,
-.globe-panel-trip-link:focus-visible {
-    opacity: 1;
-    padding-left: 0.35rem;
-}
-
-.globe-panel-trip-link .trip-count {
-    font-variant-numeric: tabular-nums;
-}
-
 /* Globe explorer exposure themes */
 body.exposure--1 .globe-explorer { background: rgba(0, 0, 0, 0.98); color: #ffffff; }
 body.exposure-0  .globe-explorer { background: rgba(168, 168, 168, 0.98); color: #333333; }
 body.exposure-1  .globe-explorer { background: rgba(255, 255, 255, 0.98); color: #000000; }
-
-/* Side panel: opaque surface so copy never reads as black-on-dark against the globe */
-body.exposure--1 .globe-explorer-panel {
-    background: rgba(22, 22, 22, 0.94);
-    color: rgba(255, 255, 255, 0.96);
-    border-left: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: -10px 0 28px rgba(0, 0, 0, 0.35);
-}
-
-body.exposure-0 .globe-explorer-panel {
-    background: rgba(248, 248, 248, 0.97);
-    color: #2a2a2a;
-    border-left: 1px solid rgba(0, 0, 0, 0.08);
-    box-shadow: -8px 0 22px rgba(0, 0, 0, 0.06);
-}
-
-body.exposure-1 .globe-explorer-panel {
-    background: rgba(255, 255, 255, 0.97);
-    color: #141414;
-    border-left: 1px solid rgba(0, 0, 0, 0.1);
-    box-shadow: -8px 0 22px rgba(0, 0, 0, 0.08);
-}
 
 /* ============================================
    CONTROL menu — quarter circle anchored to the bottom-right corner.
@@ -3559,11 +3350,6 @@ body.exposure-0 .timeline-sidebar.timeline-popout .timeline-month.active {
         min-width: 0;
     }
 
-    /* Stacked below the scene here, so the toolbar is no longer above it. */
-    .globe-explorer-panel {
-        padding: 1.5rem;
-    }
-
     .globe-explorer-toolbar {
         top: max(0.5rem, env(safe-area-inset-top, 0px));
         right: max(0.5rem, env(safe-area-inset-right, 0px));
@@ -3590,38 +3376,6 @@ body.exposure-0 .timeline-sidebar.timeline-popout .timeline-month.active {
         width: auto;
         max-height: min(30vh, 280px);
         box-sizing: border-box;
-    }
-
-    .globe-explorer-panel {
-        width: 100%;
-        max-width: 100%;
-        min-width: 0;
-        max-height: 40vh;
-        padding: 1rem;
-        box-sizing: border-box;
-        overflow-x: hidden;
-    }
-
-    body.exposure--1 .globe-explorer-panel {
-        border-left: none;
-        border-top: 1px solid rgba(255, 255, 255, 0.1);
-        box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.35);
-    }
-
-    body.exposure-0 .globe-explorer-panel {
-        border-left: none;
-        border-top: 1px solid rgba(0, 0, 0, 0.08);
-        box-shadow: 0 -8px 22px rgba(0, 0, 0, 0.06);
-    }
-
-    body.exposure-1 .globe-explorer-panel {
-        border-left: none;
-        border-top: 1px solid rgba(0, 0, 0, 0.1);
-        box-shadow: 0 -8px 22px rgba(0, 0, 0, 0.08);
-    }
-
-    .globe-explorer-panel-inner {
-        text-align: left;
     }
 }
 
