@@ -61,16 +61,12 @@ class GlobeExplorer {
 
         this._bindEvents();
         this._setFilterPanelExpanded(false);
+        this._bindPrefetchIntent();
         this._warmup();
     }
 
     _escapeHtml(value) {
-        return String(value ?? '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
+        return window.DomSafe.escapeHtml(value);
     }
 
     _formatFilterLabel(filterType, filterValue, label = '') {
@@ -120,43 +116,19 @@ class GlobeExplorer {
     }
 
     _normalizeLocationPart(value) {
-        return String(value || '')
-            .normalize('NFKD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .toLowerCase()
-            .trim()
-            .replace(/\s+/g, ' ');
+        return window.LocationModel.normalizePart(value);
     }
 
     _stateKeyForLoc(loc) {
-        const state = this._normalizeLocationPart(loc?.state);
-        if (!state) return '';
-        const country = this._normalizeLocationPart(loc?.country);
-        return `state:${state}|country:${country}`;
+        return window.LocationModel.stateKey(loc);
     }
 
     _locationKeyFor(loc) {
-        const place = String(loc?.location || '').trim();
-        if (place) {
-            const state = this._normalizeLocationPart(loc?.state);
-            const country = this._normalizeLocationPart(loc?.country);
-            return `place:${this._normalizeLocationPart(place)}|state:${state}|country:${country}`;
-        }
-        const lat = Number(loc?.latitude);
-        const lon = Number(loc?.longitude);
-        if (Number.isFinite(lat) && Number.isFinite(lon)) {
-            return `coords:${lat.toFixed(3)},${lon.toFixed(3)}`;
-        }
-        return `photo:${String(loc?.id || '')}`;
+        return window.LocationModel.locationKey(loc);
     }
 
     _formatLocationWithRegion(loc) {
-        const location = String(loc?.location || '').trim();
-        const region = String(loc?.state || '').trim();
-        if (!region || region.toLowerCase() === location.toLowerCase()) {
-            return location;
-        }
-        return location ? `${location}, ${region}` : region;
+        return window.LocationModel.formatWithRegion(loc);
     }
 
     _setHoverHighlight(type, key) {
@@ -178,256 +150,38 @@ class GlobeExplorer {
     }
 
     _normalizeCountryName(value) {
-        return String(value || '')
-            .normalize('NFKD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, ' ')
-            .trim()
-            .replace(/\s+/g, ' ');
+        return window.LocationModel.normalizeCountryName(value);
     }
 
     _seedCountryAliasesFromLocations() {
-        this.countryFilterAliasMap = new Map();
-        const addAlias = (alias, canonical) => {
-            const key = this._normalizeCountryName(alias);
-            if (!key || !canonical) return;
-            if (!this.countryFilterAliasMap.has(key)) {
-                this.countryFilterAliasMap.set(key, canonical);
-            }
-        };
-        const explicitAliases = {
-            usa: 'USA',
-            us: 'USA',
-            'u s a': 'USA',
-            'u s': 'USA',
-            'united states': 'USA',
-            'united states of america': 'USA',
-            uk: 'United Kingdom',
-            'united kingdom': 'United Kingdom',
-            britain: 'United Kingdom',
-            'great britain': 'United Kingdom',
-            uae: 'United Arab Emirates',
-            'united arab emirates': 'United Arab Emirates',
-            russia: 'Russia',
-            'russian federation': 'Russia',
-            korea: 'South Korea',
-            'south korea': 'South Korea',
-            'republic of korea': 'South Korea',
-            'north korea': 'North Korea',
-            'dprk': 'North Korea'
-        };
-        for (const [alias, canonical] of Object.entries(explicitAliases)) {
-            addAlias(alias, canonical);
-        }
-
-        for (const country of Object.keys(this.locationsByCountry || {})) {
-            if (!country || country === 'Unknown') continue;
-            addAlias(country, country);
-        }
+        this.countryFilterAliasMap = window.LocationModel.seedCountryAliases(this.locationsByCountry);
     }
 
     _resolveCountryFilterValue(countryName, aliases = []) {
-        const candidates = [countryName, ...(Array.isArray(aliases) ? aliases : [])];
-        for (const candidate of candidates) {
-            const key = this._normalizeCountryName(candidate);
-            const mapped = this.countryFilterAliasMap.get(key);
-            if (mapped && this.locationsByCountry[mapped]?.length > 0) return mapped;
-            if (candidate && this.locationsByCountry[candidate]?.length > 0) return candidate;
-        }
-        return countryName || '';
+        return window.LocationModel.resolveCountryFilterValue(
+            countryName,
+            aliases,
+            this.locationsByCountry,
+            this.countryFilterAliasMap
+        );
     }
 
     async _ensureCountryBoundariesLoaded() {
-        if (this.countryBoundaryFeatures.length) return;
-        if (this._countryBoundaryPromise) return this._countryBoundaryPromise;
-        this._countryBoundaryPromise = this._loadCountryBoundaries();
-        try {
-            await this._countryBoundaryPromise;
-        } finally {
-            this._countryBoundaryPromise = null;
-        }
-    }
-
-    async _loadCountryBoundaries() {
-        const dataSources = [
-            'public/data/ne_110m_admin_0_countries.geojson',
-            'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson'
-        ];
-        let featureCollection = null;
-        for (const src of dataSources) {
-            try {
-                const res = await fetch(src, { cache: 'force-cache' });
-                if (!res.ok) continue;
-                featureCollection = await res.json();
-                if (featureCollection?.features?.length) break;
-            } catch (_) {
-                // Continue to next source.
-            }
-        }
-        if (!featureCollection?.features?.length) {
-            console.warn('[GlobeExplorer] country boundaries unavailable');
-            this.countryBoundaryFeatures = [];
-            this.countryBoundaryAliasMap = new Map();
-            return;
-        }
-
-        const aliases = new Map();
-        const features = [];
-
-        const normalizeLon = (lon) => {
-            const out = ((Number(lon) + 540) % 360) - 180;
-            return Number.isFinite(out) ? out : lon;
-        };
-        const getBbox = (rings) => {
-            let minLon = Infinity;
-            let maxLon = -Infinity;
-            let minLat = Infinity;
-            let maxLat = -Infinity;
-            for (const ring of rings) {
-                for (const point of ring) {
-                    const lon = normalizeLon(point[0]);
-                    const lat = Number(point[1]);
-                    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
-                    minLon = Math.min(minLon, lon);
-                    maxLon = Math.max(maxLon, lon);
-                    minLat = Math.min(minLat, lat);
-                    maxLat = Math.max(maxLat, lat);
-                }
-            }
-            if (!Number.isFinite(minLon) || !Number.isFinite(minLat)) return null;
-            return { minLon, maxLon, minLat, maxLat };
-        };
-        const normalizeAlias = (value) => this._normalizeCountryName(value);
-        const addAlias = (value, featureRef) => {
-            const key = normalizeAlias(value);
-            if (!key) return;
-            if (!aliases.has(key)) aliases.set(key, featureRef);
-        };
-        const cleanName = (value) => String(value || '').trim();
-        const namesForProps = (props) => ([
-            props?.NAME,
-            props?.NAME_LONG,
-            props?.BRK_NAME,
-            props?.FORMAL_EN,
-            props?.ADMIN,
-            props?.ABBREV,
-            props?.ISO_A2,
-            props?.ISO_A3
-        ].map(cleanName).filter(Boolean));
-
-        for (const feature of featureCollection.features) {
-            const geometry = feature?.geometry;
-            if (!geometry) continue;
-            const type = geometry.type;
-            const polygons = [];
-            if (type === 'Polygon') {
-                if (Array.isArray(geometry.coordinates)) polygons.push(geometry.coordinates);
-            } else if (type === 'MultiPolygon') {
-                if (Array.isArray(geometry.coordinates)) polygons.push(...geometry.coordinates);
-            } else continue;
-
-            const ringsForBbox = [];
-            for (const polygon of polygons) {
-                if (!Array.isArray(polygon)) continue;
-                for (const ring of polygon) {
-                    if (Array.isArray(ring)) ringsForBbox.push(ring);
-                }
-            }
-            const bbox = getBbox(ringsForBbox);
-            if (!bbox) continue;
-
-            const props = feature.properties || {};
-            const names = namesForProps(props);
-            const primaryName = cleanName(props.ADMIN || props.NAME || props.BRK_NAME || props.NAME_LONG || '');
-            if (!primaryName) continue;
-
-            const featureRef = {
-                name: primaryName,
-                names,
-                iso2: cleanName(props.ISO_A2),
-                iso3: cleanName(props.ISO_A3),
-                polygons,
-                bbox
-            };
-            features.push(featureRef);
-            for (const n of names) addAlias(n, featureRef);
-        }
-
-        this.countryBoundaryFeatures = features;
-        this.countryBoundaryAliasMap = aliases;
-    }
-
-    _pointInRing(lon, lat, ring) {
-        let inside = false;
-        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-            const xi = Number(ring[i][0]);
-            const yi = Number(ring[i][1]);
-            const xj = Number(ring[j][0]);
-            const yj = Number(ring[j][1]);
-            if (!Number.isFinite(xi) || !Number.isFinite(yi) || !Number.isFinite(xj) || !Number.isFinite(yj)) continue;
-            const intersects = ((yi > lat) !== (yj > lat))
-                && (lon < ((xj - xi) * (lat - yi)) / ((yj - yi) || 1e-12) + xi);
-            if (intersects) inside = !inside;
-        }
-        return inside;
-    }
-
-    _pointInPolygon(lon, lat, polygon) {
-        if (!Array.isArray(polygon) || !polygon.length) return false;
-        const [outer, ...holes] = polygon;
-        if (!Array.isArray(outer) || !outer.length) return false;
-        if (!this._pointInRing(lon, lat, outer)) return false;
-        for (const hole of holes) {
-            if (Array.isArray(hole) && hole.length && this._pointInRing(lon, lat, hole)) return false;
-        }
-        return true;
+        await window.countryBoundaries.ensureLoaded();
+        this.countryBoundaryFeatures = window.countryBoundaries.features;
+        this.countryBoundaryAliasMap = window.countryBoundaries.aliasMap;
     }
 
     _dirToLatLon(THREE, worldDirection, group) {
-        const localDir = worldDirection.clone().normalize();
-        if (group) {
-            // Raycast hit points are in world space; convert to globe local space
-            // so lon/lat math matches the same frame as _latLonToVec3.
-            const worldQuat = group.getWorldQuaternion(new THREE.Quaternion());
-            localDir.applyQuaternion(worldQuat.invert()).normalize();
-        }
-        const lat = THREE.MathUtils.radToDeg(Math.asin(THREE.MathUtils.clamp(localDir.y, -1, 1)));
-        let lon = THREE.MathUtils.radToDeg(Math.atan2(-localDir.z, localDir.x));
-        lon = ((lon + 540) % 360) - 180;
-        return { lat, lon };
-    }
-
-    _isWithinBbox(lon, lat, bbox) {
-        if (!bbox) return true;
-        const latOk = lat >= bbox.minLat && lat <= bbox.maxLat;
-        if (!latOk) return false;
-        // Dateline-spanning ranges get very large width. In that case skip strict lon clipping.
-        if ((bbox.maxLon - bbox.minLon) > 300) return true;
-        return lon >= bbox.minLon && lon <= bbox.maxLon;
+        return window.countryBoundaries.dirToLatLon(THREE, worldDirection, group);
     }
 
     _findCountryFromDirection(THREE, direction, group) {
-        if (!this.countryBoundaryFeatures.length) return null;
-        const { lat, lon } = this._dirToLatLon(THREE, direction, group);
-        for (const feature of this.countryBoundaryFeatures) {
-            if (!this._isWithinBbox(lon, lat, feature.bbox)) continue;
-            for (const polygon of feature.polygons) {
-                if (this._pointInPolygon(lon, lat, polygon)) {
-                    return {
-                        feature,
-                        lat,
-                        lon
-                    };
-                }
-            }
-        }
-        return null;
+        return window.countryBoundaries.findCountryFromDirection(THREE, direction, group);
     }
 
     _countryFeatureKey(featureRef) {
-        if (!featureRef) return '';
-        return featureRef.iso3 || featureRef.iso2 || featureRef.name || '';
+        return window.countryBoundaries.countryFeatureKey(featureRef);
     }
 
     _clearCountryBorderHighlight() {
@@ -877,8 +631,10 @@ class GlobeExplorer {
         document.body.style.overflow = 'hidden';
 
         try {
+            this._prefetchAssets({ includeBoundaries: true, includeGeo: true });
             await this._fetchLocations();
             await this._initScene();
+            this._setSceneRunning(true);
             if (focusLocation) {
                 await this._focusLocation(focusLocation);
             }
@@ -897,8 +653,9 @@ class GlobeExplorer {
         this.overlay.classList.remove('active');
         this.overlay.classList.add('hidden');
         document.body.style.overflow = '';
-        // Keep scene alive for faster subsequent opens.
-        // this._destroyScene();
+        // Keep the WebGL scene, but stop the RAF loop so a closed overlay
+        // does not keep rendering 60fps behind the gallery.
+        this._setSceneRunning(false);
     }
 
     async _focusLocation(location) {
@@ -964,11 +721,54 @@ class GlobeExplorer {
         this._syncRotateToggleUI();
     }
 
+    _bindPrefetchIntent() {
+        const prefetch = () => this._prefetchAssets({ includeBoundaries: true, includeGeo: true });
+        this.openBtn?.addEventListener('pointerenter', prefetch);
+        this.openBtn?.addEventListener('focus', prefetch);
+    }
+
+    _prefetchAssets({ includeBoundaries = false, includeGeo = false } = {}) {
+        window.threeLoader?.prefetchSceneGraph();
+        if (includeGeo) {
+            this._fetchLocations().catch(() => {});
+        }
+        if (includeBoundaries) {
+            window.countryBoundaries?.ensureLoaded()
+                .then(() => {
+                    this.countryBoundaryFeatures = window.countryBoundaries.features;
+                    this.countryBoundaryAliasMap = window.countryBoundaries.aliasMap;
+                })
+                .catch(() => {});
+        }
+    }
+
     _warmup() {
-        this._loadThree()
-            .then(() => this._loadOrbitControls())
-            .catch(() => {});
-        this._fetchLocations().catch(() => {});
+        // Idle warmup must not race first-viewport thumbnails. Hover/focus on
+        // the globe button still starts Three + geo + borders immediately.
+        const start = () => this._prefetchAssets({ includeBoundaries: false, includeGeo: true });
+        if (typeof window.requestIdleCallback === 'function') {
+            window.requestIdleCallback(start, { timeout: 3500 });
+        } else {
+            window.setTimeout(start, 1400);
+        }
+    }
+
+    _setSceneRunning(running) {
+        const s = this.threeState;
+        if (!s) {
+            return;
+        }
+        s.running = Boolean(running);
+        if (s.running) {
+            if (!s.rafId && typeof s.animate === 'function') {
+                s.animate();
+            }
+            return;
+        }
+        if (s.rafId) {
+            cancelAnimationFrame(s.rafId);
+            s.rafId = null;
+        }
     }
 
     _toggleRotation() {
@@ -1063,6 +863,9 @@ class GlobeExplorer {
     // ── Three.js loading ──
 
     _loadThree() {
+        if (window.threeLoader) {
+            return window.threeLoader.loadThree();
+        }
         if (window.THREE) return Promise.resolve(window.THREE);
         if (this._threePromise) return this._threePromise;
         this._threePromise = import('three').then(mod => {
@@ -1073,6 +876,9 @@ class GlobeExplorer {
     }
 
     _loadOrbitControls() {
+        if (window.threeLoader) {
+            return window.threeLoader.loadOrbitControls();
+        }
         if (this._orbitPromise) return this._orbitPromise;
         this._orbitPromise = import('three/addons/controls/OrbitControls.js')
             .then(mod => mod.OrbitControls);
@@ -1141,12 +947,17 @@ class GlobeExplorer {
         group.rotation.y = -Math.PI / 2; // align globe texture and data points
         scene.add(group);
 
-        const geo = new THREE.SphereGeometry(1, 48, 48);
+        const segments = window.threeLoader?.sphereSegments('explorer') || 48;
+        const geo = new THREE.SphereGeometry(1, segments, segments);
         let tex = null;
         let mat = null;
         try {
-            tex = await new THREE.TextureLoader().loadAsync('public/earth_atmos_2048.jpg');
-            tex.colorSpace = THREE.SRGBColorSpace;
+            tex = window.threeLoader
+                ? await window.threeLoader.createEarthTexture(THREE)
+                : await new THREE.TextureLoader().loadAsync('public/earth_atmos_2048.jpg');
+            if (!window.threeLoader) {
+                tex.colorSpace = THREE.SRGBColorSpace;
+            }
             mat = new THREE.MeshPhongMaterial({ map: tex, shininess: 1, color: 0xcccccc });
         } catch (err) {
             console.warn('[GlobeExplorer] texture load failed, using fallback material', err);
@@ -1414,13 +1225,18 @@ class GlobeExplorer {
         window.addEventListener('resize', state.onResize);
 
         const animate = () => {
-            if (state.disposed) return;
+            if (state.disposed || state.running === false) {
+                state.rafId = null;
+                return;
+            }
             if (controls) controls.update();
             else if (this.autoRotateEnabled) group.rotation.y += 0.001;
             this._updateClickPulses(performance.now());
             renderer.render(scene, camera);
             state.rafId = requestAnimationFrame(animate);
         };
+        state.animate = animate;
+        state.running = true;
         animate();
 
         this.threeState = state;
@@ -1460,13 +1276,7 @@ class GlobeExplorer {
     // ── dots + arcs ──
 
     _latLonToVec3(lat, lon, radius, THREE) {
-        const phi = THREE.MathUtils.degToRad(90 - lat);
-        const theta = THREE.MathUtils.degToRad(lon + 180);
-        return new THREE.Vector3(
-            -radius * Math.sin(phi) * Math.cos(theta),
-            radius * Math.cos(phi),
-            radius * Math.sin(phi) * Math.sin(theta)
-        );
+        return window.globeRoutes.latLonToVec3(lat, lon, radius, THREE);
     }
 
     _buildDots(THREE, group) {
@@ -1552,84 +1362,12 @@ class GlobeExplorer {
     }
 
     _buildArcs(THREE, group) {
-        if (this.locations.length < 2) return null;
-
-        const radius = 1.01;
-        const minArcAngle = THREE.MathUtils.degToRad(1.0);
-        const arcMat = new THREE.LineBasicMaterial({
-            color: 0xffffff,
-            transparent: true,
-            opacity: 0.12,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false
-        });
-
-        const seenEdges = new Set();
-        const arcs = [];
-        let prev = null;
-        let prevKey = '';
-        let sequence = 0;
-        for (const loc of this.locations) {
-            const lat = Number(loc?.latitude);
-            const lon = Number(loc?.longitude);
-            if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-                continue;
-            }
-
-            const locKey = this._locationKeyFor(loc);
-            if (!prev) {
-                prev = loc;
-                prevKey = locKey;
-                continue;
-            }
-
-            if (locKey === prevKey) {
-                continue;
-            }
-
-            const edgeKey = [prevKey, locKey].sort().join('->');
-            if (!seenEdges.has(edgeKey)) {
-                const start = this._latLonToVec3(prev.latitude, prev.longitude, radius, THREE);
-                const end = this._latLonToVec3(lat, lon, radius, THREE);
-                const angle = start.clone().normalize().angleTo(end.clone().normalize());
-                if (angle >= minArcAngle) {
-                    seenEdges.add(edgeKey);
-                    arcs.push({ start, end, angle, sequence });
-                    sequence += 1;
-                }
-            }
-
-            prev = loc;
-            prevKey = locKey;
-        }
-
-        if (!arcs.length) return null;
-
-        arcs.sort((a, b) => {
-            if (b.angle !== a.angle) return b.angle - a.angle;
-            return a.sequence - b.sequence;
-        });
-
-        const segmentPoints = [];
-        for (const arc of arcs) {
-            const mid = new THREE.Vector3().addVectors(arc.start, arc.end).multiplyScalar(0.5);
-            const dist = arc.start.distanceTo(arc.end);
-            mid.normalize().multiplyScalar(radius + dist * 0.3);
-
-            const curve = new THREE.QuadraticBezierCurve3(arc.start, mid, arc.end);
-            const angleDeg = THREE.MathUtils.radToDeg(arc.angle);
-            const segments = Math.max(8, Math.min(32, Math.ceil(angleDeg / 4)));
-            const points = curve.getPoints(segments);
-            for (let i = 1; i < points.length; i++) {
-                segmentPoints.push(points[i - 1], points[i]);
-            }
-        }
-
-        const lineGeo = new THREE.BufferGeometry().setFromPoints(segmentPoints);
-        const arcLines = new THREE.LineSegments(lineGeo, arcMat);
-        arcLines.renderOrder = 1;
-        group.add(arcLines);
-        return arcLines;
+        return window.globeRoutes.buildArcs(
+            THREE,
+            group,
+            this.locations,
+            (loc) => this._locationKeyFor(loc)
+        );
     }
 
     // ── panel ──
@@ -1844,20 +1582,7 @@ class GlobeExplorer {
     }
 
     _groupTrips(locs) {
-        const sorted = [...locs].sort((a, b) => new Date(a.takenAt) - new Date(b.takenAt));
-        const trips = [];
-        let current = [sorted[0]];
-
-        for (let i = 1; i < sorted.length; i++) {
-            const gap = new Date(sorted[i].takenAt) - new Date(sorted[i - 1].takenAt);
-            if (gap > 30 * 24 * 60 * 60 * 1000) {
-                trips.push(current);
-                current = [];
-            }
-            current.push(sorted[i]);
-        }
-        trips.push(current);
-        return trips;
+        return window.LocationModel.groupTrips(locs);
     }
 
     // ── filtering ──

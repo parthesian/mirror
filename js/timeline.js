@@ -189,11 +189,14 @@ class Timeline {
     updateSidebarPosition() {
         if (!this.container) return;
 
-        document.body.classList.toggle('has-timeline', window.innerWidth > 768);
+        const isRandomView = this.imageService?.viewMode === 'random'
+            || document.body.classList.contains('view-random');
+        const showTimeline = window.innerWidth > 768 && !isRandomView;
+        document.body.classList.toggle('has-timeline', showTimeline);
 
-        if (window.innerWidth <= 768) {
+        if (!showTimeline) {
             this.container.style.left = '';
-            this.container.style.display = '';
+            this.container.style.display = 'none';
             this.container.setAttribute('aria-hidden', 'true');
             this.container.classList.remove('timeline-popout');
             this.updateRevealButton();

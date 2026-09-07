@@ -628,8 +628,9 @@ class Gallery {
         if (this.globePreloaded || !images || images.length === 0) return;
         this.globePreloaded = true;
 
-        setTimeout(async () => {
+        const start = async () => {
             try {
+                window.threeLoader?.prefetchEarthImage();
                 const container = document.getElementById('globe-preload-container');
                 if (!container) return;
                 const first = images[0];
@@ -643,7 +644,15 @@ class Gallery {
                 console.error('Gallery: Failed to preload globe:', error);
                 this.globePreloaded = false;
             }
-        }, 300);
+        };
+
+        // Idle beats a fixed 300ms timer: first-viewport thumbnails and hover
+        // prefetch should win the network before the modal globe texture.
+        if (typeof window.requestIdleCallback === 'function') {
+            window.requestIdleCallback(start, { timeout: 4000 });
+        } else {
+            setTimeout(start, 1200);
+        }
     }
 }
 

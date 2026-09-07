@@ -22,8 +22,11 @@ class GlobeService {
     this.preloadLocation = null;
   }
 
-  // Lazy-load Three.js from CDN (once)
+  // Shared loader: one Three.js graph and one earth JPEG for explorer + modal.
   _loadThree() {
+    if (window.threeLoader) {
+      return window.threeLoader.loadThree();
+    }
     if (window.THREE) return Promise.resolve(window.THREE);
     if (this._threePromise) return this._threePromise;
     this._threePromise = import('three').then(mod => {
@@ -175,10 +178,16 @@ class GlobeService {
     const group = new THREE.Group();
     scene.add(group);
 
-    // Sphere (Earth)
-    const geometry = new THREE.SphereGeometry(1, 64, 64);
-    const texture = await new THREE.TextureLoader().loadAsync(this.textureUrl);
-    texture.colorSpace = THREE.SRGBColorSpace;
+    // Sphere (Earth) — 160px modal/preload globes do not need a 64-segment mesh.
+    const segments = window.threeLoader?.sphereSegments('modal') || 32;
+    const geometry = new THREE.SphereGeometry(1, segments, segments);
+    let texture;
+    if (window.threeLoader) {
+      texture = await window.threeLoader.createEarthTexture(THREE);
+    } else {
+      texture = await new THREE.TextureLoader().loadAsync(this.textureUrl);
+      texture.colorSpace = THREE.SRGBColorSpace;
+    }
     const material = new THREE.MeshPhongMaterial({
       map: texture,
       shininess: 1,
