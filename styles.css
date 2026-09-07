@@ -1041,12 +1041,12 @@ body.exposure-3 .scroll-loading p {
 
 .gallery-item.flipboard-out .gallery-item-image {
     transform: rotateX(-88deg);
-    transition: transform 42ms linear;
+    transition: transform 70ms linear;
 }
 
 .gallery-item.flipboard-in .gallery-item-image {
     transform: rotateX(0deg);
-    transition: transform 42ms linear;
+    transition: transform 70ms linear;
 }
 
 /* Respect reduced motion preferences */

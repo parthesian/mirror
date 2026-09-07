@@ -63,8 +63,8 @@ const Flipboard = {
                 }
                 item.classList.remove('flipboard-out');
                 item.classList.add('flipboard-in');
-                window.setTimeout(finish, 42);
-            }, 42);
+                window.setTimeout(finish, 70);
+            }, 70);
         });
     },
 
@@ -114,7 +114,7 @@ const Flipboard = {
             const destReady = typeof preloader.preloadImage === 'function'
                 ? preloader.preloadImage(destUrl)
                 : prefetchPromise;
-            const tickCount = 3 + Math.floor(Math.random() * 3);
+            const tickCount = 4 + Math.floor(Math.random() * 3);
             const sequence = this.pickIntermediates(pool, currentUrl, destUrl, tickCount)
                 .filter((url) => url !== destUrl);
 
