@@ -495,7 +495,7 @@ class ControlMenu {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'cm-node cm-node-rotate';
-        btn.textContent = delta < 0 ? '\u2191' : '\u2193';
+        btn.textContent = delta < 0 ? '\u2192' : '\u2193';
         btn.style.fontSize = `${Math.max(9, 12 * this.scale)}px`;
         btn.title = delta < 0 ? 'Previous options' : 'More options';
         btn.setAttribute('aria-label', btn.title);
