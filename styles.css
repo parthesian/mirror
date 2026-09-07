@@ -533,6 +533,12 @@ body.exposure-3 .scroll-loading p {
     aspect-ratio: auto;
 }
 
+/* Until a tile knows its real ratio it sits in a 4:3 hole. Contain
+   keeps a portrait fully visible instead of cropping it like the grid. */
+.gallery-window.is-masonry .gallery-item-image {
+    object-fit: contain;
+}
+
 .gallery-spacer {
     width: 100%;
     pointer-events: none;
@@ -575,7 +581,7 @@ body.exposure-3 .scroll-loading p {
 .gallery-window.is-morphing .gallery-item {
     transition: transform var(--dur-slow) var(--ease),
                 opacity var(--dur-mid) var(--ease);
-    transform-origin: 0 0;
+    transform-origin: top left;
     will-change: transform;
     backface-visibility: hidden;
 }

@@ -5,6 +5,7 @@ class ImagePreloader {
     constructor() {
         this.loadedImages = new Map();
         this.loadingPromises = new Map();
+        this._aspectHandler = null;
     }
 
     /**
@@ -40,6 +41,7 @@ class ImagePreloader {
 
                 this.loadedImages.set(url, image);
                 this.loadingPromises.delete(url);
+                this.notifyAspect(url, image);
                 resolve(image);
             };
 
@@ -115,9 +117,15 @@ class ImagePreloader {
 
     /**
      * Mark a URL as successfully loaded (from an external element).
+     * Keep the element when we have one so masonry can read its aspect.
      */
-    markLoaded(url) {
-        this.loadedImages.set(url, true);
+    markLoaded(url, image) {
+        if (image && image.naturalWidth && image.naturalHeight) {
+            this.loadedImages.set(url, image);
+            this.notifyAspect(url, image);
+        } else if (!this.loadedImages.has(url)) {
+            this.loadedImages.set(url, true);
+        }
         this.loadingPromises.delete(url);
     }
 
@@ -143,7 +151,23 @@ class ImagePreloader {
      * @returns {HTMLImageElement|null} Cached image
      */
     getLoadedImage(url) {
-        return this.loadedImages.get(url) || null;
+        const value = this.loadedImages.get(url);
+        return value instanceof HTMLImageElement ? value : null;
+    }
+
+    /**
+     * Gallery listens so a prefetch that finishes off-screen can still
+     * teach masonry the real ratio before that tile is mounted.
+     */
+    onAspect(handler) {
+        this._aspectHandler = typeof handler === 'function' ? handler : null;
+    }
+
+    notifyAspect(url, image) {
+        if (!this._aspectHandler || !image?.naturalWidth || !image?.naturalHeight) {
+            return;
+        }
+        this._aspectHandler(url, image);
     }
 
     /**

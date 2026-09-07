@@ -36,6 +36,8 @@ class Gallery {
         this.forceRenderQueued = false;
         this.cachedLayout = null;
         this.pendingAspectRefresh = false;
+        this.aspectReflowTimer = null;
+        this.aspectReflowNeeded = false;
 
         this.topSpacer = null;
         this.windowGrid = null;
@@ -50,6 +52,9 @@ class Gallery {
         this.ensureWindowStructure();
         this.bindEvents();
         this.applyLayoutModeClass();
+        this.imagePreloader.onAspect((url, img) => {
+            this.adoptAspectFromUrl(url, img);
+        });
         this.loadImages();
     }
 
@@ -213,6 +218,9 @@ class Gallery {
             const newImages = await this.imageService.loadMorePhotos();
             if (newImages.length > 0) {
                 this.cachedLayout = null;
+                if (this.isMasonry) {
+                    this.warmUnknownAspects();
+                }
                 this.scheduleRefresh(true);
                 document.dispatchEvent(new CustomEvent('galleryUpdated'));
                 window.setTimeout(() => this.checkIfNeedsMoreContent(), 60);
@@ -436,6 +444,10 @@ class Gallery {
     getOrCreateItem(image, absoluteIndex, layout) {
         const existing = this.mountedItems.get(image.id);
         if (existing) {
+            const img = existing.querySelector('.gallery-item-image');
+            if (this.adoptNaturalAspect(image, img)) {
+                this.scheduleAspectReflow();
+            }
             return existing;
         }
         return this.createGalleryItem(image, absoluteIndex, layout);
@@ -458,12 +470,25 @@ class Gallery {
         if (cached) {
             img.src = url;
             item.classList.add('loaded', 'instant');
+            const cachedImg = this.imagePreloader.getLoadedImage(url);
+            if (this.adoptNaturalAspect(image, cachedImg || img)) {
+                this.scheduleAspectReflow();
+            } else if (!img.complete) {
+                img.addEventListener('load', () => {
+                    this.imagePreloader.markLoaded(url, img);
+                    if (this.adoptNaturalAspect(image, img)) {
+                        this.scheduleAspectReflow();
+                    }
+                }, { once: true });
+            }
         } else {
             const loadPromise = new Promise((resolve) => {
                 img.addEventListener('load', () => {
-                    this.imagePreloader.markLoaded(url);
+                    this.imagePreloader.markLoaded(url, img);
                     item.classList.add('loaded');
-                    this.captureNaturalAspect(item.dataset.imageId, img);
+                    if (this.adoptNaturalAspect(image, img)) {
+                        this.scheduleAspectReflow();
+                    }
                     resolve(img);
                 }, { once: true });
 
@@ -520,27 +545,80 @@ class Gallery {
     }
 
     /**
-     * Photos uploaded before dimensions were recorded arrive without a size.
-     * The first thumbnail load supplies the real ratio; masonry reflows once
-     * on the next frame rather than once per image.
+     * Photos uploaded before dimensions were recorded arrive as 4:3. Record
+     * the real ratio whenever a thumbnail is available — including grid
+     * mode and prefetched off-screen images — so masonry does not crop
+     * portraits that were below the first viewport.
      */
-    captureNaturalAspect(imageId, img) {
-        if (!this.isMasonry || !imageId) return;
-        const image = this.imageService.getImageById(imageId);
-        if (!image || image.aspectRatioKnown) return;
-        if (!img.naturalWidth || !img.naturalHeight) return;
-
-        image.aspectRatio = img.naturalWidth / img.naturalHeight;
+    adoptNaturalAspect(image, img) {
+        if (!image || image.aspectRatioKnown) return false;
+        const width = img?.naturalWidth;
+        const height = img?.naturalHeight;
+        if (!width || !height) return false;
+        image.aspectRatio = width / height;
         image.aspectRatioKnown = true;
+        return true;
+    }
 
-        if (this.pendingAspectRefresh) return;
-        this.pendingAspectRefresh = true;
-        requestAnimationFrame(() => {
-            this.pendingAspectRefresh = false;
-            if (this.isMorphing) return;
+    adoptAspectFromUrl(url, img) {
+        if (!url || !img) return;
+        const images = this.imageService.images || [];
+        let changed = false;
+        for (const image of images) {
+            if (image.thumbnailUrl === url && this.adoptNaturalAspect(image, img)) {
+                changed = true;
+            }
+        }
+        if (changed) this.scheduleAspectReflow();
+    }
+
+    harvestKnownAspects() {
+        const images = this.imageService.images || [];
+        let changed = false;
+        for (const image of images) {
+            if (image.aspectRatioKnown) continue;
+            const mounted = this.mountedItems.get(image.id);
+            const mountedImg = mounted?.querySelector('.gallery-item-image');
+            if (this.adoptNaturalAspect(image, mountedImg)) {
+                changed = true;
+                continue;
+            }
+            const cached = this.imagePreloader.getLoadedImage(image.thumbnailUrl);
+            if (this.adoptNaturalAspect(image, cached)) {
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    /**
+     * Kick off thumbs for anything still missing a ratio. Completions land
+     * through the preloader callback and reflow masonry in one pass.
+     */
+    warmUnknownAspects() {
+        const urls = (this.imageService.images || [])
+            .filter((image) => !image.aspectRatioKnown && image.thumbnailUrl)
+            .map((image) => image.thumbnailUrl);
+        if (urls.length === 0) return;
+        this.imagePreloader.prefetch(urls, { concurrency: 6 });
+    }
+
+    scheduleAspectReflow() {
+        if (!this.isMasonry) return;
+        this.aspectReflowNeeded = true;
+        if (this.isMorphing || this.aspectReflowTimer != null) return;
+        this.aspectReflowTimer = window.setTimeout(() => {
+            this.aspectReflowTimer = null;
+            if (!this.aspectReflowNeeded || !this.isMasonry || this.isMorphing) return;
+            this.aspectReflowNeeded = false;
             this.cachedLayout = null;
+            const images = this.imageService.images || [];
+            if (this.shouldAnimateLayout()) {
+                void this.morphLayout(images);
+                return;
+            }
             this.renderVisibleWindow(true);
-        });
+        }, 48);
     }
 
     getImageFallbackSrc() {
@@ -557,6 +635,9 @@ class Gallery {
             .filter(Boolean);
         if (urls.length > 0) {
             this.imagePreloader.prefetch(urls, { concurrency: 4 });
+        }
+        if (this.isMasonry) {
+            this.warmUnknownAspects();
         }
     }
 
@@ -748,6 +829,11 @@ class Gallery {
         this.emitLayoutChange();
 
         const images = this.imageService.images || [];
+        if (next === 'masonry') {
+            this.harvestKnownAspects();
+            this.warmUnknownAspects();
+        }
+
         const animate = options.animate !== false && this.shouldAnimateLayout();
 
         if (!animate) {
@@ -756,7 +842,7 @@ class Gallery {
             return;
         }
 
-        await window.UIAnimation.run(() => this.morphLayout(images));
+        await this.morphLayout(images);
     }
 
     shouldAnimateLayout() {
@@ -775,6 +861,7 @@ class Gallery {
         const grid = this.windowGrid;
 
         try {
+            this.harvestKnownAspects();
             const before = this.captureContentRects();
             const spacerTop = this.windowGrid.classList.contains('is-masonry')
                 ? 0
@@ -811,13 +898,12 @@ class Gallery {
 
             const nodes = Array.from(grid.querySelectorAll('.gallery-item'));
             for (const node of nodes) {
-                const id = node.dataset.imageId;
+                const id = String(node.dataset.imageId);
                 const to = after.get(id);
                 if (!to) continue;
                 node.classList.add('loaded', 'instant');
-                const from = before.get(id);
-                this.invertTo(node, from || { ...to, top: to.top + 24 }, to);
-                if (!from) node.style.opacity = '0';
+                const from = before.get(id) || this.growInPlace(to);
+                this.invertTo(node, from, to);
             }
 
             // Flush the inverted positions before the targets are applied so
@@ -825,10 +911,9 @@ class Gallery {
             void grid.offsetHeight;
 
             for (const node of nodes) {
-                const to = after.get(node.dataset.imageId);
+                const to = after.get(String(node.dataset.imageId));
                 if (!to) continue;
-                this.playTo(node, to);
-                node.style.opacity = '1';
+                this.playTo(node);
             }
 
             await this.waitForMorph(grid);
@@ -846,6 +931,9 @@ class Gallery {
             grid.style.height = '';
             this.renderVisibleWindow(true);
             this.checkIfNeedsMoreContent();
+            if (this.aspectReflowNeeded) {
+                this.scheduleAspectReflow();
+            }
         }
     }
 
@@ -862,7 +950,7 @@ class Gallery {
 
         for (const node of this.windowGrid.querySelectorAll('.gallery-item')) {
             const rect = node.getBoundingClientRect();
-            rects.set(node.dataset.imageId, {
+            rects.set(String(node.dataset.imageId), {
                 left: rect.left - base.left,
                 top: rect.top - base.top + spacer,
                 width: rect.width,
@@ -883,7 +971,7 @@ class Gallery {
             if (layout.mode === 'masonry') {
                 const rect = layout.rects[i];
                 if (!rect) continue;
-                rects.set(image.id, {
+                rects.set(String(image.id), {
                     left: rect.left,
                     top: rect.top,
                     width: rect.width,
@@ -894,7 +982,7 @@ class Gallery {
 
             const col = i % layout.columns;
             const row = Math.floor(i / layout.columns);
-            rects.set(image.id, {
+            rects.set(String(image.id), {
                 left: col * (layout.columnWidth + layout.gap),
                 top: row * layout.rowSpan,
                 width: layout.columnWidth,
@@ -905,19 +993,33 @@ class Gallery {
         return rects;
     }
 
+    /**
+     * A tile that was not on screen should grow downward from its dest
+     * cell instead of flying out of the top-left photo.
+     */
+    growInPlace(to) {
+        const placeholderHeight = to.width / GalleryLayout.GRID_ASPECT;
+        return {
+            left: to.left,
+            top: to.top,
+            width: to.width,
+            height: Math.min(to.height, placeholderHeight)
+        };
+    }
+
     invertTo(node, from, to) {
         const sx = to.width ? from.width / to.width : 1;
         const sy = to.height ? from.height / to.height : 1;
-        node.style.left = '0px';
-        node.style.top = '0px';
+        node.style.left = `${to.left}px`;
+        node.style.top = `${to.top}px`;
         node.style.width = `${to.width}px`;
         node.style.height = `${to.height}px`;
-        node.style.transformOrigin = '0 0';
-        node.style.transform = `translate(${from.left}px, ${from.top}px) scale(${sx}, ${sy})`;
+        node.style.transformOrigin = 'top left';
+        node.style.transform = `translate(${from.left - to.left}px, ${from.top - to.top}px) scale(${sx}, ${sy})`;
     }
 
-    playTo(node, to) {
-        node.style.transform = `translate(${to.left}px, ${to.top}px) scale(1, 1)`;
+    playTo(node) {
+        node.style.transform = 'translate(0px, 0px) scale(1, 1)';
     }
 
     waitForMorph(grid) {
@@ -983,7 +1085,7 @@ class Gallery {
             return;
         }
 
-        void window.UIAnimation.run(() => this.morphLayout(images));
+        void this.morphLayout(images);
     }
 
     storeColumnPreference(value) {
