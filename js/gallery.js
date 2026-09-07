@@ -515,6 +515,20 @@ class Gallery {
         this.scheduleRefresh(true);
     }
 
+    sameImageUrl(left, right) {
+        if (!left || !right) {
+            return false;
+        }
+        if (left === right) {
+            return true;
+        }
+        try {
+            return new URL(left, window.location.href).href === new URL(right, window.location.href).href;
+        } catch (error) {
+            return false;
+        }
+    }
+
     rebindMountedWindow(nodes, nextImages) {
         this.mountedItems.clear();
         nodes.forEach((node, index) => {
@@ -524,7 +538,7 @@ class Gallery {
             }
             this.bindItemMetadata(node, image);
             const img = node.querySelector('.gallery-item-image');
-            if (img && image.thumbnailUrl && img.src !== image.thumbnailUrl) {
+            if (img && image.thumbnailUrl && !this.sameImageUrl(img.src, image.thumbnailUrl)) {
                 img.src = image.thumbnailUrl;
             }
             node.classList.add('loaded', 'instant');

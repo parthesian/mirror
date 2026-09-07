@@ -104,6 +104,9 @@ const Flipboard = {
         flap.style.transition = `transform ${this.FLAP_MS}ms linear`;
         item.classList.add('flipboard-out');
         await this.wait(this.FLAP_MS);
+        // Match the flap to the face underneath so resetting the hinge
+        // does not cover the destination with the previous tick.
+        flapImg.src = img.currentSrc || img.src || nextUrl;
         item.classList.remove('flipboard-out');
         flap.style.transition = 'none';
         flap.style.transform = 'rotateX(0deg)';
@@ -179,6 +182,8 @@ const Flipboard = {
                     extras += 1;
                 }
                 await this.flipOnce(item, img, destUrl);
+                this.removeFlap(item);
+                item.classList.remove('flipboard-busy');
             });
         });
 
