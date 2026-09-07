@@ -3889,6 +3889,9 @@ body.ui-animating .control-menu {
     color: var(--on-ink, #eee);
     border-color: var(--ink, #333);
     background: var(--ink, #333);
+    /* Selected fill is state, not motion — snap it so a shuffle/chrono
+       click does not wait on the node color fade or the gallery flip. */
+    transition-property: transform, opacity, border-color;
 }
 
 /* Section currently drilled into: outlined, not filled, so it stays visually
