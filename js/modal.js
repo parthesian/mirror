@@ -428,8 +428,9 @@ class Modal {
      */
     computePhotoOffset(photoHeight) {
         const { minOffset } = this.verticalPhotoMetrics();
+        const padTop = parseFloat(getComputedStyle(this.modalContent).paddingTop) || 0;
         const anchor = window.innerHeight * 0.35;
-        return Math.max(minOffset, Math.round(anchor - photoHeight / 2));
+        return Math.max(minOffset, Math.round(anchor - padTop - photoHeight / 2));
     }
 
     beginLayoutAnimation(container) {
