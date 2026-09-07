@@ -128,7 +128,8 @@ const Flipboard = {
             previousImages = [],
             nextImages = [],
             preloader,
-            thumbCandidates = []
+            thumbCandidates = [],
+            onTileLanded
         } = options;
 
         const nodes = Array.from(items || []);
@@ -184,6 +185,9 @@ const Flipboard = {
                 await this.flipOnce(item, img, destUrl);
                 this.removeFlap(item);
                 item.classList.remove('flipboard-busy');
+                if (typeof onTileLanded === 'function') {
+                    onTileLanded(item, index, dest);
+                }
             });
         });
 

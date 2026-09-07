@@ -504,7 +504,10 @@ class Gallery {
                 previousImages: previous.slice(start, end),
                 nextImages: next.slice(start, end),
                 preloader: this.imagePreloader,
-                thumbCandidates
+                thumbCandidates,
+                onTileLanded: (item, index, image) => {
+                    this.rebindOne(item, image);
+                }
             });
             this.rebindMountedWindow(nodes, next.slice(start, end));
             this.checkIfNeedsMoreContent();
@@ -513,6 +516,19 @@ class Gallery {
 
         this.cachedLayout = null;
         this.scheduleRefresh(true);
+    }
+
+    rebindOne(node, image) {
+        if (!node || !image) {
+            return;
+        }
+        this.bindItemMetadata(node, image);
+        const img = node.querySelector('.gallery-item-image');
+        if (img && image.thumbnailUrl && !this.sameImageUrl(img.src, image.thumbnailUrl)) {
+            img.src = image.thumbnailUrl;
+        }
+        node.classList.add('loaded', 'instant');
+        this.mountedItems.set(image.id, node);
     }
 
     sameImageUrl(left, right) {
@@ -531,19 +547,7 @@ class Gallery {
 
     rebindMountedWindow(nodes, nextImages) {
         this.mountedItems.clear();
-        nodes.forEach((node, index) => {
-            const image = nextImages[index];
-            if (!image) {
-                return;
-            }
-            this.bindItemMetadata(node, image);
-            const img = node.querySelector('.gallery-item-image');
-            if (img && image.thumbnailUrl && !this.sameImageUrl(img.src, image.thumbnailUrl)) {
-                img.src = image.thumbnailUrl;
-            }
-            node.classList.add('loaded', 'instant');
-            this.mountedItems.set(image.id, node);
-        });
+        nodes.forEach((node, index) => this.rebindOne(node, nextImages[index]));
     }
 
     // ── UI state ──
