@@ -11,6 +11,8 @@ class ViewMode {
         this.imageService = imageService;
         this.gallery = gallery;
         this.timeline = timeline;
+        // The randomize control lives in the radial menu; there is no
+        // dedicated header button to keep in sync any more.
         this.button = document.getElementById('randomize-btn');
         this.isTransitioning = false;
         this.pendingMode = null;
@@ -77,6 +79,7 @@ class ViewMode {
         }
 
         this.isTransitioning = true;
+        window.UIAnimation?.begin();
         try {
             // Start the timeline slide with the first flap so the rail does
             // not sit still and then snap after the board finishes.
@@ -101,6 +104,7 @@ class ViewMode {
                 detail: { mode: next }
             }));
         } finally {
+            window.UIAnimation?.end();
             this.isTransitioning = false;
             this.syncButton();
             const queued = this.pendingMode;

@@ -9,8 +9,6 @@ class Timeline {
         this.gallery = gallery;
         this.container = document.getElementById('timeline');
         this.mainContent = document.querySelector('.main-content');
-        this.exposureDial = document.getElementById('exposure-dial');
-        this.revealButton = document.getElementById('timeline-reveal-btn');
         this.groups = [];
         this.activeKey = null;
         this.monthElements = new Map();
@@ -179,13 +177,6 @@ class Timeline {
         this.updateSidebarPosition();
     }
 
-    updateRevealButton() {
-        if (!this.revealButton) return;
-        this.revealButton.classList.add('hidden');
-        this.revealButton.classList.remove('is-active');
-        this.revealButton.setAttribute('aria-expanded', 'false');
-    }
-
     prefersReducedMotion() {
         return Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
     }
@@ -271,7 +262,6 @@ class Timeline {
         this.container.setAttribute('aria-hidden', 'true');
         this.container.classList.remove('timeline-popout');
         document.body.classList.remove('has-timeline');
-        this.updateRevealButton();
     }
 
     settleAfterSlide(isRandom) {
@@ -298,27 +288,16 @@ class Timeline {
         this.updateSidebarPosition();
     }
 
+    /**
+     * The rail's left edge and width come from --gutter / --rail-w, the same
+     * tokens the grid uses to reserve space for it, so there is nothing to
+     * measure or clamp here.
+     */
     placeSidebar() {
         if (!this.container) return;
-        const timelineWidth = Math.round(
-            parseFloat(window.getComputedStyle(this.container).width) || this.container.offsetWidth || 60
-        );
-        const minimumGap = 16;
-        const mainLeft = this.mainContent?.getBoundingClientRect().left ?? 0;
-        const maxAllowedLeft = Math.floor(mainLeft - timelineWidth - minimumGap);
-
-        let preferredLeft = 0;
-        if (this.exposureDial) {
-            const dialRect = this.exposureDial.getBoundingClientRect();
-            preferredLeft = Math.round((dialRect.left + dialRect.width / 2) - timelineWidth / 2);
-        }
-
-        const clampedLeft = Math.max(minimumGap, Math.min(preferredLeft, Math.max(minimumGap, maxAllowedLeft)));
         this.container.classList.remove('timeline-popout');
-        this.container.style.left = `${clampedLeft}px`;
         this.container.style.display = '';
         this.container.setAttribute('aria-hidden', 'false');
-        this.updateRevealButton();
     }
 
     updateSidebarPosition() {
@@ -485,9 +464,7 @@ class Timeline {
         if (targetIndex === -1) return;
 
         this.gallery.cachedLayout = null;
-        const layout = this.gallery.getLayout();
-        const row = Math.floor(targetIndex / layout.columns);
-        const targetY = layout.contentTop + (row * layout.rowSpan);
+        const targetY = this.gallery.documentYForIndex(targetIndex);
         window.scrollTo({ top: Math.max(0, targetY - 80), behavior: 'smooth' });
     }
 
@@ -539,9 +516,7 @@ class Timeline {
 
         this.gallery.cachedLayout = null;
         this.gallery.scheduleRefresh(true);
-        const layout = this.gallery.getLayout();
-        const row = Math.floor(targetIndex / layout.columns);
-        const targetY = layout.contentTop + (row * layout.rowSpan);
+        const targetY = this.gallery.documentYForIndex(targetIndex);
         window.scrollTo({ top: Math.max(0, targetY - 80), behavior: 'smooth' });
     }
 
@@ -566,12 +541,9 @@ class Timeline {
         const images = this.imageService.images;
         if (!images || images.length === 0 || this.monthElements.size === 0) return;
 
-        const layout = this.gallery.getLayout();
         const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
         const viewportCenter = scrollTop + window.innerHeight * 0.3;
-
-        const approxRow = Math.max(0, Math.floor((viewportCenter - layout.contentTop) / layout.rowSpan));
-        const approxIndex = Math.min(images.length - 1, Math.max(0, approxRow * layout.columns));
+        const approxIndex = this.gallery.indexAtDocumentY(viewportCenter);
 
         const img = images[approxIndex];
         if (!img) return;

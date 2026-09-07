@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>आईना</title>
     <link rel="icon" type="image/svg+xml" href="mirror.svg">
-    <link rel="stylesheet" href="styles.css?v=20260907c">
+    <link rel="stylesheet" href="styles.css?v=20260907f">
     <script type="importmap">
     {
         "imports": {
@@ -18,77 +18,38 @@
 <body class="exposure--3">
     <header class="header">
         <h1>PARTH NAIN</h1>
-        <nav class="nav">
-            <a href="#" class="nav-link active">CAMERA</a>
-        </nav>
-        <div class="exposure-dial-left" id="exposure-dial">
-            <div class="dial-container">
-                <div class="dial-face">
-                    <div class="dial-markings">
-                        <div class="dial-mark" data-value="-3">-3</div>
-                        <div class="dial-mark" data-value="-2">-2</div>
-                        <div class="dial-mark" data-value="-1">-1</div>
-                        <div class="dial-mark" data-value="0">0</div>
-                        <div class="dial-mark" data-value="1">+1</div>
-                        <div class="dial-mark" data-value="2">+2</div>
-                        <div class="dial-mark" data-value="3">+3</div>
-                    </div>
-                </div>
-            </div>
-            <button id="timeline-reveal-btn" class="timeline-reveal-btn hidden" type="button" aria-label="Show timeline" aria-expanded="false" title="Show timeline">
-                <svg class="timeline-reveal-icon" viewBox="0 0 24 24" aria-hidden="true">
-                    <circle cx="12" cy="12" r="8.5"></circle>
-                    <path d="M12 7.5V12L15.2 14"></path>
-                </svg>
-            </button>
-        </div>
-        <div class="gallery-controls">
-            <button id="globe-btn" class="zoom-btn" aria-label="Open globe explorer" title="Globe explorer">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <div class="rail rail-right">
+            <button id="globe-btn" class="chrome-btn" aria-label="Open globe explorer" title="Globe explorer">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="10"/>
                     <line x1="2" y1="12" x2="22" y2="12"/>
                     <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/>
                 </svg>
             </button>
-            <button id="randomize-btn" class="zoom-btn randomize-btn" type="button" aria-pressed="false" aria-label="Randomize gallery order" title="Randomize gallery">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M18 4l3 3-3 3"/>
-                    <path d="M3 7h3a5 5 0 0 1 4 2l4 6a5 5 0 0 0 4 2h3"/>
-                    <path d="M18 20l3-3-3-3"/>
-                    <path d="M3 17h3a5 5 0 0 0 4-2"/>
-                </svg>
-            </button>
-            <div class="zoom-controls">
-                <button id="zoom-in-btn" class="zoom-btn">+</button>
-                <button id="zoom-out-btn" class="zoom-btn">−</button>
-            </div>
         </div>
     </header>
 
     <aside id="timeline" class="timeline-sidebar"></aside>
 
-    <div id="country-filter-panel" class="country-filter-panel collapsed">
-        <button id="country-filter-toggle" class="country-filter-toggle" type="button" aria-expanded="false" aria-label="Expand filter panel" title="Expand filter panel">
-            <span class="country-filter-toggle-label">FILTER</span>
-            <span id="country-filter-toggle-icon" class="country-filter-toggle-icon">+</span>
-        </button>
-        <div id="country-filter-body" class="country-filter-body" aria-hidden="true">
-            <div id="country-filter-active" class="country-filter-active">ALL</div>
-            <div id="country-filter-picker" class="country-filter-picker" aria-label="Choose filter">
-                <div class="country-filter-column">
-                    <div class="country-filter-layer-title">type</div>
-                    <div id="country-filter-kind-list" class="country-filter-list" role="listbox" aria-label="Filter type"></div>
-                </div>
-                <div class="country-filter-column">
-                    <div id="country-filter-scope-title" class="country-filter-layer-title">countries</div>
-                    <div id="country-filter-option-list" class="country-filter-list" role="listbox" aria-label="Filter options"></div>
-                </div>
-            </div>
-            <div class="country-filter-actions">
-                <button id="country-filter-apply" class="country-filter-btn">apply</button>
-                <button id="country-filter-clear" class="country-filter-btn">clear</button>
-            </div>
+    <!-- Radial CONTROL menu: quarter circle anchored to the bottom-right corner -->
+    <div id="control-menu" class="control-menu collapsed" data-section="">
+        <div class="cm-backdrop" aria-hidden="true"></div>
+        <!-- Painted widest first so each smaller disc stacks on top and the
+             shared corner origin reads as interlocking layers. -->
+        <div class="cm-rings" aria-hidden="true">
+            <span class="cm-ring cm-ring-c"></span>
+            <span class="cm-ring cm-ring-b"></span>
+            <span class="cm-ring cm-ring-a"></span>
+            <span class="cm-ring cm-ring-hub"></span>
         </div>
+        <div id="cm-sectors" class="cm-layer cm-layer-sectors" role="tablist" aria-label="Control sections"></div>
+        <div id="cm-options" class="cm-layer cm-layer-options" aria-label="Section options"></div>
+        <div id="cm-leaf" class="cm-layer cm-layer-leaf" aria-label="Filter values"></div>
+        <div id="cm-readout" class="cm-readout" aria-live="polite"></div>
+        <button id="cm-hub" class="cm-hub" type="button" aria-expanded="false" aria-controls="cm-sectors" aria-label="Open control menu">
+            <span class="cm-hub-label">CONTROL</span>
+            <span class="cm-hub-mark" aria-hidden="true"></span>
+        </button>
     </div>
 
     <main class="main-content">
@@ -142,19 +103,19 @@
             </div>
             <div class="modal-info">
                 <p id="modal-description"></p>
-                <div id="modal-globe" class="globe-container hidden"></div>
                 <div class="modal-metadata">
-                    <span id="modal-location" class="metadata-item"></span>
-                    <span id="modal-country" class="metadata-item hidden"></span>
-                    <div id="modal-camera-row" class="modal-camera-row metadata-item hidden" aria-label="Camera">
+                    <span id="modal-location" class="metadata-item" data-label="Place"></span>
+                    <span id="modal-country" class="metadata-item hidden" data-label="Country"></span>
+                    <div id="modal-camera-row" class="modal-camera-row metadata-item hidden" data-label="Camera" aria-label="Camera">
                         <span class="modal-camera-icon-wrap" aria-hidden="true">
-                            <svg id="modal-camera-icon-dslr" class="modal-camera-svg" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                            <svg id="modal-camera-icon-mobile" class="modal-camera-svg hidden" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                            <svg id="modal-camera-icon-dslr" class="modal-camera-svg" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                            <svg id="modal-camera-icon-mobile" class="modal-camera-svg hidden" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
                         </span>
                         <span id="modal-camera-name"></span>
                     </div>
-                    <span id="modal-timestamp" class="metadata-item"></span>
+                    <span id="modal-timestamp" class="metadata-item" data-label="Date"></span>
                 </div>
+                <div id="modal-globe" class="globe-container hidden"></div>
                 <div class="modal-nav-buttons">
                     <button id="prev-btn" class="nav-btn">&lt;</button>
                     <button id="next-btn" class="nav-btn">&gt;</button>
@@ -171,18 +132,21 @@
     <script src="js/countryBoundaries.js?v=20260907a"></script>
     <script src="js/globeRoutes.js?v=20260907a"></script>
     <script src="js/notifications.js?v=20260907a"></script>
-    <script src="js/exposureDial.js?v=20260406e"></script>
-    <script src="js/imageService.js?v=20260907a"></script>
+    <script src="js/uiAnimation.js?v=20260907f"></script>
+    <script src="js/exposureDial.js?v=20260907d"></script>
+    <script src="js/imageService.js?v=20260907d"></script>
     <script src="js/imagePreloader.js?v=20260406e"></script>
     <script src="js/flipboard.js?v=20260907f"></script>
-    <script src="js/gallery.js?v=20260907e"></script>
+    <script src="js/galleryLayout.js?v=20260907d"></script>
+    <script src="js/gallery.js?v=20260907d"></script>
     <script src="js/globeService.js?v=20260907a"></script>
     <script src="js/customCalendar.js?v=20260406e"></script>
-    <script src="js/timeline.js?v=20260907c"></script>
+    <script src="js/timeline.js?v=20260907d"></script>
     <script src="js/viewMode.js?v=20260907d"></script>
-    <script src="js/modal.js?v=20260428c"></script>
+    <script src="js/modal.js?v=20260907d"></script>
     <script src="js/filmEffects.js?v=20260406e"></script>
-    <script src="js/globeExplorer.js?v=20260907a"></script>
-    <script src="js/app.js?v=20260907a"></script>
+    <script src="js/globeExplorer.js?v=20260907d"></script>
+    <script src="js/controlMenu.js?v=20260907f"></script>
+    <script src="js/app.js?v=20260907f"></script>
 </body>
 </html>

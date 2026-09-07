@@ -1390,6 +1390,9 @@ class GlobeExplorer {
 
         let html = `<h3 class="globe-panel-country">${titleEscaped}</h3>`;
         html += `<p class="globe-panel-count">${activeLocs.length} photo${activeLocs.length !== 1 ? 's' : ''}</p>`;
+        if (trips.length) {
+            html += `<p class="globe-panel-section">${trips.length} trip${trips.length !== 1 ? 's' : ''}</p>`;
+        }
         html += '<div class="globe-panel-trips">';
 
         for (const trip of trips) {
@@ -1422,7 +1425,7 @@ class GlobeExplorer {
             html += '</select>';
             html += '</label>';
         }
-        html += '<button class="globe-panel-filter-btn" id="globe-filter-selected">show photos</button>';
+        html += '<button class="globe-panel-filter-btn is-primary" id="globe-filter-selected">show photos</button>';
         html += '</div>';
 
         this.panelContent.innerHTML = html;
@@ -1470,7 +1473,7 @@ class GlobeExplorer {
         }
         html += `<p class="globe-panel-count">distance: ${Math.round(angleDeg)}°</p>`;
         html += '<div class="globe-panel-actions">';
-        html += '<button class="globe-panel-filter-btn" id="globe-filter-country-inferred">show photos</button>';
+        html += '<button class="globe-panel-filter-btn is-primary" id="globe-filter-country-inferred">show photos</button>';
         html += '</div>';
 
         this.panelContent.innerHTML = html;
@@ -1585,7 +1588,56 @@ class GlobeExplorer {
         return window.LocationModel.groupTrips(locs);
     }
 
-    // ── filtering ──
+    // ── filtering: public API for the radial control menu ──
+
+    /**
+     * The geo feed backs both the globe and the filter lists. Callers await
+     * this before reading options; repeat calls are free once it has landed.
+     */
+    async ensureFilterData() {
+        await this._fetchLocations();
+        return this.locations;
+    }
+
+    get hasFilterData() {
+        return this._geoFetchedOnce;
+    }
+
+    getFilterOptions(type) {
+        if (!this._geoFetchedOnce) return [];
+        return this._getOptionsForType(type);
+    }
+
+    getSelectedFilters() {
+        return { ...(this.selectedFilters || { country: '', state: '', location: '' }) };
+    }
+
+    getActiveFilterLabel() {
+        return this._formatSelectedFiltersLabel();
+    }
+
+    async applyFilterOption(type, item) {
+        this._setFilterSelectionFromOption(type, item, false);
+        const selected = this._getMostSpecificFilterSelection();
+        if (!selected) {
+            await this._clearFilter();
+            return;
+        }
+        await this._applyFilter(selected.type, selected.value);
+    }
+
+    async clearFilters() {
+        await this._clearFilter();
+    }
+
+    _emitFilterChange() {
+        document.dispatchEvent(new CustomEvent('galleryFilterChange', {
+            detail: {
+                filters: this.getSelectedFilters(),
+                label: this.getActiveFilterLabel()
+            }
+        }));
+    }
 
     _renderFilterMenu() {
         if (!this.filterTypeList || !this.filterOptionList) return;
@@ -1874,6 +1926,7 @@ class GlobeExplorer {
         }
         this.imageService.takenFromFilter = takenFrom || null;
         this.imageService.takenToFilter = takenTo || null;
+        this._emitFilterChange();
         if (window.gallery) {
             await window.gallery.loadImages();
         }
@@ -1890,6 +1943,7 @@ class GlobeExplorer {
         this.imageService.takenFromFilter = null;
         this.imageService.takenToFilter = null;
         this._renderFilterMenu();
+        this._emitFilterChange();
         if (window.gallery) {
             await window.gallery.loadImages();
         }

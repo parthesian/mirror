@@ -49,7 +49,13 @@ class PhotoGalleryApp {
             this.viewMode = new ViewMode(this.imageService, this.gallery, this.timeline);
             this.filmEffects = new FilmEffects();
             this.globeExplorer = new GlobeExplorer(this.imageService);
-            
+            this.controlMenu = new ControlMenu({
+                gallery: this.gallery,
+                viewMode: this.viewMode,
+                globeExplorer: this.globeExplorer,
+                imageService: this.imageService
+            });
+
             // Set up global error handling
             this.setupErrorHandling();
             
@@ -60,6 +66,8 @@ class PhotoGalleryApp {
             window.timeline = this.timeline;
             window.viewMode = this.viewMode;
             window.imageService = this.imageService;
+            window.globeExplorer = this.globeExplorer;
+            window.controlMenu = this.controlMenu;
         } catch (error) {
             console.error('Error initializing components:', error);
             window.notifications.showInitializationError();
