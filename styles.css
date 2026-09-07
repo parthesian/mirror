@@ -3977,14 +3977,14 @@ body.ui-animating .control-menu {
 /* On a narrow viewport the disc spans nearly the full width, so there is no
    room beside it: the readout moves above the arc instead. */
 @media (max-width: 768px) {
+    /* Offsets resolve against the menu's zero-width corner box, so the plate
+       is hung off the same right edge and lifted clear of the arc. */
     .cm-readout {
-        right: auto;
-        left: var(--gutter);
+        right: var(--gutter);
         bottom: calc(var(--cm-radius, var(--cm-r-c)) + 12px);
         max-width: calc(100vw - var(--gutter) * 2);
         overflow: hidden;
         text-overflow: ellipsis;
-        text-align: left;
     }
 }
 
