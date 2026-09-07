@@ -929,23 +929,32 @@ body.exposure-1 .scroll-loading p {
     justify-content: flex-start;
     gap: 0.4rem;
     max-width: 100%;
+    line-height: 1;
 }
 
 .modal-camera-row #modal-camera-name {
     min-width: 0;
     text-align: right;
     overflow-wrap: anywhere;
+    line-height: 1;
 }
 
 .modal-camera-icon-wrap {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     flex-shrink: 0;
+    width: 1em;
+    height: 1em;
     color: var(--ink-soft, #888);
 }
 
 .modal-camera-svg {
     display: block;
+    width: 1em;
+    height: 1em;
+    /* The DSLR glyph sits low in its viewBox; nudge it to the text center. */
+    transform: translateY(-0.06em);
 }
 
 /* Error message */
