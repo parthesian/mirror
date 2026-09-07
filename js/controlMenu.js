@@ -14,14 +14,14 @@
 
 const CM_BASE = {
     hub: 78,
-    ringA: 172,
-    ringB: 262,
+    ringA: 180,
+    ringB: 268,
     ringC: 350,
     outer: 410,
-    nodeA: 56,
-    nodeB: 54,
-    // The leaf ring carries place names, so its nodes are sized to hold two
-    // short words rather than to pack the arc.
+    // One chip size for every section and option on rings A/B so FILTER
+    // and +1 occupy the same circle. Leaf place names stay larger.
+    nodeA: 50,
+    nodeB: 50,
     nodeC: 78
 };
 
@@ -38,9 +38,9 @@ const SECTIONS = [
 ];
 
 const EXPOSURE_OPTIONS = [
-    { id: -1, label: 'DARK' },
-    { id: 0, label: 'GRAY' },
-    { id: 1, label: 'LIGHT' }
+    { id: -1, label: '-1' },
+    { id: 0, label: '0' },
+    { id: 1, label: '+1' }
 ];
 
 const FILTER_TYPES = [
@@ -121,9 +121,21 @@ class ControlMenu {
     }
 
     /**
-     * Spread n nodes across the quadrant, first item nearest the right edge
-     * so the list reads top-to-bottom.
+     * Angles that keep `count` chips of `size` from overlapping on `radius`.
+     * Pad is at least half a chip so the first and last stay on screen.
      */
+    packAngles(count, radius, size) {
+        const nodeDeg = (size / Math.max(1, radius)) * (180 / Math.PI);
+        const pitch = nodeDeg * 1.14;
+        const span = Math.max(0, count - 1) * pitch;
+        const pad = Math.max(nodeDeg / 2 + 3, (90 - span) / 2);
+        return this.anglesFor(count, pad);
+    }
+
+    controlSize() {
+        return this.geometry.nodeA;
+    }
+
     anglesFor(count, pad = 14) {
         if (count <= 0) return [];
         if (count === 1) return [45];
@@ -359,13 +371,14 @@ class ControlMenu {
         this.sectorLayer.innerHTML = '';
         if (!this.isOpen) return;
 
-        const angles = this.anglesFor(SECTIONS.length, 12);
+        const size = this.controlSize();
+        const angles = this.packAngles(SECTIONS.length, this.geometry.ringA, size);
         const filterOn = this.hasActiveFilter();
         SECTIONS.forEach((section, index) => {
             const label = this.sectionLabel(section.id);
             const node = this.node({
                 label,
-                size: this.geometry.nodeA,
+                size,
                 radius: this.geometry.ringA,
                 angle: angles[index],
                 // Filter is the only section that fills: a live place
@@ -420,14 +433,15 @@ class ControlMenu {
     renderFilterOptions() {
         const filters = this.globeExplorer?.getSelectedFilters?.() || {};
         const entries = [...FILTER_TYPES.map((t) => ({ ...t })), { id: 'clear', label: 'CLEAR' }];
-        const angles = this.anglesFor(entries.length, 10);
+        const size = this.controlSize();
+        const angles = this.packAngles(entries.length, this.geometry.ringB, size);
 
         entries.forEach((entry, index) => {
             if (entry.id === 'clear') {
                 const hasFilter = Boolean(filters.country || filters.state || filters.location);
                 const node = this.node({
                     label: 'CLEAR',
-                    size: this.geometry.nodeB,
+                    size,
                     radius: this.geometry.ringB,
                     angle: angles[index],
                     title: 'Clear all filters',
@@ -443,7 +457,7 @@ class ControlMenu {
             const node = this.node({
                 label: entry.label,
                 sub: selected ? this.shorten(selected, 12) : '',
-                size: this.geometry.nodeB,
+                size,
                 radius: this.geometry.ringB,
                 angle: angles[index],
                 active: Boolean(selected),
@@ -565,12 +579,13 @@ class ControlMenu {
             { id: 'grid', label: 'GRID' },
             { id: 'masonry', label: 'MASONRY' }
         ];
-        const angles = this.anglesFor(modes.length, 22);
+        const size = this.controlSize();
+        const angles = this.packAngles(modes.length, this.geometry.ringB, size);
 
         modes.forEach((entry, index) => {
             this.optionLayer.appendChild(this.node({
                 label: entry.label,
-                size: this.geometry.nodeB,
+                size,
                 radius: this.geometry.ringB,
                 angle: angles[index],
                 active: mode === entry.id,
@@ -595,13 +610,14 @@ class ControlMenu {
         }
 
         const counts = [2, 3, 4, 5, 6];
-        const angles = this.anglesFor(counts.length, 12);
+        const size = this.controlSize();
+        const angles = this.packAngles(counts.length, this.geometry.ringC, size);
         const current = this.gallery?.columns;
 
         counts.forEach((count, index) => {
             this.leafLayer.appendChild(this.node({
                 label: String(count),
-                size: this.geometry.nodeC * 0.72,
+                size,
                 radius: this.geometry.ringC,
                 angle: angles[index],
                 active: current === count,
@@ -636,12 +652,13 @@ class ControlMenu {
             { id: 'chrono', label: 'CHRONO' },
             { id: 'random', label: 'SHUFFLE' }
         ];
-        const angles = this.anglesFor(modes.length, 22);
+        const size = this.controlSize();
+        const angles = this.packAngles(modes.length, this.geometry.ringB, size);
 
         modes.forEach((entry, index) => {
             const node = this.node({
                 label: entry.label,
-                size: this.geometry.nodeB,
+                size,
                 radius: this.geometry.ringB,
                 angle: angles[index],
                 active: mode === entry.id,
@@ -655,17 +672,18 @@ class ControlMenu {
     }
 
     renderExposureOptions() {
-        const angles = this.anglesFor(EXPOSURE_OPTIONS.length, 18);
+        const size = this.controlSize();
+        const angles = this.packAngles(EXPOSURE_OPTIONS.length, this.geometry.ringB, size);
         const current = window.exposureDial?.getExposure?.();
 
         EXPOSURE_OPTIONS.forEach((entry, index) => {
             this.optionLayer.appendChild(this.node({
                 label: entry.label,
-                size: this.geometry.nodeB,
+                size,
                 radius: this.geometry.ringB,
                 angle: angles[index],
                 active: current === entry.id,
-                title: `${entry.label.toLowerCase()} page`,
+                title: `Exposure ${entry.label}`,
                 onClick: () => window.exposureDial?.setExposure(entry.id)
             }));
         });

@@ -3091,8 +3091,8 @@ body.exposure-1 .globe-explorer-panel {
     text-transform: uppercase;
     /* Radii are overwritten by JS to match the viewport. */
     --cm-r-hub: 78px;
-    --cm-r-a: 172px;
-    --cm-r-b: 262px;
+    --cm-r-a: 180px;
+    --cm-r-b: 268px;
     --cm-r-c: 350px;
     /* One tint ramp drives every layer, so the menu keeps the same contrast
        against the page whether the exposure is black or white. */
