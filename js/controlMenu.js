@@ -56,7 +56,6 @@ class ControlMenu {
         this.sectorLayer = document.getElementById('cm-sectors');
         this.optionLayer = document.getElementById('cm-options');
         this.leafLayer = document.getElementById('cm-leaf');
-        this.readout = document.getElementById('cm-readout');
 
         this.isOpen = false;
         this.isAnimating = false;
@@ -65,7 +64,6 @@ class ControlMenu {
         this.filterType = 'country';
         this.leafOffset = 0;
         this.leafStep = 13;
-        this.hoverLabel = '';
         this.scale = 1;
         this.geometry = { ...CM_BASE };
 
@@ -255,7 +253,6 @@ class ControlMenu {
 
     async ensureFilterData() {
         if (!this.globeExplorer || this.globeExplorer.hasFilterData) return;
-        this.setReadout('LOADING PLACES');
         try {
             await this.globeExplorer.ensureFilterData();
         } catch (error) {
@@ -276,7 +273,6 @@ class ControlMenu {
         this.syncFilterState();
         this.renderSections();
         this.renderOptions();
-        this.renderReadout();
     }
 
     /**
@@ -328,11 +324,21 @@ class ControlMenu {
         if (onHover) {
             btn.addEventListener('pointerenter', () => onHover());
             btn.addEventListener('focus', () => onHover());
-            btn.addEventListener('pointerleave', () => this.setHover(''));
-            btn.addEventListener('blur', () => this.setHover(''));
         }
 
         return btn;
+    }
+
+    sectionLabel(id) {
+        if (id === 'order') {
+            return this.currentViewMode() === 'random' ? 'SHUFFLE' : 'CHRONO';
+        }
+        return SECTIONS.find((section) => section.id === id)?.label || id.toUpperCase();
+    }
+
+    hasActiveFilter() {
+        const filters = this.globeExplorer?.getSelectedFilters?.() || {};
+        return Boolean(filters.country || filters.state || filters.location);
     }
 
     renderSections() {
@@ -340,19 +346,24 @@ class ControlMenu {
         if (!this.isOpen) return;
 
         const angles = this.anglesFor(SECTIONS.length, 12);
+        const filterOn = this.hasActiveFilter();
         SECTIONS.forEach((section, index) => {
+            const label = this.sectionLabel(section.id);
             const node = this.node({
-                label: section.label,
+                label,
                 size: this.geometry.nodeA,
                 radius: this.geometry.ringA,
                 angle: angles[index],
-                // Drilled-in sections read as outlined, never filled: the
-                // solid fill is reserved for the value actually in effect,
-                // so a glance at the menu shows state rather than navigation.
+                // Filter is the only section that fills: a live place
+                // selection. Order shows chrono vs shuffle in its label.
+                active: section.id === 'filter' && filterOn,
                 open: this.section === section.id,
-                title: `${section.label} options`,
+                title: section.id === 'order'
+                    ? `${label} order`
+                    : `${section.label} options`,
                 onClick: () => this.selectSection(section.id)
             });
+            node.dataset.section = section.id;
             node.setAttribute('role', 'tab');
             node.setAttribute('aria-selected', this.section === section.id ? 'true' : 'false');
             this.sectorLayer.appendChild(node);
@@ -366,7 +377,6 @@ class ControlMenu {
         this.leafItems = null;
 
         if (!this.isOpen || !this.section) {
-            this.renderReadout();
             return;
         }
 
@@ -386,8 +396,6 @@ class ControlMenu {
             default:
                 break;
         }
-
-        this.renderReadout();
     }
 
     renderFilterOptions() {
@@ -475,8 +483,7 @@ class ControlMenu {
                         return;
                     }
                     this.globeExplorer?.applyFilterOption?.(this.filterType, item);
-                },
-                onHover: () => this.setHover(`${item.label} · ${item.count}`)
+                }
             });
             this.leafLayer.appendChild(node);
         });
@@ -580,8 +587,7 @@ class ControlMenu {
                 angle: angles[index],
                 active: current === count,
                 title: `${count} columns`,
-                onClick: () => this.gallery?.setColumns(count),
-                onHover: () => this.setHover(`${count} COLUMNS`)
+                onClick: () => this.gallery?.setColumns(count)
             }));
         });
     }
@@ -595,7 +601,14 @@ class ControlMenu {
         this.root.querySelectorAll('.cm-node[data-kind="view"]').forEach((node) => {
             node.classList.toggle('is-active', node.dataset.value === current);
         });
-        this.renderReadout();
+        const order = this.root.querySelector('.cm-node[data-section="order"]');
+        if (order) {
+            const label = current === 'random' ? 'SHUFFLE' : 'CHRONO';
+            const text = order.querySelector('.cm-sector-label');
+            if (text) text.textContent = label;
+            order.title = `${label} order`;
+            order.setAttribute('aria-label', `${label} order`);
+        }
     }
 
     renderOrderOptions() {
@@ -635,44 +648,9 @@ class ControlMenu {
                 angle: angles[index],
                 active: current === value,
                 title: `Exposure ${value > 0 ? `+${value}` : value}`,
-                onClick: () => window.exposureDial?.setExposure(value),
-                onHover: () => this.setHover(`EV ${value > 0 ? `+${value}` : value}`)
+                onClick: () => window.exposureDial?.setExposure(value)
             }));
         });
-    }
-
-    // ── readout ──
-
-    setHover(label) {
-        this.hoverLabel = label;
-        this.renderReadout();
-    }
-
-    setReadout(text) {
-        if (this.readout) this.readout.textContent = text;
-    }
-
-    renderReadout() {
-        if (!this.readout) return;
-
-        if (this.hoverLabel) {
-            this.readout.textContent = this.hoverLabel;
-            return;
-        }
-
-        const parts = [];
-        const filterLabel = this.globeExplorer?.getActiveFilterLabel?.() || 'ALL';
-        parts.push(filterLabel === 'ALL' ? 'ALL PHOTOS' : filterLabel);
-
-        if (this.gallery) {
-            const mode = this.gallery.layoutMode === 'masonry' ? 'MASONRY' : 'GRID';
-            parts.push(window.innerWidth > 768 ? `${mode} ${this.gallery.columns}` : mode);
-        }
-        if (this.currentViewMode() === 'random') {
-            parts.push('SHUFFLED');
-        }
-
-        this.readout.textContent = parts.join('  ·  ');
     }
 
     shorten(value, max) {

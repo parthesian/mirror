@@ -3923,38 +3923,7 @@ body.ui-animating .control-menu {
     overflow-wrap: anywhere;
 }
 
-/* ── readout ── */
-
-/* Parked to the left of the outermost ring so it never sits under a node.
-   It lands on photos rather than on the disc, so it carries its own plate. */
-.cm-readout {
-    position: absolute;
-    right: calc(var(--cm-radius, var(--cm-r-c)) + 14px);
-    bottom: 18px;
-    white-space: nowrap;
-    text-align: right;
-    font-size: 0.56rem;
-    letter-spacing: 0.16em;
-    color: var(--ink-dim, #666);
-    padding: 7px 12px;
-    border: 1px solid var(--cm-edge);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--ink, #333) 8%, var(--surface, rgba(240, 240, 240, 0.72)));
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity var(--dur-mid) var(--ease);
-}
-
-.control-menu:not(.collapsed) .cm-readout {
-    opacity: 1;
-}
-
-.cm-readout strong {
-    color: var(--ink, #333);
-    font-weight: 400;
-}
+/* Status used to live in a separate chip; section nodes now carry it. */
 
 /* ── collapsed state ──
    Resting: a small floating orb inset from the corner.
@@ -3973,6 +3942,14 @@ body.ui-animating .control-menu {
 .control-menu.collapsed .cm-backdrop {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
+}
+
+/* Resting: take the discs out of the paint tree. Opacity 0 still left a
+   hairline quarter under the floating orb. They return when the hub docks
+   so the bloom can start from the corner. */
+.control-menu.collapsed:not(.is-docked) .cm-backdrop,
+.control-menu.collapsed:not(.is-docked) .cm-rings {
+    visibility: hidden;
 }
 
 .control-menu.collapsed .cm-layer {
@@ -4068,16 +4045,6 @@ body.ui-animating .control-menu {
 /* On a narrow viewport the disc spans nearly the full width, so there is no
    room beside it: the readout moves above the arc instead. */
 @media (max-width: 768px) {
-    /* Offsets resolve against the menu's zero-width corner box, so the plate
-       is hung off the same right edge and lifted clear of the arc. */
-    .cm-readout {
-        right: var(--gutter);
-        bottom: calc(var(--cm-radius, var(--cm-r-c)) + 12px);
-        max-width: calc(100vw - var(--gutter) * 2);
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
     .cm-hub {
         --cm-orb: 44px;
         --cm-orb-inset: 2.2rem;
