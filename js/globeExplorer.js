@@ -10,7 +10,7 @@ class GlobeExplorer {
         this.intersectPicker = document.getElementById('globe-intersect-picker');
         this.panelContent = document.getElementById('globe-panel-content');
         this.hint = this.overlay?.querySelector('.globe-explorer-hint');
-        this.openBtn = document.getElementById('globe-btn');
+        this.openBtn = document.getElementById('globe-btn'); // optional; CONTROL menu opens the globe now
         this.closeBtn = document.getElementById('globe-explorer-close');
         this.rotateToggleBtn = document.getElementById('globe-rotate-toggle');
         this.filterPanel = document.getElementById('country-filter-panel');
@@ -721,10 +721,13 @@ class GlobeExplorer {
         this._syncRotateToggleUI();
     }
 
+    prefetch() {
+        this._prefetchAssets({ includeBoundaries: true, includeGeo: true });
+    }
+
     _bindPrefetchIntent() {
-        const prefetch = () => this._prefetchAssets({ includeBoundaries: true, includeGeo: true });
-        this.openBtn?.addEventListener('pointerenter', prefetch);
-        this.openBtn?.addEventListener('focus', prefetch);
+        this.openBtn?.addEventListener('pointerenter', () => this.prefetch());
+        this.openBtn?.addEventListener('focus', () => this.prefetch());
     }
 
     _prefetchAssets({ includeBoundaries = false, includeGeo = false } = {}) {
@@ -743,8 +746,8 @@ class GlobeExplorer {
     }
 
     _warmup() {
-        // Idle warmup must not race first-viewport thumbnails. Hover/focus on
-        // the globe button still starts Three + geo + borders immediately.
+        // Idle warmup must not race first-viewport thumbnails. Opening the
+        // CONTROL menu, or hovering GLOBE, still starts Three + geo + borders.
         const start = () => this._prefetchAssets({ includeBoundaries: false, includeGeo: true });
         if (typeof window.requestIdleCallback === 'function') {
             window.requestIdleCallback(start, { timeout: 3500 });

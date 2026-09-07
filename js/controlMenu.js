@@ -7,7 +7,7 @@
  * the bottom edge and 90° runs up the right edge.
  *
  *   hub  → open/close
- *   ring A → sections (filter, layout, order, exposure)
+ *   ring A → sections (filter, globe, layout, order, exposure)
  *   ring B → that section's options
  *   ring C → leaf values, rotatable when the list is longer than the arc
  */
@@ -31,9 +31,16 @@ const LEAF_BOTTOM = 14;
 
 const SECTIONS = [
     { id: 'filter', label: 'FILTER' },
+    { id: 'globe', label: 'GLOBE' },
     { id: 'layout', label: 'LAYOUT' },
     { id: 'order', label: 'ORDER' },
     { id: 'exposure', label: 'EXPOSE' }
+];
+
+const EXPOSURE_OPTIONS = [
+    { id: -1, label: 'DARK' },
+    { id: 0, label: 'GRAY' },
+    { id: 1, label: 'LIGHT' }
 ];
 
 const FILTER_TYPES = [
@@ -211,6 +218,7 @@ class ControlMenu {
         const instant = this.prefersReducedMotion();
         this.root.classList.add('is-docked');
 
+        this.globeExplorer?.prefetch?.();
         this.after(instant ? 0 : this.slideMs, () => {
             this.root.classList.remove('collapsed');
             this.render();
@@ -241,6 +249,12 @@ class ControlMenu {
     }
 
     async selectSection(id) {
+        if (id === 'globe') {
+            this.close();
+            await this.globeExplorer?.open?.();
+            return;
+        }
+
         this.section = this.section === id ? null : id;
         this.root.dataset.section = this.section || '';
         this.leafOffset = 0;
@@ -358,10 +372,15 @@ class ControlMenu {
                 // selection. Order shows chrono vs shuffle in its label.
                 active: section.id === 'filter' && filterOn,
                 open: this.section === section.id,
-                title: section.id === 'order'
-                    ? `${label} order`
-                    : `${section.label} options`,
-                onClick: () => this.selectSection(section.id)
+                title: section.id === 'globe'
+                    ? 'Open the globe explorer'
+                    : section.id === 'order'
+                        ? `${label} order`
+                        : `${section.label} options`,
+                onClick: () => this.selectSection(section.id),
+                onHover: section.id === 'globe'
+                    ? () => this.globeExplorer?.prefetch?.()
+                    : undefined
             });
             node.dataset.section = section.id;
             node.setAttribute('role', 'tab');
@@ -636,19 +655,18 @@ class ControlMenu {
     }
 
     renderExposureOptions() {
-        const values = [3, 2, 1, 0, -1, -2, -3];
-        const angles = this.anglesFor(values.length, 8);
+        const angles = this.anglesFor(EXPOSURE_OPTIONS.length, 18);
         const current = window.exposureDial?.getExposure?.();
 
-        values.forEach((value, index) => {
+        EXPOSURE_OPTIONS.forEach((entry, index) => {
             this.optionLayer.appendChild(this.node({
-                label: value > 0 ? `+${value}` : String(value),
-                size: this.geometry.nodeB * 0.82,
+                label: entry.label,
+                size: this.geometry.nodeB,
                 radius: this.geometry.ringB,
                 angle: angles[index],
-                active: current === value,
-                title: `Exposure ${value > 0 ? `+${value}` : value}`,
-                onClick: () => window.exposureDial?.setExposure(value)
+                active: current === entry.id,
+                title: `${entry.label.toLowerCase()} page`,
+                onClick: () => window.exposureDial?.setExposure(entry.id)
             }));
         });
     }
