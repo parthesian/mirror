@@ -8,6 +8,13 @@ class GlobeExplorer {
         this.overlay = document.getElementById('globe-explorer');
         this.sceneContainer = document.getElementById('globe-explorer-scene');
         this.intersectPicker = document.getElementById('globe-intersect-picker');
+        this.pickConfirm = document.getElementById('globe-pick-confirm');
+        this.pickConfirmKind = document.getElementById('globe-pick-confirm-kind');
+        this.pickConfirmTitle = document.getElementById('globe-pick-confirm-title');
+        this.pickConfirmMeta = document.getElementById('globe-pick-confirm-meta');
+        this.pickConfirmCopy = document.getElementById('globe-pick-confirm-copy');
+        this.pickConfirmApply = document.getElementById('globe-pick-confirm-apply');
+        this.pickConfirmCancel = document.getElementById('globe-pick-confirm-cancel');
         this.hint = this.overlay?.querySelector('.globe-explorer-hint');
         this.openBtn = document.getElementById('globe-btn'); // optional; CONTROL menu opens the globe now
         this.closeBtn = document.getElementById('globe-explorer-close');
@@ -57,6 +64,9 @@ class GlobeExplorer {
         this.countryBoundaryBorder = null;
         this.countryBorderHighlightKey = '';
         this.filterOptionCache = new Map();
+        this.pendingPick = null;
+        this.isExiting = false;
+        this._exitPromise = null;
 
         this._bindEvents();
         this._setFilterPanelExpanded(false);
@@ -141,27 +151,108 @@ class GlobeExplorer {
     }
 
     _applyGlobePick(option) {
-        this._hideIntersectPicker();
-        if (!option) return;
+        this._proposeGlobePick(option);
+    }
+
+    _buildPendingPick(option) {
+        if (!option) return null;
         if (option.kind === 'country' && option.feature) {
             const aliases = option.feature.names || [];
-            const canonicalCountry = this._resolveCountryFilterValue(option.feature.name, aliases);
-            this._applyFilter('country', canonicalCountry);
-            return;
+            const value = this._resolveCountryFilterValue(option.feature.name, aliases);
+            if (!value) return null;
+            return {
+                type: 'country',
+                value,
+                title: option.feature.name || value,
+                kind: 'COUNTRY',
+                copy: 'view photographs from this country',
+                meta: '',
+                selection: null
+            };
         }
         const loc = option.sample;
         if (loc?.location) {
-            this._setFilterSelectionFromOption('location', {
+            return {
+                type: 'location',
                 value: loc.location,
-                country: loc.country || '',
-                state: loc.state || ''
-            }, false);
-            this._applyFilter('location', loc.location);
-            return;
+                title: loc.location,
+                kind: 'PLACE',
+                copy: 'view photographs from this place',
+                meta: [loc.state, loc.country].filter(Boolean).join(' · '),
+                selection: {
+                    type: 'location',
+                    item: {
+                        value: loc.location,
+                        country: loc.country || '',
+                        state: loc.state || ''
+                    }
+                }
+            };
         }
         if (loc?.country) {
-            this._applyFilter('country', loc.country);
+            return {
+                type: 'country',
+                value: loc.country,
+                title: loc.country,
+                kind: 'COUNTRY',
+                copy: 'view photographs from this country',
+                meta: '',
+                selection: null
+            };
         }
+        return null;
+    }
+
+    _proposeGlobePick(option) {
+        this._hideIntersectPicker();
+        const pending = this._buildPendingPick(option);
+        if (!pending) {
+            return;
+        }
+        this.pendingPick = pending;
+        this._showPickConfirm(pending);
+    }
+
+    _showPickConfirm(pending) {
+        if (!this.pickConfirm || !pending) return;
+        if (this.pickConfirmKind) {
+            this.pickConfirmKind.textContent = pending.kind;
+        }
+        if (this.pickConfirmTitle) {
+            this.pickConfirmTitle.textContent = pending.title;
+        }
+        if (this.pickConfirmCopy) {
+            this.pickConfirmCopy.textContent = pending.copy;
+        }
+        if (this.pickConfirmMeta) {
+            const meta = pending.meta || '';
+            this.pickConfirmMeta.textContent = meta;
+            this.pickConfirmMeta.hidden = !meta;
+        }
+        this.pickConfirm.hidden = false;
+        this.pickConfirm.setAttribute('aria-hidden', 'false');
+        requestAnimationFrame(() => {
+            this.pickConfirm?.classList.add('is-visible');
+        });
+        this.pickConfirmApply?.focus();
+    }
+
+    _hidePickConfirm() {
+        this.pendingPick = null;
+        if (!this.pickConfirm) return;
+        this.pickConfirm.classList.remove('is-visible');
+        this.pickConfirm.setAttribute('aria-hidden', 'true');
+        this.pickConfirm.hidden = true;
+    }
+
+    async _confirmPendingPick() {
+        const pending = this.pendingPick;
+        if (!pending || this.isExiting) return;
+        this._hidePickConfirm();
+        if (pending.selection) {
+            this._setFilterSelectionFromOption(pending.selection.type, pending.selection.item, false);
+        }
+        await this._applyFilter(pending.type, pending.value);
     }
 
     _normalizeCountryName(value) {
@@ -561,8 +652,25 @@ class GlobeExplorer {
     _bindEvents() {
         this.openBtn?.addEventListener('click', () => this.open());
         this.closeBtn?.addEventListener('click', () => this.close());
+        this.pickConfirmApply?.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            void this._confirmPendingPick();
+        });
+        this.pickConfirmCancel?.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            this._hidePickConfirm();
+        });
+        this.pickConfirm?.addEventListener('click', (event) => {
+            event.stopPropagation();
+        });
         this.overlay?.addEventListener('click', (e) => {
             if (e.target === this.overlay) {
+                if (this.pendingPick) {
+                    this._hidePickConfirm();
+                    return;
+                }
                 this._hideIntersectPicker();
                 this.close();
             }
@@ -579,10 +687,15 @@ class GlobeExplorer {
         this.rotateToggleBtn?.addEventListener('click', () => this._toggleRotation());
 
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && this.isOpen) {
-                this._hideIntersectPicker();
-                this.close();
+            if (e.key !== 'Escape' || (!this.isOpen && !this.isExiting)) {
+                return;
             }
+            if (this.pendingPick) {
+                this._hidePickConfirm();
+                return;
+            }
+            this._hideIntersectPicker();
+            this.close();
         });
     }
 
@@ -616,6 +729,9 @@ class GlobeExplorer {
     // ── open / close ──
 
     async open(focusLocation = null) {
+        if (this.isExiting && this._exitPromise) {
+            await this._exitPromise;
+        }
         if (this.isOpen) {
             if (focusLocation) {
                 await this._focusLocation(focusLocation);
@@ -623,7 +739,9 @@ class GlobeExplorer {
             return;
         }
         this.isOpen = true;
-        this.overlay.classList.remove('hidden');
+        this.isExiting = false;
+        this._hidePickConfirm();
+        this.overlay.classList.remove('hidden', 'is-exiting');
         this.overlay.classList.add('active');
         document.body.style.overflow = 'hidden';
 
@@ -632,6 +750,7 @@ class GlobeExplorer {
             await this._fetchLocations();
             await this._initScene();
             this._setSceneRunning(true);
+            this.threeState?.onResize?.();
             if (focusLocation) {
                 await this._focusLocation(focusLocation);
             }
@@ -642,17 +761,67 @@ class GlobeExplorer {
     }
 
     close() {
-        if (!this.isOpen) return;
+        if (!this.isOpen && !this.isExiting) return;
+        void this._playExit();
+    }
+
+    _playExit() {
+        if (this.isExiting && this._exitPromise) {
+            return this._exitPromise;
+        }
+        if (!this.overlay || this.overlay.classList.contains('hidden')) {
+            this._finishClose();
+            return Promise.resolve();
+        }
+
+        this.isExiting = true;
         this.isOpen = false;
+        this._hidePickConfirm();
+        this._hideIntersectPicker();
+        this._suppressGhostClick();
+        this.overlay.classList.remove('active');
+        this.overlay.classList.add('is-exiting');
+
+        this._exitPromise = new Promise((resolve) => {
+            let settled = false;
+            const finish = () => {
+                if (settled) return;
+                settled = true;
+                this.overlay.removeEventListener('transitionend', onEnd);
+                window.clearTimeout(fallback);
+                this._finishClose();
+                resolve();
+            };
+            const onEnd = (event) => {
+                if (event.target !== this.overlay) return;
+                if (event.propertyName && event.propertyName !== 'opacity') return;
+                finish();
+            };
+            this.overlay.addEventListener('transitionend', onEnd);
+            const fallbackMs = this._prefersReducedMotion() ? 40 : 560;
+            const fallback = window.setTimeout(finish, fallbackMs);
+        });
+        return this._exitPromise;
+    }
+
+    _finishClose() {
+        this.isExiting = false;
+        this.isOpen = false;
+        this._exitPromise = null;
         this._setHoverHighlight(null, null);
         this._clearCountryBorderHighlight();
         this._hideIntersectPicker();
-        this.overlay.classList.remove('active');
-        this.overlay.classList.add('hidden');
+        this._hidePickConfirm();
+        this.overlay?.classList.remove('active', 'is-exiting');
+        this.overlay?.classList.add('hidden');
         document.body.style.overflow = '';
         // Keep the WebGL scene, but stop the RAF loop so a closed overlay
         // does not keep rendering 60fps behind the gallery.
         this._setSceneRunning(false);
+    }
+
+    _prefersReducedMotion() {
+        return Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
     }
 
     async _focusLocation(location) {
@@ -970,8 +1139,10 @@ class GlobeExplorer {
             this.pointerGesture = {
                 x: e.clientX,
                 y: e.clientY,
+                pointerType: e.pointerType || 'mouse',
                 dragged: false,
-                hadWheel: false
+                hadWheel: false,
+                tapHandled: false
             };
             drag = {
                 x: e.clientX,
@@ -984,7 +1155,8 @@ class GlobeExplorer {
             if (!drag) return;
             const dx = e.clientX - drag.x;
             const dy = e.clientY - drag.y;
-            if (this.pointerGesture && ((dx * dx + dy * dy) > 36)) {
+            const slop = (this.pointerGesture?.pointerType === 'touch') ? 18 : 6;
+            if (this.pointerGesture && ((dx * dx + dy * dy) > slop * slop)) {
                 this.pointerGesture.dragged = true;
                 this.lastManualRotateAt = Date.now();
                 if (this.autoRotateEnabled) {
@@ -1062,22 +1234,39 @@ class GlobeExplorer {
                 this.pointerGesture.hadWheel = true;
             }
         }, { passive: true });
-        const endDrag = () => {
-            this.lastPointerGesture = this.pointerGesture;
+        const endDrag = (e) => {
+            const gesture = this.pointerGesture;
+            this.lastPointerGesture = gesture;
+            const shouldTap = Boolean(
+                e
+                && e.type === 'pointerup'
+                && gesture
+                && !gesture.dragged
+                && !gesture.hadWheel
+                && (gesture.pointerType === 'touch' || gesture.pointerType === 'pen')
+            );
             this.pointerGesture = null;
             drag = null;
+            if (shouldTap) {
+                gesture.tapHandled = true;
+                this.lastPointerGesture = gesture;
+                handleGlobePick(e);
+            }
         };
         renderer.domElement.addEventListener('pointerup', endDrag);
-        renderer.domElement.addEventListener('pointerleave', endDrag);
+        renderer.domElement.addEventListener('pointercancel', endDrag);
+        renderer.domElement.addEventListener('pointerleave', (e) => {
+            if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+                return;
+            }
+            endDrag(e);
+        });
         renderer.domElement.addEventListener('mouseleave', () => {
             this._setHoverHighlight(null, null);
         });
 
-        renderer.domElement.addEventListener('click', (e) => {
-            const gesture = this.lastPointerGesture;
-            if (gesture?.dragged || gesture?.hadWheel) {
-                return;
-            }
+        const handleGlobePick = (e) => {
+            if (this.isExiting) return;
             const rect = renderer.domElement.getBoundingClientRect();
             mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
             mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -1187,8 +1376,24 @@ class GlobeExplorer {
 
             // If no point is selected, fallback to country polygons.
             this._hideIntersectPicker();
+            if (!countryHit?.feature) {
+                this._hidePickConfirm();
+                return;
+            }
             applyCountryChoice();
-            return;
+        };
+
+        renderer.domElement.addEventListener('click', (e) => {
+            const gesture = this.lastPointerGesture;
+            if (gesture?.tapHandled) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+            if (gesture?.dragged || gesture?.hadWheel) {
+                return;
+            }
+            handleGlobePick(e);
         });
 
         const state = {
@@ -1764,8 +1969,21 @@ class GlobeExplorer {
         return null;
     }
 
+    _suppressGhostClick() {
+        const block = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+        };
+        document.addEventListener('click', block, true);
+        window.setTimeout(() => {
+            document.removeEventListener('click', block, true);
+        }, 450);
+    }
+
     async _applyFilter(filterType, filterValue, takenFrom = null, takenTo = null, label = '') {
-        this.close();
+        if (this.isOpen || this.isExiting) {
+            await this._playExit();
+        }
         this.selectedFilterType = filterType;
         if (filterType === 'country') {
             this.selectedFilters.state = '';

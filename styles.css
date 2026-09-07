@@ -440,21 +440,33 @@ body.exposure-1 .scroll-loading p {
     object-position: center center;
 }
 
-/* During a layout change the tiles are driven by FLIP transforms.
-   Only transform/opacity interpolate — animating width/height thrashes
-   layout and flickers once a row has five or six tiles. */
+/* Layout morph: tiles are already absolute, so interpolating the box does
+   not reflow siblings. Non-uniform scale was stretching the photos. */
+.gallery-window.is-morphing {
+    transition: height var(--dur-slow) var(--ease);
+}
+
 .gallery-window.is-morphing .gallery-item {
-    transition: transform var(--dur-slow) var(--ease),
+    transition: left var(--dur-slow) var(--ease),
+                top var(--dur-slow) var(--ease),
+                width var(--dur-slow) var(--ease),
+                height var(--dur-slow) var(--ease),
                 opacity var(--dur-mid) var(--ease);
-    transform-origin: top left;
-    will-change: transform;
+    perspective: none;
     backface-visibility: hidden;
+}
+
+.gallery-window.is-morph-invert,
+.gallery-window.is-morph-invert .gallery-item {
+    transition: none;
 }
 
 .gallery-window.is-morphing .gallery-item-image {
     opacity: 1;
     transform: none;
     transition: none;
+    /* Keep cover for the flight so contain/cover does not pop mid-morph. */
+    object-fit: cover;
     will-change: auto;
 }
 
@@ -478,6 +490,7 @@ body.exposure-1 .scroll-loading p {
 .gallery-item.flipboard-busy:hover {
     pointer-events: none;
     transform: none;
+    will-change: transform;
 }
 
 .gallery-item.flipboard-busy .gallery-item-image {
@@ -493,6 +506,7 @@ body.exposure-1 .scroll-loading p {
     pointer-events: none;
     overflow: hidden;
     z-index: 2;
+    will-change: transform;
 }
 
 .flipboard-flap-image {
@@ -533,6 +547,17 @@ body.exposure-1 .scroll-loading p {
     .gallery-item:hover .gallery-item-image {
         transition: none;
         transform: none;
+    }
+
+    .globe-explorer,
+    .globe-explorer-scene,
+    .globe-pick-confirm {
+        transition: none;
+    }
+
+    .globe-explorer.is-exiting .globe-explorer-scene {
+        transform: none;
+        filter: grayscale(1) contrast(1.05) brightness(0.9);
     }
 
     .cm-hub,
@@ -2918,6 +2943,117 @@ body.exposure-1 { --leak-opacity: 0.35; }
     text-transform: uppercase;
 }
 
+.globe-pick-confirm {
+    position: absolute;
+    left: 50%;
+    bottom: max(1.4rem, env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%) translateY(10px);
+    width: min(22rem, calc(100% - 2rem));
+    z-index: 1003;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-mid) var(--ease),
+                transform var(--dur-mid) var(--ease);
+}
+
+.globe-pick-confirm.is-visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    pointer-events: auto;
+}
+
+.globe-pick-confirm-card {
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(14, 14, 14, 0.78);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: #f4f4f4;
+    padding: 0.95rem 1.1rem 1rem;
+    text-align: center;
+}
+
+.globe-pick-confirm-kind {
+    margin: 0 0 0.35rem;
+    font-size: 0.58rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    opacity: 0.55;
+}
+
+.globe-pick-confirm-title {
+    margin: 0;
+    font-family: 'Cormorant Garamond', 'Times New Roman', serif;
+    font-weight: 400;
+    font-size: 1.55rem;
+    letter-spacing: 0.04em;
+    line-height: 1.15;
+}
+
+.globe-pick-confirm-meta {
+    margin: 0.28rem 0 0;
+    font-size: 0.62rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    opacity: 0.58;
+}
+
+.globe-pick-confirm-copy {
+    margin: 0.55rem 0 0.9rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: lowercase;
+    opacity: 0.68;
+}
+
+.globe-pick-confirm-actions {
+    display: flex;
+    justify-content: center;
+    gap: 0.55rem;
+}
+
+.globe-pick-confirm-btn {
+    min-width: 5.5rem;
+    padding: 0.42rem 0.85rem;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    background: transparent;
+    color: inherit;
+    font-size: 0.62rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: opacity var(--dur-fast) var(--ease),
+                border-color var(--dur-fast) var(--ease),
+                background var(--dur-fast) var(--ease);
+}
+
+.globe-pick-confirm-btn:hover {
+    opacity: 1;
+    border-color: currentColor;
+}
+
+.globe-pick-confirm-btn-primary {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.55);
+}
+
+.globe-explorer.is-exiting {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.globe-explorer.is-exiting .globe-explorer-scene {
+    transform: scale(0.94);
+    opacity: 0;
+    filter: grayscale(1) contrast(1.05) brightness(0.9) blur(6px);
+}
+
+.globe-explorer.is-exiting .globe-pick-confirm,
+.globe-explorer.is-exiting .globe-intersect-picker,
+.globe-explorer.is-exiting .globe-explorer-toolbar {
+    opacity: 0;
+}
+
 .globe-explorer-scene {
     flex: 1;
     display: flex;
@@ -2926,6 +3062,9 @@ body.exposure-1 { --leak-opacity: 0.35; }
     overflow: hidden;
     position: relative;
     min-width: 0;
+    transition: transform var(--dur-slow) var(--ease),
+                opacity var(--dur-slow) var(--ease),
+                filter var(--dur-slow) var(--ease);
 }
 
 .globe-explorer-scene canvas {
@@ -3441,6 +3580,15 @@ body.exposure-0 .timeline-sidebar.timeline-popout .timeline-month.active {
         width: auto;
         max-height: min(30vh, 280px);
         box-sizing: border-box;
+    }
+
+    .globe-pick-confirm {
+        width: calc(100% - 1.5rem);
+        bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+    }
+
+    .globe-pick-confirm-btn {
+        min-height: 44px;
     }
 }
 

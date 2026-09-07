@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=20260908c">
+    <link rel="stylesheet" href="styles.css?v=20260908g">
     <script type="importmap">
     {
         "imports": {
@@ -76,6 +76,18 @@
             </div>
             <div class="globe-explorer-scene" id="globe-explorer-scene"></div>
             <div id="globe-intersect-picker" class="globe-intersect-picker hidden" aria-label="Choose nearby location"></div>
+            <div id="globe-pick-confirm" class="globe-pick-confirm" hidden role="dialog" aria-modal="true" aria-labelledby="globe-pick-confirm-title">
+                <div class="globe-pick-confirm-card">
+                    <p class="globe-pick-confirm-kind" id="globe-pick-confirm-kind">COUNTRY</p>
+                    <h2 class="globe-pick-confirm-title" id="globe-pick-confirm-title"></h2>
+                    <p class="globe-pick-confirm-meta" id="globe-pick-confirm-meta" hidden></p>
+                    <p class="globe-pick-confirm-copy" id="globe-pick-confirm-copy">view photographs from this place</p>
+                    <div class="globe-pick-confirm-actions">
+                        <button type="button" id="globe-pick-confirm-cancel" class="globe-pick-confirm-btn">back</button>
+                        <button type="button" id="globe-pick-confirm-apply" class="globe-pick-confirm-btn globe-pick-confirm-btn-primary">view</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -129,13 +141,13 @@
     <script src="js/imagePreloader.js?v=20260907q"></script>
     <script src="js/flipboard.js?v=20260907f"></script>
     <script src="js/galleryLayout.js?v=20260907d"></script>
-    <script src="js/gallery.js?v=20260907q"></script>
+    <script src="js/gallery.js?v=20260908d"></script>
     <script src="js/globeService.js?v=20260907q"></script>
     <script src="js/timeline.js?v=20260907q"></script>
     <script src="js/viewMode.js?v=20260907l"></script>
     <script src="js/modal.js?v=20260908d"></script>
     <script src="js/filmEffects.js?v=20260406e"></script>
-    <script src="js/globeExplorer.js?v=20260907r"></script>
+    <script src="js/globeExplorer.js?v=20260908b"></script>
     <script src="js/controlMenu.js?v=20260907u"></script>
     <script src="js/app.js?v=20260907q"></script>
 </body>
