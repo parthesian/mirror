@@ -17,6 +17,7 @@ class Modal {
         this.modalCameraIconMobile = document.getElementById('modal-camera-icon-mobile');
         this.modalTimestamp = document.getElementById('modal-timestamp');
         this.globeContainer = document.getElementById('modal-globe');
+        this.modalCopy = this.modal?.querySelector('.modal-copy');
         this.modalContent = this.modal?.querySelector('.modal-content');
         this.prevBtn = document.getElementById('prev-btn');
         this.nextBtn = document.getElementById('next-btn');
@@ -91,6 +92,10 @@ class Modal {
             e.stopPropagation();
             void this.openCurrentImageInGlobeExplorer();
         });
+
+        window.addEventListener('resize', () => {
+            if (this.isOpen) this.syncModalGlobeSize();
+        }, { passive: true });
 
         // Upload modal events
         if (this.hasUploadUi) {
@@ -234,6 +239,8 @@ class Modal {
         // Keep globe instance alive for reuse across modal opens.
         if (this.globeContainer) {
             this.globeContainer.classList.add('hidden');
+            this.globeContainer.style.width = '';
+            this.globeContainer.style.height = '';
         }
         
         // Hide modal
@@ -376,6 +383,33 @@ class Modal {
     }
 
     /**
+     * On a phone the globe sits beside the facts and matches their height.
+     * Desktop keeps the fixed 160px disc. Does not touch the explorer globe.
+     */
+    syncModalGlobeSize() {
+        const globe = this.globeContainer;
+        const copy = this.modalCopy;
+        if (!globe || globe.classList.contains('hidden')) {
+            return;
+        }
+
+        const beside = Boolean(window.matchMedia?.('(max-width: 768px)')?.matches);
+        if (!beside || !copy) {
+            globe.style.width = '';
+            globe.style.height = '';
+        } else {
+            const height = Math.round(copy.getBoundingClientRect().height);
+            if (height > 0) {
+                const size = Math.min(height, Math.round(window.innerWidth * 0.42));
+                globe.style.width = `${size}px`;
+                globe.style.height = `${size}px`;
+            }
+        }
+
+        this.globeService?.instances?.get(globe)?.onResize?.();
+    }
+
+    /**
      * Update globe display under modal description
      */
     async updateGlobe(locationOrOptions) {
@@ -396,6 +430,7 @@ class Modal {
                 this.globeContainer.classList.add('hidden');
             } else {
                 this.globeContainer.setAttribute('title', 'Open globe explorer at this location');
+                this.syncModalGlobeSize();
             }
         } catch (e) {
             console.warn('Modal.updateGlobe error:', e);
