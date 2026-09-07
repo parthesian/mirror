@@ -2,7 +2,7 @@
  * Gallery - windowed grid/masonry that only mounts viewport-near images.
  */
 class Gallery {
-    constructor(imageService, imagePreloader) {
+    constructor(imageService, imagePreloader, globeService) {
         this.imageService = imageService;
         this.galleryContainer = document.getElementById('gallery-container');
         this.loadingElement = document.getElementById('loading');
@@ -15,7 +15,7 @@ class Gallery {
         this.layoutMode = 'grid';
 
         this.imagePreloader = imagePreloader || new ImagePreloader();
-        this.globeService = new GlobeService();
+        this.globeService = globeService || new GlobeService();
         this.globePreloaded = false;
 
         this.keyScrollRaf = null;
@@ -42,6 +42,7 @@ class Gallery {
         this.topSpacer = null;
         this.windowGrid = null;
         this.bottomSpacer = null;
+        this._loadToken = 0;
 
         this.init();
     }
@@ -180,12 +181,16 @@ class Gallery {
     }
 
     async loadImages() {
+        const token = ++this._loadToken;
         try {
             this.showLoading();
             this.hideError();
             this.clearGallery();
 
             const images = await this.imageService.fetchImages();
+            if (token !== this._loadToken) {
+                return;
+            }
             this.hideLoading();
 
             if (!images || images.length === 0) {
@@ -200,6 +205,9 @@ class Gallery {
 
             window.setTimeout(() => this.checkIfNeedsMoreContent(), 60);
         } catch (error) {
+            if (token !== this._loadToken) {
+                return;
+            }
             console.error('Error loading images:', error);
             this.hideLoading();
             this.showError();
@@ -396,6 +404,7 @@ class Gallery {
         const wanted = new Set(desired.map((i) => images[i].id));
         for (const child of Array.from(this.windowGrid.children)) {
             if (!wanted.has(child.dataset.imageId)) {
+                this.mountedItems.delete(child.dataset.imageId);
                 child.remove();
             }
         }
@@ -461,6 +470,9 @@ class Gallery {
         const img = document.createElement('img');
         img.className = 'gallery-item-image';
         img.decoding = 'async';
+        if ('fetchPriority' in img) {
+            img.fetchPriority = 'high';
+        }
 
         item.appendChild(img);
 

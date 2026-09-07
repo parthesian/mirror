@@ -29,6 +29,9 @@ class ImagePreloader {
         const loadPromise = new Promise((resolve) => {
             const image = new Image();
             image.decoding = 'async';
+            if ('fetchPriority' in image) {
+                image.fetchPriority = 'low';
+            }
 
             image.onload = async () => {
                 try {
