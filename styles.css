@@ -993,6 +993,7 @@ body.exposure-3 .scroll-loading p {
     overflow: hidden;
     aspect-ratio: 4 / 3;
     background: rgba(255, 255, 255, 0.08);
+    perspective: 720px;
 }
 
 .gallery-item:hover {
@@ -1024,9 +1025,39 @@ body.exposure-3 .scroll-loading p {
     filter: grayscale(0);
 }
 
+.gallery-item.flipboard-busy,
+.gallery-item.flipboard-busy:hover {
+    pointer-events: none;
+    transform: none;
+}
+
+.gallery-item.flipboard-out .gallery-item-image,
+.gallery-item.flipboard-in .gallery-item-image {
+    opacity: 1;
+    will-change: transform;
+    backface-visibility: hidden;
+    transform-origin: center center;
+}
+
+.gallery-item.flipboard-out .gallery-item-image {
+    transform: rotateX(-88deg);
+    transition: transform 42ms linear;
+}
+
+.gallery-item.flipboard-in .gallery-item-image {
+    transform: rotateX(0deg);
+    transition: transform 42ms linear;
+}
+
 /* Respect reduced motion preferences */
 @media (prefers-reduced-motion: reduce) {
     .gallery-item-image {
+        transition: none;
+    }
+
+    .gallery-item.flipboard-out .gallery-item-image,
+    .gallery-item.flipboard-in .gallery-item-image {
+        transform: none;
         transition: none;
     }
 }

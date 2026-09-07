@@ -465,6 +465,30 @@ class Gallery {
         document.dispatchEvent(new CustomEvent('openModal', { detail: { imageId } }));
     }
 
+    /**
+     * Flip visible tiles from the previous order into the current one.
+     * Hover prefetch stays on the remounted nodes after this returns.
+     */
+    async transitionToNewOrder(previousImages) {
+        const previous = Array.isArray(previousImages) ? previousImages : [];
+        const next = this.imageService.images || [];
+        const start = Math.max(0, this.renderState.startIndex);
+        const end = this.renderState.endIndex > start ? this.renderState.endIndex : start;
+
+        if (end > start && this.windowGrid && window.Flipboard) {
+            await window.Flipboard.animateWindow({
+                items: this.windowGrid.querySelectorAll('.gallery-item'),
+                previousImages: previous.slice(start, end),
+                nextImages: next.slice(start, end),
+                preloader: this.imagePreloader
+            });
+        }
+
+        this.cachedLayout = null;
+        this.clearGallery();
+        this.scheduleRefresh(true);
+    }
+
     // ── UI state ──
 
     showLoading() {

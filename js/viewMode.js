@@ -12,6 +12,7 @@ class ViewMode {
         this.gallery = gallery;
         this.timeline = timeline;
         this.button = document.getElementById('randomize-btn');
+        this.isTransitioning = false;
         this.syncDocument();
         this.bindEvents();
     }
@@ -49,41 +50,56 @@ class ViewMode {
     }
 
     toggle() {
-        this.setMode(this.mode === 'random' ? 'chrono' : 'random');
+        void this.setMode(this.mode === 'random' ? 'chrono' : 'random');
     }
 
-    setMode(mode, options = {}) {
+    async setMode(mode, options = {}) {
         const next = mode === 'random' ? 'random' : 'chrono';
         const refresh = options.refresh !== false;
+        if (this.isTransitioning) {
+            return;
+        }
+        const previousImages = this.imageService.images.slice();
         const changed = this.imageService.setViewMode(next);
 
         this.store(next);
-        this.syncDocument();
+        this.syncButton();
 
         if (!refresh || !this.gallery) {
-            this.timeline?.updateSidebarPosition();
+            this.syncDocument();
             return;
         }
         if (!changed && options.forceRefresh !== true) {
-            this.timeline?.updateSidebarPosition();
+            this.syncDocument();
             return;
         }
 
-        window.scrollTo(0, 0);
-        this.gallery.cachedLayout = null;
-        this.gallery.clearGallery();
-        this.gallery.scheduleRefresh(true);
-        this.timeline?.updateSidebarPosition();
-        document.dispatchEvent(new CustomEvent('galleryUpdated'));
-        document.dispatchEvent(new CustomEvent('viewModeChange', {
-            detail: { mode: next }
-        }));
+        this.isTransitioning = true;
+        this.button?.setAttribute('disabled', 'true');
+        try {
+            // Flip in the current layout first so timeline show/hide does not
+            // resize columns mid-animation. Document chrome updates after.
+            if (typeof this.gallery.transitionToNewOrder === 'function') {
+                await this.gallery.transitionToNewOrder(previousImages);
+            } else {
+                this.gallery.cachedLayout = null;
+                this.gallery.clearGallery();
+                this.gallery.scheduleRefresh(true);
+            }
+            this.syncDocument();
+            document.dispatchEvent(new CustomEvent('galleryUpdated'));
+            document.dispatchEvent(new CustomEvent('viewModeChange', {
+                detail: { mode: next }
+            }));
+        } finally {
+            this.isTransitioning = false;
+            this.button?.removeAttribute('disabled');
+            this.syncButton();
+        }
     }
 
-    syncDocument() {
+    syncButton() {
         const isRandom = this.mode === 'random';
-        document.body.classList.toggle('view-random', isRandom);
-
         if (!this.button) {
             return;
         }
@@ -98,6 +114,12 @@ class ViewMode {
             'title',
             isRandom ? 'Restore timeline order' : 'Randomize gallery'
         );
+    }
+
+    syncDocument() {
+        const isRandom = this.mode === 'random';
+        document.body.classList.toggle('view-random', isRandom);
+        this.syncButton();
         this.timeline?.updateSidebarPosition();
     }
 

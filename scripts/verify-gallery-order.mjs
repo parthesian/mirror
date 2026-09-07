@@ -3,6 +3,7 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const GalleryOrder = require('../js/galleryOrder.js');
 const LocationModel = require('../js/locationModel.js');
+const Flipboard = require('../js/flipboard.js');
 
 function assert(condition, message) {
     if (!condition) {
@@ -63,4 +64,10 @@ const trips = LocationModel.groupTrips([
 assert(trips.length === 2, 'trips split on a 30-day gap');
 assert(LocationModel.groupTrips([]).length === 0, 'empty trip lists stay empty');
 
-console.log('gallery-order and location-model checks passed');
+const pool = ['a.jpg', 'b.jpg', 'c.jpg', 'd.jpg'];
+const sequence = Flipboard.pickIntermediates(pool, 'a.jpg', 'd.jpg', 4);
+assert(sequence[sequence.length - 1] === 'd.jpg', 'flipboard must land on the destination thumb');
+assert(sequence.slice(0, -1).every((url) => pool.includes(url)), 'intermediates come from the loaded pool');
+assert(Flipboard.pickIntermediates([], 'a.jpg', 'z.jpg', 3).join(',') === 'z.jpg', 'empty pool still lands on dest');
+
+console.log('gallery-order, location-model, and flipboard checks passed');
