@@ -51,7 +51,10 @@ class GlobeExplorer {
         this.lastPointerGesture = null;
         this.selectedFilterType = 'country';
         this.selectedFilterValue = '';
-        this.selectedFilters = { country: '', state: '', location: '' };
+        this.selectedFilters = { country: '', state: '', location: '', color: '' };
+        this.colorOptions = [];
+        this._colorsFetchedOnce = false;
+        this._colorsPromise = null;
         this.lastManualRotateAt = 0;
         this.locationGroupByKey = new Map();
         this.hoverHighlight = { type: null, key: null };
@@ -82,7 +85,8 @@ class GlobeExplorer {
         const labels = {
             country: 'COUNTRY',
             state: 'REGION',
-            location: 'PLACE'
+            location: 'PLACE',
+            color: 'COLOR'
         };
         const base = `${labels[filterType] || 'FILTER'}: ${String(filterValue || '').toUpperCase()}`;
         return label ? `${base} · ${String(label).toUpperCase()}` : base;
@@ -99,7 +103,8 @@ class GlobeExplorer {
         return [
             filters.country ? this._formatFilterLabel('country', filters.country) : '',
             filters.state ? this._formatFilterLabel('state', filters.state) : '',
-            filters.location ? this._formatFilterLabel('location', filters.location) : ''
+            filters.location ? this._formatFilterLabel('location', filters.location) : '',
+            filters.color ? this._formatFilterLabel('color', filters.color) : ''
         ].filter(Boolean);
     }
 
@@ -892,6 +897,7 @@ class GlobeExplorer {
         window.threeLoader?.prefetchSceneGraph();
         if (includeGeo) {
             this._fetchLocations().catch(() => {});
+            this._fetchColors().catch(() => {});
         }
         if (includeBoundaries) {
             window.countryBoundaries?.ensureLoaded()
@@ -1019,6 +1025,33 @@ class GlobeExplorer {
         this.filterOptionCache.clear();
         this._seedCountryAliasesFromLocations();
         this._renderFilterMenu();
+    }
+
+    async _fetchColors() {
+        if (this._colorsFetchedOnce) return;
+        if (this._colorsPromise) return this._colorsPromise;
+        this._colorsPromise = this._fetchColorsInternal();
+        try {
+            await this._colorsPromise;
+        } finally {
+            this._colorsPromise = null;
+        }
+    }
+
+    async _fetchColorsInternal() {
+        try {
+            const base = (window.CONFIG?.API_BASE_URL || '').replace(/\/$/, '');
+            const url = base ? `${base}/api/photos/colors` : '/api/photos/colors';
+            const res = await fetch(url);
+            const data = await res.json();
+            this.colorOptions = Array.isArray(data.colors) ? data.colors : [];
+        } catch (err) {
+            console.error('[GlobeExplorer] failed to fetch color facets', err);
+            this.colorOptions = [];
+        } finally {
+            this._colorsFetchedOnce = true;
+            this._renderFilterMenu();
+        }
     }
 
     // ── Three.js loading ──
@@ -1670,21 +1703,32 @@ class GlobeExplorer {
      * this before reading options; repeat calls are free once it has landed.
      */
     async ensureFilterData() {
-        await this._fetchLocations();
+        await Promise.all([this._fetchLocations(), this._fetchColors()]);
         return this.locations;
     }
 
     get hasFilterData() {
+        return this._geoFetchedOnce || this._colorsFetchedOnce;
+    }
+
+    get hasColorFilterData() {
+        return this._colorsFetchedOnce;
+    }
+
+    get hasPlaceFilterData() {
         return this._geoFetchedOnce;
     }
 
     getFilterOptions(type) {
+        if (type === 'color') {
+            return this.colorOptions;
+        }
         if (!this._geoFetchedOnce) return [];
         return this._getOptionsForType(type);
     }
 
     getSelectedFilters() {
-        return { ...(this.selectedFilters || { country: '', state: '', location: '' }) };
+        return { ...(this.selectedFilters || { country: '', state: '', location: '', color: '' }) };
     }
 
     getActiveFilterLabel() {
@@ -1693,12 +1737,20 @@ class GlobeExplorer {
 
     async applyFilterOption(type, item) {
         this._setFilterSelectionFromOption(type, item, false);
-        const selected = this._getMostSpecificFilterSelection();
-        if (!selected) {
+        if (!this._hasAnySelectedFilter()) {
             await this._clearFilter();
             return;
         }
-        await this._applyFilter(selected.type, selected.value);
+        await this._applyCurrentFilters();
+    }
+
+    async clearFilterType(type) {
+        this._clearFilterSelection(type, false);
+        if (!this._hasAnySelectedFilter()) {
+            await this._clearFilter();
+            return;
+        }
+        await this._applyCurrentFilters();
     }
 
     async clearFilters() {
@@ -1725,7 +1777,8 @@ class GlobeExplorer {
         const kinds = [
             { type: 'country', label: 'country' },
             { type: 'state', label: 'region' },
-            { type: 'location', label: 'place' }
+            { type: 'location', label: 'place' },
+            { type: 'color', label: 'color' }
         ];
         for (const kind of kinds) {
             const btn = document.createElement('button');
@@ -1767,7 +1820,8 @@ class GlobeExplorer {
             const titles = {
                 country: 'countries',
                 state: 'regions',
-                location: 'places'
+                location: 'places',
+                color: 'colors'
             };
             this.filterScopeTitle.textContent = titles[this.selectedFilterType] || 'options';
         }
@@ -1788,7 +1842,9 @@ class GlobeExplorer {
         }
 
         let options;
-        if (type === 'country') {
+        if (type === 'color') {
+            options = this.colorOptions;
+        } else if (type === 'country') {
             options = this._buildFilterOptions(this.locations, 'country', { excludeUnknown: true });
         } else if (type === 'state') {
             options = this._buildFilterOptions(this._getLocationsForFilterScope('state'), 'state', { includeCountryContext: true });
@@ -1879,7 +1935,7 @@ class GlobeExplorer {
 
     _normalizeFilterSelections() {
         if (!this.selectedFilters) {
-            this.selectedFilters = { country: '', state: '', location: '' };
+            this.selectedFilters = { country: '', state: '', location: '', color: '' };
         }
         if (this.selectedFilters.country && !this._isOptionValid('country', this.selectedFilters.country)) {
             this.selectedFilters.country = '';
@@ -1890,12 +1946,15 @@ class GlobeExplorer {
         if (this.selectedFilters.location && !this._isOptionValid('location', this.selectedFilters.location)) {
             this.selectedFilters.location = '';
         }
+        if (this._colorsFetchedOnce && this.selectedFilters.color && !this._isOptionValid('color', this.selectedFilters.color)) {
+            this.selectedFilters.color = '';
+        }
         this._syncSelectedFilterValue();
     }
 
     _setFilterSelection(type, value, render = true) {
         if (!this.selectedFilters) {
-            this.selectedFilters = { country: '', state: '', location: '' };
+            this.selectedFilters = { country: '', state: '', location: '', color: '' };
         }
         this.selectedFilters[type] = value || '';
         if (type === 'country') {
@@ -1915,7 +1974,13 @@ class GlobeExplorer {
 
     _setFilterSelectionFromOption(type, item, render = true) {
         if (!this.selectedFilters) {
-            this.selectedFilters = { country: '', state: '', location: '' };
+            this.selectedFilters = { country: '', state: '', location: '', color: '' };
+        }
+        if (type === 'color') {
+            this.selectedFilters.color = item?.value || '';
+            this._syncSelectedFilterValue();
+            if (render) this._renderFilterMenu();
+            return;
         }
         if (type === 'state') {
             if (item.country) this.selectedFilters.country = item.country;
@@ -1946,7 +2011,7 @@ class GlobeExplorer {
 
     _clearFilterSelection(type, render = true) {
         if (!this.selectedFilters) {
-            this.selectedFilters = { country: '', state: '', location: '' };
+            this.selectedFilters = { country: '', state: '', location: '', color: '' };
         }
         if (type === 'country') {
             this.selectedFilters.country = '';
@@ -1957,6 +2022,8 @@ class GlobeExplorer {
             this.selectedFilters.location = '';
         } else if (type === 'location') {
             this.selectedFilters.location = '';
+        } else if (type === 'color') {
+            this.selectedFilters.color = '';
         }
         this._syncSelectedFilterValue();
         if (render) this._renderFilterMenu();
@@ -1967,7 +2034,39 @@ class GlobeExplorer {
         if (filters.location) return { type: 'location', value: filters.location };
         if (filters.state) return { type: 'state', value: filters.state };
         if (filters.country) return { type: 'country', value: filters.country };
+        if (filters.color) return { type: 'color', value: filters.color };
         return null;
+    }
+
+    _hasAnySelectedFilter() {
+        const filters = this.selectedFilters || {};
+        return Boolean(filters.country || filters.state || filters.location || filters.color);
+    }
+
+    _emptyFilters() {
+        return { country: '', state: '', location: '', color: '' };
+    }
+
+    _syncImageServiceFilters(takenFrom = null, takenTo = null) {
+        const filters = this.selectedFilters || {};
+        this.imageService.countryFilter = filters.country || null;
+        this.imageService.stateFilter = filters.state || null;
+        this.imageService.locationFilter = filters.location || null;
+        this.imageService.colorFilter = filters.color || null;
+        this.imageService.takenFromFilter = takenFrom || null;
+        this.imageService.takenToFilter = takenTo || null;
+    }
+
+    async _applyCurrentFilters(takenFrom = null, takenTo = null) {
+        if (this.isOpen || this.isExiting) {
+            await this._playExit();
+        }
+        this._renderFilterMenu();
+        this._syncImageServiceFilters(takenFrom, takenTo);
+        this._emitFilterChange();
+        if (window.gallery) {
+            await window.gallery.loadImages();
+        }
     }
 
     _suppressGhostClick() {
@@ -1982,9 +2081,6 @@ class GlobeExplorer {
     }
 
     async _applyFilter(filterType, filterValue, takenFrom = null, takenTo = null, label = '') {
-        if (this.isOpen || this.isExiting) {
-            await this._playExit();
-        }
         this.selectedFilterType = filterType;
         if (filterType === 'country') {
             this.selectedFilters.state = '';
@@ -1994,42 +2090,18 @@ class GlobeExplorer {
             this.selectedFilters.location = '';
         }
         this._setFilterSelection(filterType, filterValue, false);
-        this._renderFilterMenu();
         if (this.filterActive) {
             this._renderActiveFilterLabel(label ? this._formatFilterLabel(filterType, filterValue, label) : '');
         }
-
-        this.imageService.countryFilter = null;
-        this.imageService.stateFilter = null;
-        this.imageService.locationFilter = null;
-        if (filterType === 'location') {
-            this.imageService.countryFilter = this.selectedFilters.country || null;
-            this.imageService.stateFilter = this.selectedFilters.state || null;
-            this.imageService.locationFilter = filterValue;
-        } else if (filterType === 'state') {
-            this.imageService.countryFilter = this.selectedFilters.country || null;
-            this.imageService.stateFilter = filterValue;
-        } else {
-            this.imageService.countryFilter = filterValue;
-        }
-        this.imageService.takenFromFilter = takenFrom || null;
-        this.imageService.takenToFilter = takenTo || null;
-        this._emitFilterChange();
-        if (window.gallery) {
-            await window.gallery.loadImages();
-        }
+        await this._applyCurrentFilters(takenFrom, takenTo);
     }
 
     async _clearFilter() {
         if (this.filterActive) this.filterActive.textContent = 'ALL';
         this.selectedFilterType = 'country';
         this.selectedFilterValue = '';
-        this.selectedFilters = { country: '', state: '', location: '' };
-        this.imageService.countryFilter = null;
-        this.imageService.stateFilter = null;
-        this.imageService.locationFilter = null;
-        this.imageService.takenFromFilter = null;
-        this.imageService.takenToFilter = null;
+        this.selectedFilters = this._emptyFilters();
+        this._syncImageServiceFilters();
         this._renderFilterMenu();
         this._emitFilterChange();
         if (window.gallery) {

@@ -24,6 +24,7 @@ function normalizeMetadata(record) {
     const country = record.country || '';
     const state = record.state || '';
     const camera = record.camera || '';
+    const colors = record.colors || '';
 
     return {
         id,
@@ -38,7 +39,8 @@ function normalizeMetadata(record) {
         longitude: typeof longitude === 'number' && Number.isFinite(longitude) ? longitude : null,
         country,
         state,
-        camera
+        camera,
+        colors
     };
 }
 
@@ -74,8 +76,9 @@ async function main() {
         const state = escapeSql(record.state);
 
         const camera = escapeSql(record.camera);
+        const colors = escapeSql(typeof record.colors === 'string' ? record.colors : (Array.isArray(record.colors) ? JSON.stringify(record.colors) : ''));
 
-        return `INSERT INTO photos (id, storage_key, location, description, taken_at, uploaded_at, width, height, latitude, longitude, country, state, camera) VALUES ('${escapeSql(record.id)}', '${escapeSql(record.storageKey)}', '${escapeSql(record.location)}', '${escapeSql(record.description)}', '${escapeSql(record.takenAt)}', '${escapeSql(record.uploadedAt)}', ${width}, ${height}, ${latitude}, ${longitude}, '${country}', '${state}', '${camera}');`;
+        return `INSERT INTO photos (id, storage_key, location, description, taken_at, uploaded_at, width, height, latitude, longitude, country, state, camera, colors) VALUES ('${escapeSql(record.id)}', '${escapeSql(record.storageKey)}', '${escapeSql(record.location)}', '${escapeSql(record.description)}', '${escapeSql(record.takenAt)}', '${escapeSql(record.uploadedAt)}', ${width}, ${height}, ${latitude}, ${longitude}, '${country}', '${state}', '${camera}', '${colors}');`;
     });
 
     const copyManifest = normalized.map(record => ({

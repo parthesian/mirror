@@ -1,13 +1,12 @@
 import { errorResponse, handleOptions, json } from '../../../_lib/http.js';
-import { mapPhotoRecord } from '../../../_lib/photos.js';
+import { mapPhotoRecord, PHOTO_DETAIL_COLUMNS } from '../../../_lib/photos.js';
 
 async function getPhotoMetadata(context) {
     const { env, params } = context;
     const photoId = params.id;
 
     const result = await env.PHOTO_DB.prepare(`
-        SELECT id, storage_key, location, description, taken_at, uploaded_at, width, height,
-               latitude, longitude, country, state, camera
+        SELECT ${PHOTO_DETAIL_COLUMNS}
         FROM photos
         WHERE id = ?
         LIMIT 1

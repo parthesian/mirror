@@ -1,11 +1,7 @@
 import { requireAdmin } from '../../../_lib/access.js';
 import { errorResponse, handleOptions, json } from '../../../_lib/http.js';
-import { buildThumbnailStorageKey, mapPhotoRecord } from '../../../_lib/photos.js';
-
-const PHOTO_COLUMNS = `
-    id, storage_key, location, description, taken_at, uploaded_at, width, height,
-    latitude, longitude, country, state, camera
-`;
+import { parseColors, serializeColors } from '../../../_lib/colors.js';
+import { buildThumbnailStorageKey, mapPhotoRecord, PHOTO_DETAIL_COLUMNS } from '../../../_lib/photos.js';
 
 const TEXT_FIELDS = {
     location: 'location',
@@ -117,6 +113,12 @@ async function updatePhoto(context) {
         bindings.push(longitude.value);
     }
 
+    if (payload.colors !== undefined) {
+        const colors = serializeColors(parseColors(payload.colors));
+        assignments.push('colors = ?');
+        bindings.push(colors);
+    }
+
     if (!assignments.length) {
         return errorResponse('No editable metadata fields were supplied.', 400);
     }
@@ -136,7 +138,7 @@ async function updatePhoto(context) {
     `).bind(...bindings, params.id).run();
 
     const updated = await env.PHOTO_DB.prepare(`
-        SELECT ${PHOTO_COLUMNS}
+        SELECT ${PHOTO_DETAIL_COLUMNS}
         FROM photos
         WHERE id = ?
         LIMIT 1

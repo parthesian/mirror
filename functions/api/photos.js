@@ -1,45 +1,27 @@
 import { errorResponse, handleOptions, json } from '../_lib/http.js';
-import { decodeCursor, encodeCursor, mapPhotoListRecord, parseLimit } from '../_lib/photos.js';
+import {
+    buildPhotoFilterClause,
+    collectPhotoFilters,
+    decodeCursor,
+    encodeCursor,
+    mapPhotoListRecord,
+    parseLimit
+} from '../_lib/photos.js';
 
 async function listPhotos(context) {
     const { request, env } = context;
     const url = new URL(request.url);
     const limit = parseLimit(url.searchParams.get('limit'));
     const cursor = decodeCursor(url.searchParams.get('cursor'));
-    const countryFilter = url.searchParams.get('country') || '';
-    const stateFilter = url.searchParams.get('state') || '';
-    const locationFilter = url.searchParams.get('location') || '';
-    const takenFrom = url.searchParams.get('takenFrom') || '';
-    const takenTo = url.searchParams.get('takenTo') || '';
+    const filters = collectPhotoFilters(url.searchParams);
 
     if (url.searchParams.get('cursor') && !cursor) {
         return errorResponse('Invalid cursor supplied.', 400);
     }
 
     const cols = 'id, taken_at, uploaded_at, width, height';
-    const clauses = [];
-    const bindings = [];
+    const { clauses, bindings } = buildPhotoFilterClause(filters);
 
-    if (countryFilter) {
-        clauses.push('LOWER(TRIM(country)) = LOWER(TRIM(?))');
-        bindings.push(countryFilter);
-    }
-    if (stateFilter) {
-        clauses.push('LOWER(TRIM(state)) = LOWER(TRIM(?))');
-        bindings.push(stateFilter);
-    }
-    if (locationFilter) {
-        clauses.push('LOWER(TRIM(location)) = LOWER(TRIM(?))');
-        bindings.push(locationFilter);
-    }
-    if (takenFrom) {
-        clauses.push('taken_at >= ?');
-        bindings.push(takenFrom);
-    }
-    if (takenTo) {
-        clauses.push('taken_at <= ?');
-        bindings.push(takenTo);
-    }
     if (cursor) {
         clauses.push('(taken_at < ? OR (taken_at = ? AND uploaded_at < ?) OR (taken_at = ? AND uploaded_at = ? AND id < ?))');
         bindings.push(

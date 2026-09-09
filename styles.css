@@ -1787,6 +1787,38 @@ body.exposure-1 .btn-secondary {
     opacity: 1;
 }
 
+.admin-color-backfill {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin: -0.25rem 0 0.85rem;
+    font-size: 0.78rem;
+    opacity: 0.78;
+}
+
+.admin-color-swatches {
+    display: flex;
+    gap: 3px;
+    margin-top: 0.35rem;
+    min-height: 8px;
+}
+
+.admin-color-swatch {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 1px solid rgba(0, 0, 0, 0.18);
+}
+
+.admin-color-swatches.is-empty::after {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 1px dashed rgba(0, 0, 0, 0.28);
+}
+
 .admin-table-wrap {
     width: 100%;
     max-height: min(70vh, 760px);
@@ -1892,6 +1924,7 @@ body.exposure-1 .btn-secondary {
 .admin-photo-cell {
     width: 72px;
     max-width: 72px;
+    vertical-align: top;
 }
 
 .admin-photo-thumb {
@@ -3381,6 +3414,51 @@ body.ui-animating .control-menu {
     font-size: 0.82em;
     opacity: 0.55;
     letter-spacing: 0.04em;
+}
+
+.cm-node.has-swatch {
+    flex-direction: column;
+    gap: 2px;
+}
+
+.cm-node-swatch {
+    display: block;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    border: 1px solid color-mix(in srgb, var(--ink, #333) 28%, transparent);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+    flex: 0 0 auto;
+}
+
+.cm-node.is-active .cm-node-swatch {
+    border-color: color-mix(in srgb, var(--on-ink, #eee) 55%, transparent);
+}
+
+.cm-node-color {
+    border-color: color-mix(in srgb, var(--ink, #333) 35%, transparent);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+}
+
+.cm-node-color .cm-node-count {
+    opacity: 0.88;
+    font-weight: 500;
+}
+
+.cm-node-color:hover,
+.cm-node-color:focus-visible,
+.cm-node-color.is-active,
+.cm-node-color.is-open,
+.cm-node-color.is-open.is-active {
+    color: var(--cm-color-ink, #f4f4f4);
+    background: var(--cm-color);
+    border-color: var(--ink, #333);
+}
+
+.cm-node-color.is-active {
+    box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+        0 0 0 3px var(--ink, #333);
 }
 
 .cm-sector-label {

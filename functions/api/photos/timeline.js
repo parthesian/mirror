@@ -1,37 +1,10 @@
 import { errorResponse, handleOptions, json } from '../../_lib/http.js';
+import { buildPhotoFilterClause, collectPhotoFilters } from '../../_lib/photos.js';
 
 async function getTimeline(context) {
     const { env, request } = context;
     const url = new URL(request.url);
-    const countryFilter = url.searchParams.get('country') || '';
-    const stateFilter = url.searchParams.get('state') || '';
-    const locationFilter = url.searchParams.get('location') || '';
-    const takenFrom = url.searchParams.get('takenFrom') || '';
-    const takenTo = url.searchParams.get('takenTo') || '';
-
-    const clauses = [];
-    const bindings = [];
-    if (countryFilter) {
-        clauses.push('LOWER(TRIM(country)) = LOWER(TRIM(?))');
-        bindings.push(countryFilter);
-    }
-    if (stateFilter) {
-        clauses.push('LOWER(TRIM(state)) = LOWER(TRIM(?))');
-        bindings.push(stateFilter);
-    }
-    if (locationFilter) {
-        clauses.push('LOWER(TRIM(location)) = LOWER(TRIM(?))');
-        bindings.push(locationFilter);
-    }
-    if (takenFrom) {
-        clauses.push('taken_at >= ?');
-        bindings.push(takenFrom);
-    }
-    if (takenTo) {
-        clauses.push('taken_at <= ?');
-        bindings.push(takenTo);
-    }
-    const whereClause = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+    const { whereClause, bindings } = buildPhotoFilterClause(collectPhotoFilters(url.searchParams));
 
     const statement = env.PHOTO_DB.prepare(`
         SELECT
