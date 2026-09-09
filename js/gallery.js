@@ -39,6 +39,8 @@ class Gallery {
         this.pendingAspectRefresh = false;
         this.aspectReflowTimer = null;
         this.aspectReflowNeeded = false;
+        this.isSettling = false;
+        this.contentHeightLock = 0;
 
         this.topSpacer = null;
         this.windowGrid = null;
@@ -105,6 +107,10 @@ class Gallery {
         window.addEventListener('scroll', () => this.scheduleRefresh(), { passive: true });
 
         window.addEventListener('resize', this.throttle(() => {
+            if (this.isMorphing || this.isSettling || this.isReordering) {
+                this.cachedLayout = null;
+                return;
+            }
             const prevColumns = this.cachedLayout?.columns;
             this.cachedLayout = null;
             const columnsChanged = prevColumns != null && this.getLayout().columns !== prevColumns;
@@ -146,7 +152,7 @@ class Gallery {
             const shouldForce = this.forceRenderQueued;
             this.renderQueued = false;
             this.forceRenderQueued = false;
-            if (this.isMorphing || this.isReordering) {
+            if (this.isMorphing || this.isReordering || this.isSettling) {
                 return;
             }
             this.renderVisibleWindow(shouldForce);
@@ -185,27 +191,41 @@ class Gallery {
 
     async loadImages() {
         const token = ++this._loadToken;
+        const keepSurface = window.GalleryTransition
+            ? GalleryTransition.shouldKeepSurface(this.mountedItems.size)
+            : this.mountedItems.size > 0;
         try {
-            this.showLoading();
             this.hideError();
-            this.clearGallery();
+            if (keepSurface) {
+                this.beginSurfaceLock();
+            } else {
+                this.showLoading();
+                this.clearGallery();
+            }
 
             const images = await this.imageService.fetchImages();
             if (token !== this._loadToken) {
                 return;
             }
             this.hideLoading();
+            this.clearGallery();
 
             if (!images || images.length === 0) {
                 this.showEmptyState();
+                this.endSurfaceLock({ animate: false });
                 return;
             }
 
             this.cachedLayout = null;
-            this.scheduleRefresh(true);
+            await this.settleIncomingCollection({
+                animate: keepSurface,
+                token
+            });
+            if (token !== this._loadToken) {
+                return;
+            }
             this.triggerGlobePreloading(images);
             document.dispatchEvent(new CustomEvent('galleryUpdated'));
-
             window.setTimeout(() => this.checkIfNeedsMoreContent(), 60);
         } catch (error) {
             if (token !== this._loadToken) {
@@ -213,12 +233,13 @@ class Gallery {
             }
             console.error('Error loading images:', error);
             this.hideLoading();
+            this.endSurfaceLock({ animate: false });
             this.showError();
         }
     }
 
     async loadMoreImages() {
-        if (this.isLoadingMore || this.imageService.isLoading || !this.imageService.hasMore) {
+        if (this.isLoadingMore || this.imageService.isLoading || !this.imageService.hasMore || this.isSettling) {
             return;
         }
 
@@ -241,6 +262,158 @@ class Gallery {
         } finally {
             this.hideScrollLoading();
             this.isLoadingMore = false;
+        }
+    }
+
+    /**
+     * Hold the current gallery box (and the document scrollbar) so a
+     * filter reload or masonry pass cannot collapse the page, flash a
+     * shorter box, then grow again.
+     */
+    containerPaddingY() {
+        if (!this.galleryContainer) {
+            return 0;
+        }
+        const style = getComputedStyle(this.galleryContainer);
+        return (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+    }
+
+    beginSurfaceLock(height = this.galleryContainer?.offsetHeight || this.measureContentHeight()) {
+        const px = Math.max(0, Math.round(height));
+        this.contentHeightLock = px;
+        if (px > 0) {
+            this.galleryContainer.style.minHeight = `${px}px`;
+        }
+        this.galleryContainer.classList.add('is-refreshing');
+        if (window.GalleryTransition) {
+            GalleryTransition.lockDocumentScroll();
+        }
+    }
+
+    measureContentHeight() {
+        if (window.GalleryTransition) {
+            return GalleryTransition.contentHeight(this.topSpacer, this.windowGrid, this.bottomSpacer);
+        }
+        return (this.topSpacer?.offsetHeight || 0)
+            + (this.windowGrid?.offsetHeight || 0)
+            + (this.bottomSpacer?.offsetHeight || 0);
+    }
+
+    async endSurfaceLock(options = {}) {
+        const animate = options.animate !== false;
+        const nextHeight = Math.max(0, Math.round(Number(options.height) || this.measureContentHeight()));
+        const previous = this.contentHeightLock;
+        const shouldAnimate = animate
+            && previous > 0
+            && !this.prefersReducedMotion()
+            && (window.GalleryTransition
+                ? GalleryTransition.heightDeltaNeedsAnimation(previous, nextHeight)
+                : Math.abs(previous - nextHeight) > 4);
+
+        if (shouldAnimate) {
+            this.galleryContainer.style.transition = `min-height ${this.morphDurationMs()}ms ${this.morphEasing()}`;
+            this.galleryContainer.style.minHeight = `${previous}px`;
+            void this.galleryContainer.offsetHeight;
+            this.galleryContainer.style.minHeight = `${nextHeight}px`;
+            await this.waitForMorph();
+            this.galleryContainer.style.transition = '';
+        }
+
+        this.contentHeightLock = 0;
+        this.galleryContainer.style.minHeight = '';
+        this.galleryContainer.classList.remove('is-refreshing');
+        if (window.GalleryTransition) {
+            GalleryTransition.unlockDocumentScroll();
+        }
+    }
+
+    async settleIncomingCollection({ animate = false, token = this._loadToken } = {}) {
+        const run = async () => {
+            this.isSettling = true;
+            if (window.GalleryTransition) {
+                GalleryTransition.lockDocumentScroll();
+            }
+            try {
+                if (this.isMasonry) {
+                    this.harvestKnownAspects();
+                }
+                this.cachedLayout = null;
+                this.renderVisibleWindow(true);
+                if (this.isMasonry) {
+                    this.warmUnknownAspects();
+                    await this.waitForVisibleAspects();
+                    if (token !== this._loadToken) {
+                        return;
+                    }
+                    this.harvestKnownAspects();
+                    this.cachedLayout = null;
+                }
+                await this.fillViewportIfNeeded();
+                if (token !== this._loadToken) {
+                    return;
+                }
+                this.cachedLayout = null;
+                this.renderVisibleWindow(true);
+                const layout = this.getLayout();
+                await this.endSurfaceLock({
+                    animate,
+                    height: this.containerPaddingY() + (layout.totalHeight || 0)
+                });
+            } finally {
+                this.isSettling = false;
+                if (window.GalleryTransition && !this.contentHeightLock) {
+                    GalleryTransition.unlockDocumentScroll();
+                }
+            }
+        };
+
+        if (window.UIAnimation && animate) {
+            await UIAnimation.run(run);
+            return;
+        }
+        await run();
+    }
+
+    async waitForVisibleAspects(timeoutMs = window.GalleryTransition?.VISIBLE_ASPECT_WAIT_MS || 240) {
+        const started = Date.now();
+        while (Date.now() - started < timeoutMs) {
+            const images = this.imageService.images || [];
+            if (!images.length) {
+                return;
+            }
+            this.cachedLayout = null;
+            const layout = this.getLayout();
+            const range = this.visibleRange(layout, images.length, 0);
+            let pending = 0;
+            for (let i = range.startIndex; i < range.endIndex; i++) {
+                if (images[i] && !images[i].aspectRatioKnown) {
+                    pending += 1;
+                }
+            }
+            if (pending === 0) {
+                return;
+            }
+            await new Promise((resolve) => window.setTimeout(resolve, 32));
+        }
+    }
+
+    async fillViewportIfNeeded() {
+        let guard = 0;
+        while (this.imageService.hasMore && guard < 6) {
+            const layout = this.getLayout();
+            const occupied = (layout.totalHeight || 0) + (layout.contentTop || 0);
+            if (occupied > window.innerHeight + 80) {
+                break;
+            }
+            const added = await this.imageService.loadMorePhotos();
+            this.cachedLayout = null;
+            if (!added.length) {
+                break;
+            }
+            if (this.isMasonry) {
+                this.harvestKnownAspects();
+            }
+            guard += 1;
         }
     }
 
@@ -691,19 +864,38 @@ class Gallery {
     scheduleAspectReflow() {
         if (!this.isMasonry) return;
         this.aspectReflowNeeded = true;
-        if (this.isMorphing || this.aspectReflowTimer != null) return;
+        if (this.isMorphing || this.isSettling || this.isReordering) return;
+        // Trailing debounce: wait until aspect reports go quiet so the
+        // container only moves once instead of after every decode.
+        window.clearTimeout(this.aspectReflowTimer);
+        const delay = window.GalleryTransition?.ASPECT_REFLOW_MS || 180;
         this.aspectReflowTimer = window.setTimeout(() => {
             this.aspectReflowTimer = null;
-            if (!this.aspectReflowNeeded || !this.isMasonry || this.isMorphing) return;
+            if (!this.aspectReflowNeeded || !this.isMasonry || this.isMorphing || this.isSettling) {
+                return;
+            }
             this.aspectReflowNeeded = false;
+            const previousHeight = this.cachedLayout?.totalHeight
+                ?? this.windowGrid?.offsetHeight
+                ?? 0;
             this.cachedLayout = null;
+            const nextHeight = this.getLayout().totalHeight || 0;
+            const needsMotion = window.GalleryTransition
+                ? GalleryTransition.heightDeltaNeedsAnimation(previousHeight, nextHeight)
+                : Math.abs(previousHeight - nextHeight) > 4;
             const images = this.imageService.images || [];
-            if (this.shouldAnimateLayout()) {
+            if (needsMotion && this.shouldAnimateLayout()) {
                 void this.morphLayout(images);
                 return;
             }
+            if (window.GalleryTransition) {
+                GalleryTransition.lockDocumentScroll();
+            }
             this.renderVisibleWindow(true);
-        }, 48);
+            if (window.GalleryTransition) {
+                GalleryTransition.unlockDocumentScroll();
+            }
+        }, delay);
     }
 
     getImageFallbackSrc() {
@@ -803,8 +995,13 @@ class Gallery {
                 this.rebindMountedWindow(nodes, next.slice(start, end));
                 // A shuffle reorders aspect ratios, so masonry has to re-solve.
                 if (this.isMasonry) {
+                    this.beginSurfaceLock();
                     this.cachedLayout = null;
                     this.renderVisibleWindow(true);
+                    await this.endSurfaceLock({
+                        animate: true,
+                        height: this.containerPaddingY() + (this.getLayout().totalHeight || 0)
+                    });
                 }
                 this.checkIfNeedsMoreContent();
             } finally {
@@ -975,9 +1172,20 @@ class Gallery {
     }
 
     async morphLayout(images) {
+        if (window.UIAnimation) {
+            await UIAnimation.run(() => this.morphLayoutInternal(images));
+            return;
+        }
+        await this.morphLayoutInternal(images);
+    }
+
+    async morphLayoutInternal(images) {
         this.isMorphing = true;
         this.loadQueue.pause();
         const grid = this.windowGrid;
+        if (window.GalleryTransition) {
+            GalleryTransition.lockDocumentScroll();
+        }
 
         try {
             this.harvestKnownAspects();
@@ -1072,16 +1280,28 @@ class Gallery {
             grid.classList.remove('is-morphing', 'is-morph-invert');
             this.isMorphing = false;
             this.loadQueue.resume();
-            this.cachedLayout = null;
-            grid.style.height = '';
-            grid.style.transition = '';
-            this.aspectReflowNeeded = false;
+            const pendingAspects = this.aspectReflowNeeded;
             if (this.aspectReflowTimer != null) {
                 window.clearTimeout(this.aspectReflowTimer);
                 this.aspectReflowTimer = null;
             }
+            this.aspectReflowNeeded = false;
+            this.cachedLayout = null;
+            const layout = this.getLayout();
+            grid.style.transition = '';
+            if (layout.mode === 'masonry') {
+                grid.style.height = `${layout.totalHeight}px`;
+            } else {
+                grid.style.height = '';
+            }
             this.renderVisibleWindow(true);
+            if (window.GalleryTransition && !this.contentHeightLock && !this.isSettling) {
+                GalleryTransition.unlockDocumentScroll();
+            }
             this.checkIfNeedsMoreContent();
+            if (pendingAspects && this.isMasonry) {
+                this.scheduleAspectReflow();
+            }
         }
     }
 
