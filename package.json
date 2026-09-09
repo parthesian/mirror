@@ -4,8 +4,10 @@
   "description": "Photo gallery application",
   "scripts": {
     "dev": "npx wrangler pages dev . --live-reload",
+    "mock": "node scripts/mock-photos-server.mjs",
     "build": "node build.js",
-    "generate:d1-import": "node scripts/generate-d1-import.mjs"
+    "generate:d1-import": "node scripts/generate-d1-import.mjs",
+    "test": "node scripts/verify-gallery-order.mjs"
   },
   "engines": {
     "node": ">=14"

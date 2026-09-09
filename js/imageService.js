@@ -135,6 +135,7 @@ class ImageService {
         const width = photo.width || photo.image?.width || null;
         const height = photo.height || photo.image?.height || null;
         const id = photo.id || photo.photoId || `img-${Date.now()}-${Math.random()}`;
+        const mockAssets = this.mockAssetUrls(id);
 
         return {
             id,
@@ -142,8 +143,8 @@ class ImageService {
             location: photo.location || 'Unknown location',
             timestamp: photo.takenAt || photo.timestamp || photo.createdAt || new Date().toISOString(),
             uploadedAt: photo.uploadedAt || photo.timestamp || new Date().toISOString(),
-            url: photo.image?.url || photo.imageUrl || photo.url || this.buildPhotoAssetUrl(id, 'full'),
-            thumbnailUrl: photo.thumbnail?.url || photo.thumbnailUrl || photo.image?.url || photo.imageUrl || photo.url || this.buildPhotoAssetUrl(id, 'thumb'),
+            url: mockAssets.url || photo.image?.url || photo.imageUrl || photo.url || this.buildPhotoAssetUrl(id, 'full'),
+            thumbnailUrl: mockAssets.thumbnailUrl || photo.thumbnail?.url || photo.thumbnailUrl || photo.image?.url || photo.imageUrl || photo.url || this.buildPhotoAssetUrl(id, 'thumb'),
             storageKey: photo.storageKey || photo.s3Key || photo.key || '',
             width,
             height,
@@ -169,6 +170,7 @@ class ImageService {
         const uploadedAt = photo.uploadedAt || timestamp;
         const width = Number(photo.width) || null;
         const height = Number(photo.height) || null;
+        const mockAssets = this.mockAssetUrls(id);
 
         return {
             id,
@@ -176,8 +178,8 @@ class ImageService {
             location: '',
             timestamp,
             uploadedAt,
-            url: this.buildPhotoAssetUrl(id, 'full'),
-            thumbnailUrl: this.buildPhotoAssetUrl(id, 'thumb'),
+            url: mockAssets.url || this.buildPhotoAssetUrl(id, 'full'),
+            thumbnailUrl: mockAssets.thumbnailUrl || this.buildPhotoAssetUrl(id, 'thumb'),
             storageKey: '',
             width,
             height,
@@ -192,6 +194,19 @@ class ImageService {
             camera: '',
             detailLoaded: false
         };
+    }
+
+    mockAssetUrls(id) {
+        const mock = typeof window !== 'undefined' ? window.MockPhotos : null;
+        if (!mock?.enabled?.() || typeof mock.byId !== 'function') {
+            return { url: '', thumbnailUrl: '' };
+        }
+        const photo = mock.byId(id);
+        if (!photo) {
+            return { url: '', thumbnailUrl: '' };
+        }
+        const dataUrl = mock.svgDataUrl(photo);
+        return { url: dataUrl, thumbnailUrl: dataUrl };
     }
 
     /**
@@ -312,6 +327,9 @@ class ImageService {
      */
     async requestPhotos(cursor = null) {
         if (!this.apiBaseUrl && window.location.protocol === 'file:') {
+            if (window.MockPhotos?.enabled?.()) {
+                return window.MockPhotos.page(this.mockQuery(), null, this.limit);
+            }
             console.warn('API base URL not configured, using empty gallery');
             return {
                 photos: [],
@@ -341,16 +359,30 @@ class ImageService {
             url.searchParams.set('takenTo', this.takenToFilter);
         }
 
-        const response = await fetch(url.toString(), {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            mode: 'cors',
-            signal: this._loadSignal()
-        });
+        let response;
+        try {
+            response = await fetch(url.toString(), {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                mode: 'cors',
+                signal: this._loadSignal()
+            });
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                throw error;
+            }
+            if (window.MockPhotos?.enabled?.()) {
+                return window.MockPhotos.page(this.mockQuery(), this.mockCursor(cursor), this.limit);
+            }
+            throw error;
+        }
 
         if (!response.ok) {
+            if (window.MockPhotos?.enabled?.()) {
+                return window.MockPhotos.page(this.mockQuery(), this.mockCursor(cursor), this.limit);
+            }
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
@@ -365,6 +397,30 @@ class ImageService {
             nextCursor,
             hasMore
         };
+    }
+
+    mockQuery() {
+        return {
+            country: this.countryFilter || '',
+            state: this.stateFilter || '',
+            location: this.locationFilter || '',
+            takenFrom: this.takenFromFilter || '',
+            takenTo: this.takenToFilter || ''
+        };
+    }
+
+    mockCursor(cursor) {
+        if (!cursor) {
+            return null;
+        }
+        if (typeof cursor === 'object') {
+            return cursor;
+        }
+        try {
+            return JSON.parse(atob(cursor));
+        } catch {
+            return null;
+        }
     }
 
     /**

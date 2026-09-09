@@ -67,7 +67,14 @@ class Timeline {
                 mode: 'cors'
             });
 
-            if (!response.ok) return;
+            if (!response.ok) {
+                if (window.MockPhotos?.enabled?.()) {
+                    this.groups = window.MockPhotos.timeline();
+                    this.render();
+                    await this.refreshEnabledMonths();
+                }
+                return;
+            }
 
             const data = await this.imageService.parseJsonResponse(response);
             this.groups = Array.isArray(data.groups) ? data.groups : [];
@@ -75,6 +82,11 @@ class Timeline {
             await this.refreshEnabledMonths();
         } catch (error) {
             console.error('Timeline: failed to load timeline data:', error);
+            if (window.MockPhotos?.enabled?.()) {
+                this.groups = window.MockPhotos.timeline();
+                this.render();
+                await this.refreshEnabledMonths();
+            }
         }
     }
 
@@ -390,7 +402,11 @@ class Timeline {
             headers: { 'Content-Type': 'application/json' },
             mode: 'cors'
         });
-        if (!response.ok) return [];
+        if (!response.ok) {
+            return window.MockPhotos?.enabled?.()
+                ? window.MockPhotos.timeline(f)
+                : [];
+        }
         const data = await this.imageService.parseJsonResponse(response);
         return Array.isArray(data.groups) ? data.groups : [];
     }

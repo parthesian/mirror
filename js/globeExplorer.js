@@ -977,7 +977,10 @@ class GlobeExplorer {
             this._geoFetchedOnce = true;
         } catch (err) {
             console.error('[GlobeExplorer] failed to fetch geo data', err);
-            this.locations = [];
+            this.locations = window.MockPhotos?.enabled?.()
+                ? window.MockPhotos.locations()
+                : [];
+            this._geoFetchedOnce = this.locations.length > 0;
         }
 
         this.locationsByCountry = {};

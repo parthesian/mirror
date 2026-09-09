@@ -8,6 +8,13 @@
 
 html {
     scroll-behavior: auto;
+    /* Keep the gutter reserved so masonry width (and column math) does
+       not change when a filter swap or aspect pass crosses the viewport. */
+    scrollbar-gutter: stable;
+}
+
+html.is-gallery-settling {
+    overflow-y: scroll;
 }
 
 body {
@@ -382,6 +389,10 @@ body.exposure-1 .scroll-loading p {
 .gallery-container {
     display: block;
     padding: var(--grid-pad) 0;
+}
+
+.gallery-container.is-refreshing .gallery-window {
+    pointer-events: none;
 }
 
 .gallery-window {

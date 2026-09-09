@@ -222,4 +222,56 @@ assert(phoneDist > squareDist + 1.5, 'a portrait phone pulls the camera back to 
 assert(phoneDist <= 8, 'fit distance stays inside the orbit max');
 assert(squareDist >= 2.6 && squareDist < 3.4, 'a square view stays near the original framing');
 
+const transitionSandbox = { window: {}, console, module: { exports: {} } };
+vm.createContext(transitionSandbox);
+vm.runInContext(fs.readFileSync(path.join(repoRoot, 'js/galleryTransition.js'), 'utf8'), transitionSandbox);
+const GalleryTransition = transitionSandbox.window.GalleryTransition || transitionSandbox.module.exports;
+assert(GalleryTransition.shouldKeepSurface(4) === true, 'a populated gallery keeps its surface during reload');
+assert(GalleryTransition.shouldKeepSurface(0) === false, 'the first load may still use the empty spinner');
+assert(GalleryTransition.heightDeltaNeedsAnimation(1000, 1002) === false, 'sub-pixel height noise does not animate');
+assert(GalleryTransition.heightDeltaNeedsAnimation(800, 1400) === true, 'a real masonry height change may animate once');
+const settlingDoc = { documentElement: { classList: { add(name) { this.names = (this.names || new Set()).add(name); }, remove(name) { this.names?.delete(name); }, contains(name) { return this.names?.has(name); } } } };
+GalleryTransition.lockDocumentScroll(settlingDoc);
+assert(settlingDoc.documentElement.classList.contains('is-gallery-settling'), 'settle lock reserves the document scrollbar');
+GalleryTransition.unlockDocumentScroll(settlingDoc);
+assert(!settlingDoc.documentElement.classList.contains('is-gallery-settling'), 'settle unlock releases the document scrollbar');
+assert(GalleryTransition.contentHeight({ offsetHeight: 10 }, { offsetHeight: 20 }, { offsetHeight: 30 }) === 60, 'content height sums spacers and the window');
+
+const mockSandbox = {
+    window: { location: { search: '?mock=1' } },
+    console,
+    module: { exports: {} },
+    btoa,
+    atob,
+    URL,
+    URLSearchParams,
+    Response,
+    unescape
+};
+vm.createContext(mockSandbox);
+vm.runInContext(fs.readFileSync(path.join(repoRoot, 'js/mockPhotos.js'), 'utf8'), mockSandbox);
+const MockPhotos = mockSandbox.window.MockPhotos || mockSandbox.module.exports;
+assert(MockPhotos.enabled('?mock=1') === true, 'mock catalog is opt-in');
+assert(MockPhotos.enabled('') === false, 'production URLs do not enable the mock catalog');
+assert(MockPhotos.catalog().length >= 24, 'mock catalog has a full first page');
+const japan = MockPhotos.page({ country: 'Japan' });
+const france = MockPhotos.page({ country: 'France' });
+assert(japan.photos.length > 0 && france.photos.length > 0, 'country filters return coloured pages');
+assert(japan.photos[0].id !== france.photos[0].id, 'country filters return different photos');
+assert(japan.photos.every((photo) => photo.width && photo.height), 'mock list rows carry masonry aspects');
+const geo = MockPhotos.locations();
+assert(geo.some((row) => row.country === 'Japan') && geo.some((row) => row.country === 'France'), 'geo feed has more than one colour filter');
+const listResponse = MockPhotos.handleRequest('http://local.test/api/photos?limit=8');
+assert(listResponse.status === 200, 'mock list handler answers /api/photos');
+const imageResponse = MockPhotos.handleRequest('http://local.test/api/photos/mock-001/image');
+assert(imageResponse.headers.get('Content-Type').includes('image/svg+xml'), 'mock image handler returns a coloured SVG');
+
+const gallerySrc = fs.readFileSync(path.join(repoRoot, 'js/gallery.js'), 'utf8');
+assert(gallerySrc.includes('beginSurfaceLock'), 'filter reloads lock the current gallery height');
+assert(gallerySrc.includes('settleIncomingCollection'), 'new collections wait for a stable masonry pass');
+assert(gallerySrc.includes('fillViewportIfNeeded'), 'short filter results load more before releasing height');
+assert(!gallerySrc.includes('this.aspectReflowTimer = window.setTimeout(() => {\n            this.aspectReflowTimer = null;\n            if (!this.aspectReflowNeeded || !this.isMasonry || this.isMorphing) return;'), 'aspect reflow is no longer a 48ms first-hit remorph');
+assert(indexHtml.includes('js/mockPhotos.js'), 'public page can install the opt-in mock catalog');
+assert(indexHtml.includes('js/galleryTransition.js'), 'public page loads the settle helper');
+
 console.log('gallery-order, location-model, flipboard, and image-url checks passed');
