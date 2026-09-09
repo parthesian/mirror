@@ -159,7 +159,7 @@ Grid views should use `thumbnail.url`; fullscreen/modal views should use `image.
 
 **Endpoint:** `GET /api/photos/colors`
 
-**Description:** Returns the named colors currently present in stored photo metadata, in palette order, with photo counts. Used by the CONTROL filter menu.
+**Description:** Returns the named colors currently present in stored photo metadata, in palette order, with photo counts. Used by the CONTROL filter menu. The same place and date query params as `GET /api/photos` (`country`, `state`, `location`, `takenFrom`, `takenTo`) scope those counts; the selected `color` is ignored so tiles stay faceted.
 
 ### 7. Backfill Photo Colors
 
