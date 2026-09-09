@@ -331,13 +331,32 @@ class ControlMenu {
         return Math.max(6.5, Math.min(size * 0.2, 11, byWord));
     }
 
-    node({ label, sub, size, radius, angle, active, open, title, onClick, onHover, swatch }) {
+    contrastOnSwatch(hex) {
+        const raw = String(hex || '').replace('#', '');
+        if (raw.length !== 6) {
+            return '#f4f4f4';
+        }
+        const red = Number.parseInt(raw.slice(0, 2), 16) / 255;
+        const green = Number.parseInt(raw.slice(2, 4), 16) / 255;
+        const blue = Number.parseInt(raw.slice(4, 6), 16) / 255;
+        const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+        return luminance > 0.58 ? '#1a1a1a' : '#f4f4f4';
+    }
+
+    node({ label, sub, size, radius, angle, active, open, title, onClick, onHover, swatch, colorFill }) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'cm-node';
-        btn.style.fontSize = `${this.fitFont(size, label)}px`;
+        btn.style.fontSize = `${this.fitFont(size, colorFill ? (sub || '8') : label)}px`;
 
-        if (swatch) {
+        if (colorFill) {
+            const ink = this.contrastOnSwatch(colorFill);
+            btn.classList.add('cm-node-color');
+            btn.style.setProperty('--cm-color', colorFill);
+            btn.style.setProperty('--cm-color-ink', ink);
+            btn.style.background = colorFill;
+            btn.style.color = ink;
+        } else if (swatch) {
             const chip = document.createElement('span');
             chip.className = 'cm-node-swatch';
             chip.style.background = swatch;
@@ -346,10 +365,12 @@ class ControlMenu {
             btn.classList.add('has-swatch');
         }
 
-        const text = document.createElement('span');
-        text.className = 'cm-sector-label';
-        text.textContent = label;
-        btn.appendChild(text);
+        if (label && !colorFill) {
+            const text = document.createElement('span');
+            text.className = 'cm-sector-label';
+            text.textContent = label;
+            btn.appendChild(text);
+        }
 
         if (sub) {
             const count = document.createElement('span');
@@ -479,15 +500,22 @@ class ControlMenu {
             }
 
             const selected = filters[entry.id];
+            const selectedColor = entry.id === 'color' && selected
+                ? (window.PhotoColors?.getColorMeta(selected) || null)
+                : null;
+            const selectedTitle = selectedColor
+                ? `${entry.label}: ${selectedColor.label}`
+                : (selected ? `${entry.label}: ${selected}` : `Filter by ${entry.label.toLowerCase()}`);
             const node = this.node({
                 label: entry.label,
-                sub: selected ? this.shorten(selected, 12) : '',
+                sub: selected && !selectedColor ? this.shorten(selected, 12) : '',
+                swatch: selectedColor?.swatch || '',
                 size,
                 radius: this.geometry.ringB,
                 angle: angles[index],
                 active: Boolean(selected),
                 open: this.filterType === entry.id,
-                title: selected ? `${entry.label}: ${selected}` : `Filter by ${entry.label.toLowerCase()}`,
+                title: selectedTitle,
                 onClick: () => {
                     this.filterType = entry.id;
                     this.leafOffset = 0;
@@ -528,14 +556,15 @@ class ControlMenu {
 
             const isActive = this.globeExplorer?._isFilterOptionActive?.(this.filterType, item)
                 ?? (filters[this.filterType] === item.value);
+            const isColorLeaf = this.filterType === 'color' && item.swatch;
             const node = this.node({
-                label: this.shorten(item.label, 16),
+                label: isColorLeaf ? '' : this.shorten(item.label, 16),
                 sub: String(item.count),
                 size,
                 radius,
                 angle,
                 active: isActive,
-                swatch: item.swatch || '',
+                colorFill: isColorLeaf ? item.swatch : '',
                 title: `${item.label} — ${item.count} photo${item.count === 1 ? '' : 's'}`,
                 onClick: () => {
                     if (isActive) {
