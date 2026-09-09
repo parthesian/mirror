@@ -66,6 +66,31 @@ The exact copy command depends on how you prefer to access AWS and Cloudflare. C
 
 Keep the destination keys unchanged so the imported D1 metadata stays valid.
 
+## Photo Color Metadata
+
+New uploads compute an ordered list of prominent colors in the browser and store them on the photo row (`["blue","green","white"]`).
+
+For photos that already exist, apply the schema change and then backfill:
+
+```bash
+npx wrangler d1 execute PHOTO_DB --remote --file=migrations/0006_add_colors.sql
+```
+
+Then either:
+
+- Open `/admin/` and click **compute missing colors**
+- Hit the Access-protected worker in a loop:
+
+```bash
+curl -X POST https://YOUR_DOMAIN/api/admin/backfill-colors
+```
+
+- Or classify from a machine with Wrangler access:
+
+```bash
+node scripts/backfill-photo-colors.mjs --remote --site https://YOUR_DOMAIN
+```
+
 ## Access Policy Notes
 
 Cloudflare Access should be applied to:

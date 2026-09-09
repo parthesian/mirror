@@ -48,7 +48,8 @@ const EXPOSURE_OPTIONS = [
 const FILTER_TYPES = [
     { id: 'country', label: 'COUNTRY' },
     { id: 'state', label: 'REGION' },
-    { id: 'location', label: 'PLACE' }
+    { id: 'location', label: 'PLACE' },
+    { id: 'color', label: 'COLOR' }
 ];
 
 class ControlMenu {
@@ -304,7 +305,7 @@ class ControlMenu {
 
     syncFilterState() {
         const filters = this.globeExplorer?.getSelectedFilters?.() || {};
-        const active = Boolean(filters.country || filters.state || filters.location);
+        const active = Boolean(filters.country || filters.state || filters.location || filters.color);
         this.root.classList.toggle('has-filter', active);
     }
 
@@ -330,11 +331,20 @@ class ControlMenu {
         return Math.max(6.5, Math.min(size * 0.2, 11, byWord));
     }
 
-    node({ label, sub, size, radius, angle, active, open, title, onClick, onHover }) {
+    node({ label, sub, size, radius, angle, active, open, title, onClick, onHover, swatch }) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'cm-node';
         btn.style.fontSize = `${this.fitFont(size, label)}px`;
+
+        if (swatch) {
+            const chip = document.createElement('span');
+            chip.className = 'cm-node-swatch';
+            chip.style.background = swatch;
+            chip.setAttribute('aria-hidden', 'true');
+            btn.appendChild(chip);
+            btn.classList.add('has-swatch');
+        }
 
         const text = document.createElement('span');
         text.className = 'cm-sector-label';
@@ -379,7 +389,7 @@ class ControlMenu {
 
     hasActiveFilter() {
         const filters = this.globeExplorer?.getSelectedFilters?.() || {};
-        return Boolean(filters.country || filters.state || filters.location);
+        return Boolean(filters.country || filters.state || filters.location || filters.color);
     }
 
     renderSections() {
@@ -453,7 +463,7 @@ class ControlMenu {
 
         entries.forEach((entry, index) => {
             if (entry.id === 'clear') {
-                const hasFilter = Boolean(filters.country || filters.state || filters.location);
+                const hasFilter = Boolean(filters.country || filters.state || filters.location || filters.color);
                 const node = this.node({
                     label: 'CLEAR',
                     size,
@@ -516,7 +526,8 @@ class ControlMenu {
             const angle = top - (index - this.leafOffset) * this.leafStep;
             if (angle < bottom - 1 || angle > top + 1) return;
 
-            const isActive = filters[this.filterType] === item.value;
+            const isActive = this.globeExplorer?._isFilterOptionActive?.(this.filterType, item)
+                ?? (filters[this.filterType] === item.value);
             const node = this.node({
                 label: this.shorten(item.label, 16),
                 sub: String(item.count),
@@ -524,10 +535,11 @@ class ControlMenu {
                 radius,
                 angle,
                 active: isActive,
+                swatch: item.swatch || '',
                 title: `${item.label} — ${item.count} photo${item.count === 1 ? '' : 's'}`,
                 onClick: () => {
                     if (isActive) {
-                        this.globeExplorer?.clearFilters?.();
+                        this.globeExplorer?.clearFilterType?.(this.filterType);
                         return;
                     }
                     this.globeExplorer?.applyFilterOption?.(this.filterType, item);
@@ -583,7 +595,10 @@ class ControlMenu {
     emptyLeafHint() {
         const hint = document.createElement('div');
         hint.className = 'cm-leaf-hint';
-        hint.textContent = this.globeExplorer?.hasFilterData ? 'NO OPTIONS' : 'LOADING';
+        const ready = this.filterType === 'color'
+            ? this.globeExplorer?.hasColorFilterData
+            : this.globeExplorer?.hasPlaceFilterData;
+        hint.textContent = ready ? 'NO OPTIONS' : 'LOADING';
         this.place(hint, this.geometry.ringC, 45, this.geometry.nodeC * 1.6);
         return hint;
     }

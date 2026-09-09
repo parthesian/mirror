@@ -30,6 +30,9 @@ class AdminUploadPage {
         this.metadataSaveStatus = document.getElementById('metadata-save-status');
         this.metadataEmpty = document.getElementById('metadata-empty');
         this.loadMoreMetadataBtn = document.getElementById('load-more-metadata');
+        this.colorBackfillStatus = document.getElementById('color-backfill-status');
+        this.colorBackfillButton = document.getElementById('color-backfill-button');
+        this.isBackfillingColors = false;
         this.confirmDialog = document.getElementById('admin-confirm-dialog');
         this.confirmTitle = document.getElementById('admin-confirm-title');
         this.confirmMessage = document.getElementById('admin-confirm-message');
@@ -56,6 +59,7 @@ class AdminUploadPage {
         const authenticated = await this.loadSession();
         if (authenticated) {
             await this.loadMetadata();
+            await this.refreshColorBackfillStatus();
         }
     }
 
@@ -87,6 +91,7 @@ class AdminUploadPage {
 
         this.metadataSearch.addEventListener('input', () => this.filterMetadataRows());
         this.loadMoreMetadataBtn.addEventListener('click', () => this.loadMetadata({ append: true }));
+        this.colorBackfillButton?.addEventListener('click', () => this.runColorBackfill());
 
         const markDirty = (event) => {
             const row = event.target.closest('tr');
@@ -335,6 +340,7 @@ class AdminUploadPage {
         image.decoding = 'async';
         imageLink.appendChild(image);
         photoCell.appendChild(imageLink);
+        photoCell.appendChild(this.createColorSwatches(photo.colors));
         row.appendChild(photoCell);
 
         const fields = [
@@ -559,12 +565,141 @@ class AdminUploadPage {
         this.metadataEmpty.textContent = query ? 'No loaded photos match your search.' : 'No photos found.';
     }
 
+    createColorSwatches(colors) {
+        const list = document.createElement('div');
+        list.className = 'admin-color-swatches';
+        const parsed = window.PhotoColors?.parseColors(colors) || (Array.isArray(colors) ? colors : []);
+        if (!parsed.length) {
+            list.classList.add('is-empty');
+            list.title = 'Colors not computed yet';
+            return list;
+        }
+
+        parsed.forEach((id) => {
+            const meta = window.PhotoColors?.getColorMeta(id);
+            const swatch = document.createElement('span');
+            swatch.className = 'admin-color-swatch';
+            swatch.style.background = meta?.swatch || '#888';
+            swatch.title = meta?.label || id;
+            list.appendChild(swatch);
+        });
+        list.title = parsed
+            .map((id) => window.PhotoColors?.getColorMeta(id)?.label || id)
+            .join(', ');
+        return list;
+    }
+
+    setColorBackfillStatus(message) {
+        if (this.colorBackfillStatus) {
+            this.colorBackfillStatus.textContent = message;
+        }
+    }
+
+    async refreshColorBackfillStatus() {
+        if (!this.colorBackfillStatus) {
+            return;
+        }
+
+        try {
+            const status = await this.imageService.getColorBackfillStatus();
+            if (status.complete || status.missing === 0) {
+                this.setColorBackfillStatus(`All ${status.total} photos have stored colors.`);
+                this.colorBackfillButton?.classList.add('hidden');
+                return;
+            }
+
+            this.setColorBackfillStatus(`${status.missing} of ${status.total} photos still need colors.`);
+            this.colorBackfillButton?.classList.remove('hidden');
+        } catch (error) {
+            this.setColorBackfillStatus(error.message || 'Unable to check stored colors.');
+        }
+    }
+
+    loadImageFromUrl(url) {
+        return new Promise((resolve, reject) => {
+            const image = new Image();
+            image.crossOrigin = 'anonymous';
+            image.onload = () => resolve(image);
+            image.onerror = () => reject(new Error('Failed to load photo for color extraction.'));
+            image.src = url;
+        });
+    }
+
+    async extractColorsFromPhotoId(photoId) {
+        const url = this.imageService.buildPhotoAssetUrl(photoId, 'thumb', { width: 160 });
+        const image = await this.loadImageFromUrl(url);
+        return window.PhotoColors.extractFromImage(image);
+    }
+
+    async runColorBackfill() {
+        if (this.isBackfillingColors) {
+            return;
+        }
+
+        this.isBackfillingColors = true;
+        if (this.colorBackfillButton) {
+            this.colorBackfillButton.disabled = true;
+            this.colorBackfillButton.textContent = 'computing...';
+        }
+
+        try {
+            let remaining = Infinity;
+            let processedTotal = 0;
+            let failedTotal = 0;
+            const seen = new Set();
+
+            while (remaining > 0) {
+                const batch = await this.imageService.getColorBackfillStatus({ ids: true, limit: 8 });
+                const photos = (Array.isArray(batch.photos) ? batch.photos : [])
+                    .filter((photo) => photo?.id && !seen.has(photo.id));
+                remaining = Number(batch.missing) || 0;
+                if (!photos.length) {
+                    break;
+                }
+
+                for (const photo of photos) {
+                    seen.add(photo.id);
+                    try {
+                        const colors = await this.extractColorsFromPhotoId(photo.id);
+                        await this.imageService.updatePhotoMetadata(photo.id, { colors });
+                        processedTotal += 1;
+                        remaining = Math.max(0, remaining - 1);
+                    } catch (error) {
+                        console.error(`Failed to compute colors for ${photo.id}:`, error);
+                        failedTotal += 1;
+                    }
+                }
+
+                this.setColorBackfillStatus(
+                    remaining
+                        ? `Computed ${processedTotal} photos · ${remaining} remaining`
+                        : `Computed colors for ${processedTotal} photos.`
+                );
+            }
+
+            if (failedTotal) {
+                this.setColorBackfillStatus(`Computed ${processedTotal} photos · ${failedTotal} failed.`);
+            }
+            await this.loadMetadata();
+            await this.refreshColorBackfillStatus();
+        } catch (error) {
+            this.setColorBackfillStatus(error.message || 'Color backfill failed.');
+        } finally {
+            this.isBackfillingColors = false;
+            if (this.colorBackfillButton) {
+                this.colorBackfillButton.disabled = false;
+                this.colorBackfillButton.textContent = 'compute missing colors';
+            }
+        }
+    }
+
     getPhotoSearchText(photo) {
         return [
             photo.location,
             photo.country,
             photo.state,
             photo.camera,
+            Array.isArray(photo.colors) ? photo.colors.join(' ') : '',
             photo.description,
             this.toDateInputValue(photo.timestamp)
         ].join(' ').toLowerCase();

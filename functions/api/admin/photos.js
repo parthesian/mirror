@@ -1,17 +1,14 @@
 import { requireAdmin } from '../../_lib/access.js';
 import { errorResponse, handleOptions, json } from '../../_lib/http.js';
+import { parseColors, serializeColors } from '../../_lib/colors.js';
 import {
     decodeCursor,
     encodeCursor,
     getExtensionFromType,
     mapPhotoRecord,
-    parseLimit
+    parseLimit,
+    PHOTO_DETAIL_COLUMNS
 } from '../../_lib/photos.js';
-
-const PHOTO_COLUMNS = `
-    id, storage_key, location, description, taken_at, uploaded_at, width, height,
-    latitude, longitude, country, state, camera
-`;
 
 async function listPhotos(context) {
     const { request, env } = context;
@@ -48,7 +45,7 @@ async function listPhotos(context) {
     }
 
     const results = await env.PHOTO_DB.prepare(`
-        SELECT ${PHOTO_COLUMNS}
+        SELECT ${PHOTO_DETAIL_COLUMNS}
         FROM photos
         ${whereClause}
         ORDER BY taken_at DESC, uploaded_at DESC, id DESC
@@ -90,6 +87,7 @@ async function createPhoto(context) {
     const country = (formData.get('country') || '').toString().trim();
     const state = (formData.get('state') || '').toString().trim();
     const camera = (formData.get('camera') || '').toString().trim();
+    const colors = serializeColors(parseColors((formData.get('colors') || '').toString()));
 
     if (!(photo instanceof File)) {
         return errorResponse('A photo file is required.', 400);
@@ -129,8 +127,9 @@ async function createPhoto(context) {
             longitude,
             country,
             state,
-            camera
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            camera,
+            colors
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
         photoId,
         storageKey,
@@ -144,7 +143,8 @@ async function createPhoto(context) {
         normalizedLongitude,
         country,
         state,
-        camera
+        camera,
+        colors
     ).run();
 
     return json({
@@ -164,7 +164,8 @@ async function createPhoto(context) {
             longitude: normalizedLongitude,
             country,
             state,
-            camera
+            camera,
+            colors
         })
     }, { status: 201 });
 }
