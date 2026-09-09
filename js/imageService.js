@@ -21,6 +21,7 @@ class ImageService {
         this.countryFilter = null;
         this.stateFilter = null;
         this.locationFilter = null;
+        this.colorFilter = null;
         this.takenFromFilter = null;
         this.takenToFilter = null;
         /** Chronological IDs from the API. Display order may differ in random view. */
@@ -155,6 +156,9 @@ class ImageService {
             country: photo.country || '',
             state: photo.state || '',
             camera: photo.camera || '',
+            colors: window.PhotoColors
+                ? window.PhotoColors.parseColors(photo.colors)
+                : (Array.isArray(photo.colors) ? photo.colors : []),
             detailLoaded: true
         };
     }
@@ -192,6 +196,7 @@ class ImageService {
             country: '',
             state: '',
             camera: '',
+            colors: [],
             detailLoaded: false
         };
     }
@@ -301,6 +306,7 @@ class ImageService {
             this.countryFilter || '',
             this.stateFilter || '',
             this.locationFilter || '',
+            this.colorFilter || '',
             this.takenFromFilter || '',
             this.takenToFilter || ''
         ].join('\u0001');
@@ -351,6 +357,9 @@ class ImageService {
         }
         if (this.locationFilter) {
             url.searchParams.set('location', this.locationFilter);
+        }
+        if (this.colorFilter) {
+            url.searchParams.set('color', this.colorFilter);
         }
         if (this.takenFromFilter) {
             url.searchParams.set('takenFrom', this.takenFromFilter);
@@ -404,6 +413,7 @@ class ImageService {
             country: this.countryFilter || '',
             state: this.stateFilter || '',
             location: this.locationFilter || '',
+            color: this.colorFilter || '',
             takenFrom: this.takenFromFilter || '',
             takenTo: this.takenToFilter || ''
         };
@@ -474,6 +484,58 @@ class ImageService {
             hasMore: Boolean(payload.hasMore),
             nextCursor: payload.nextCursor || null
         };
+    }
+
+    /**
+     * How many photos still need computed color metadata.
+     * @returns {Promise<Object>} Backfill status
+     */
+    async getColorBackfillStatus(options = {}) {
+        const url = new URL(this.buildApiUrl('/api/admin/backfill-colors'), window.location.origin);
+        if (options.ids) {
+            url.searchParams.set('ids', '1');
+        }
+        if (options.limit) {
+            url.searchParams.set('limit', String(options.limit));
+        }
+        const response = await fetch(url.toString(), {
+            method: 'GET',
+            credentials: 'same-origin'
+        });
+        const payload = await this.parseJsonResponse(response);
+        if (!response.ok) {
+            const error = new Error(payload.error || 'Unable to check color backfill status.');
+            error.status = response.status;
+            throw error;
+        }
+        return payload;
+    }
+
+    /**
+     * Compute colors for a batch of existing photos on Cloudflare.
+     * @param {Object} options - Batch options
+     * @returns {Promise<Object>} Backfill result
+     */
+    async backfillPhotoColors(options = {}) {
+        const url = new URL(this.buildApiUrl('/api/admin/backfill-colors'), window.location.origin);
+        if (options.limit) {
+            url.searchParams.set('limit', String(options.limit));
+        }
+        if (options.force) {
+            url.searchParams.set('force', '1');
+        }
+
+        const response = await fetch(url.toString(), {
+            method: 'POST',
+            credentials: 'same-origin'
+        });
+        const payload = await this.parseJsonResponse(response);
+        if (!response.ok) {
+            const error = new Error(payload.error || 'Unable to backfill photo colors.');
+            error.status = response.status;
+            throw error;
+        }
+        return payload;
     }
 
     /**
@@ -868,6 +930,10 @@ class ImageService {
                 formData.append('height', preparedAssets.height.toString());
             }
 
+            if (Array.isArray(preparedAssets.colors) && preparedAssets.colors.length) {
+                formData.append('colors', JSON.stringify(preparedAssets.colors));
+            }
+
             const normalizedTimestamp = this.normalizeTimestamp(timestamp);
             if (normalizedTimestamp) {
                 formData.append('takenAt', normalizedTimestamp);
@@ -959,8 +1025,14 @@ class ImageService {
         const imageElement = await this.loadImageElement(photoFile);
         const width = imageElement.naturalWidth || imageElement.width || null;
         const height = imageElement.naturalHeight || imageElement.height || null;
+        let colors = [];
+        try {
+            colors = window.PhotoColors?.extractFromImage(imageElement) || [];
+        } catch (error) {
+            console.warn('Failed to extract photo colors during upload:', error);
+        }
 
-        return { photoFile, width, height };
+        return { photoFile, width, height, colors };
     }
 
     /**
@@ -1133,6 +1205,18 @@ class ImageService {
     }
 
     /**
+     * Filter gallery by a named palette color. Composes with place filters.
+     * @param {string} color - Palette id such as blue or brown
+     * @returns {Promise<Array>} Filtered photos
+     */
+    async setColorFilter(color, takenFrom = null, takenTo = null) {
+        this.colorFilter = color || null;
+        this.takenFromFilter = takenFrom || null;
+        this.takenToFilter = takenTo || null;
+        return this.fetchImages();
+    }
+
+    /**
      * Clear any active country filter and reload unfiltered.
      * @returns {Promise<Array>} All photos
      */
@@ -1140,6 +1224,7 @@ class ImageService {
         this.countryFilter = null;
         this.stateFilter = null;
         this.locationFilter = null;
+        this.colorFilter = null;
         this.takenFromFilter = null;
         this.takenToFilter = null;
         return this.fetchImages();

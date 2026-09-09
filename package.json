@@ -7,13 +7,16 @@
     "mock": "node scripts/mock-photos-server.mjs",
     "build": "node build.js",
     "generate:d1-import": "node scripts/generate-d1-import.mjs",
-    "test": "node scripts/verify-gallery-order.mjs"
+    "test": "node scripts/verify-gallery-order.mjs",
+    "backfill:colors": "node scripts/backfill-photo-colors.mjs",
+    "verify:colors": "node scripts/verify-photo-colors.mjs"
   },
   "engines": {
     "node": ">=14"
   },
   "dependencies": {
     "jose": "^6.2.2",
+    "jpeg-js": "^0.4.4",
     "three": "^0.160.0",
     "xlsx": "^0.18.5"
   },

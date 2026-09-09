@@ -271,6 +271,7 @@ assert(gallerySrc.includes('beginSurfaceLock'), 'filter reloads lock the current
 assert(gallerySrc.includes('settleIncomingCollection'), 'new collections wait for a stable masonry pass');
 assert(gallerySrc.includes('fillViewportIfNeeded'), 'short filter results load more before releasing height');
 assert(!gallerySrc.includes('this.aspectReflowTimer = window.setTimeout(() => {\n            this.aspectReflowTimer = null;\n            if (!this.aspectReflowNeeded || !this.isMasonry || this.isMorphing) return;'), 'aspect reflow is no longer a 48ms first-hit remorph');
+assert(indexHtml.includes('js/photoColors.js'), 'public page loads the named color vocabulary');
 assert(indexHtml.includes('js/mockPhotos.js'), 'public page can install the opt-in mock catalog');
 assert(indexHtml.includes('js/galleryTransition.js'), 'public page loads the settle helper');
 

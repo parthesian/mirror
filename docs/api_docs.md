@@ -27,6 +27,8 @@ Grid views should use `thumbnail.url`; fullscreen/modal views should use `image.
 
 - `limit` optional, defaults to `24`
 - `cursor` optional opaque pagination cursor from the previous response
+- `country`, `state`, `location` optional exact place filters
+- `color` optional named palette color (`black`, `gray`, `white`, `brown`, `red`, `orange`, `yellow`, `green`, `teal`, `blue`, `purple`, `pink`). Matches photos that list that color anywhere in their stored top-color array.
 
 **Response:**
 
@@ -87,6 +89,7 @@ Grid views should use `thumbnail.url`; fullscreen/modal views should use `image.
 - `takenAt`: optional ISO timestamp
 - `width`: optional intrinsic image width
 - `height`: optional intrinsic image height
+- `colors`: optional JSON array of palette ids, already ordered by dominance, computed by the uploader
 
 **Response:**
 
@@ -119,7 +122,7 @@ Grid views should use `thumbnail.url`; fullscreen/modal views should use `image.
 
 **Auth:** Cloudflare Access required.
 
-**Request body:** JSON object with any of `takenAt`, `location`, `country`, `state`, `camera`, `latitude`, `longitude`, `description`.
+**Request body:** JSON object with any of `takenAt`, `location`, `country`, `state`, `camera`, `latitude`, `longitude`, `description`, `colors`.
 
 **Response:**
 
@@ -151,6 +154,22 @@ Grid views should use `thumbnail.url`; fullscreen/modal views should use `image.
   "photoId": "550e8400-e29b-41d4-a716-446655440000"
 }
 ```
+
+### 6. List Photo Colors
+
+**Endpoint:** `GET /api/photos/colors`
+
+**Description:** Returns the named colors currently present in stored photo metadata, in palette order, with photo counts. Used by the CONTROL filter menu. The same place and date query params as `GET /api/photos` (`country`, `state`, `location`, `takenFrom`, `takenTo`) scope those counts; the selected `color` is ignored so tiles stay faceted.
+
+### 7. Backfill Photo Colors
+
+**Endpoint:** `GET|POST /api/admin/backfill-colors`
+
+**Auth:** Cloudflare Access required.
+
+`GET` returns how many photos still need colors. Add `ids=1` to include a batch of those photo ids.
+
+`POST` classifies a batch on Cloudflare: it samples a 96px JPEG through Image Transformations, maps pixels onto the 12-color palette, and writes an ordered JSON array to D1.
 
 ## D1 Schema
 

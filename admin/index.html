@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gallery Admin</title>
     <link rel="icon" type="image/svg+xml" href="../mirror.svg">
-    <link rel="stylesheet" href="../styles.css?v=20260902a">
+    <link rel="stylesheet" href="../styles.css?v=20260909a">
 </head>
 <body class="exposure-0 admin-page">
     <main class="admin-shell">
@@ -40,6 +40,10 @@
                 <div class="admin-table-summary">
                     <span id="metadata-count">Loading photos...</span>
                     <span id="metadata-save-status" class="admin-save-status" role="status" aria-live="polite"></span>
+                </div>
+                <div class="admin-color-backfill">
+                    <span id="color-backfill-status" class="admin-color-backfill-status">Checking stored colors...</span>
+                    <button type="button" id="color-backfill-button" class="btn btn-secondary hidden">compute missing colors</button>
                 </div>
 
                 <div class="admin-table-wrap">
@@ -180,8 +184,9 @@
     </div>
 
     <script src="../js/config.js?v=20260902a"></script>
-    <script src="../js/imageService.js?v=20260902a"></script>
+    <script src="../js/photoColors.js?v=20260909a"></script>
+    <script src="../js/imageService.js?v=20260909a"></script>
     <script src="../js/customCalendar.js?v=20260902a"></script>
-    <script src="../js/adminUpload.js?v=20260902a"></script>
+    <script src="../js/adminUpload.js?v=20260909a"></script>
 </body>
 </html>

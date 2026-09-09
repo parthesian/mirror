@@ -48,7 +48,8 @@ const EXPOSURE_OPTIONS = [
 const FILTER_TYPES = [
     { id: 'country', label: 'COUNTRY' },
     { id: 'state', label: 'REGION' },
-    { id: 'location', label: 'PLACE' }
+    { id: 'location', label: 'PLACE' },
+    { id: 'color', label: 'COLOR' }
 ];
 
 class ControlMenu {
@@ -304,7 +305,7 @@ class ControlMenu {
 
     syncFilterState() {
         const filters = this.globeExplorer?.getSelectedFilters?.() || {};
-        const active = Boolean(filters.country || filters.state || filters.location);
+        const active = Boolean(filters.country || filters.state || filters.location || filters.color);
         this.root.classList.toggle('has-filter', active);
     }
 
@@ -330,16 +331,46 @@ class ControlMenu {
         return Math.max(6.5, Math.min(size * 0.2, 11, byWord));
     }
 
-    node({ label, sub, size, radius, angle, active, open, title, onClick, onHover }) {
+    contrastOnSwatch(hex) {
+        const raw = String(hex || '').replace('#', '');
+        if (raw.length !== 6) {
+            return '#f4f4f4';
+        }
+        const red = Number.parseInt(raw.slice(0, 2), 16) / 255;
+        const green = Number.parseInt(raw.slice(2, 4), 16) / 255;
+        const blue = Number.parseInt(raw.slice(4, 6), 16) / 255;
+        const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+        return luminance > 0.58 ? '#1a1a1a' : '#f4f4f4';
+    }
+
+    node({ label, sub, size, radius, angle, active, open, title, onClick, onHover, swatch, colorFill }) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'cm-node';
-        btn.style.fontSize = `${this.fitFont(size, label)}px`;
+        btn.style.fontSize = `${this.fitFont(size, colorFill ? (sub || '8') : label)}px`;
 
-        const text = document.createElement('span');
-        text.className = 'cm-sector-label';
-        text.textContent = label;
-        btn.appendChild(text);
+        if (colorFill) {
+            const ink = this.contrastOnSwatch(colorFill);
+            btn.classList.add('cm-node-color');
+            btn.style.setProperty('--cm-color', colorFill);
+            btn.style.setProperty('--cm-color-ink', ink);
+            btn.style.background = colorFill;
+            btn.style.color = ink;
+        } else if (swatch) {
+            const chip = document.createElement('span');
+            chip.className = 'cm-node-swatch';
+            chip.style.background = swatch;
+            chip.setAttribute('aria-hidden', 'true');
+            btn.appendChild(chip);
+            btn.classList.add('has-swatch');
+        }
+
+        if (label && !colorFill) {
+            const text = document.createElement('span');
+            text.className = 'cm-sector-label';
+            text.textContent = label;
+            btn.appendChild(text);
+        }
 
         if (sub) {
             const count = document.createElement('span');
@@ -379,7 +410,7 @@ class ControlMenu {
 
     hasActiveFilter() {
         const filters = this.globeExplorer?.getSelectedFilters?.() || {};
-        return Boolean(filters.country || filters.state || filters.location);
+        return Boolean(filters.country || filters.state || filters.location || filters.color);
     }
 
     renderSections() {
@@ -453,7 +484,7 @@ class ControlMenu {
 
         entries.forEach((entry, index) => {
             if (entry.id === 'clear') {
-                const hasFilter = Boolean(filters.country || filters.state || filters.location);
+                const hasFilter = Boolean(filters.country || filters.state || filters.location || filters.color);
                 const node = this.node({
                     label: 'CLEAR',
                     size,
@@ -469,15 +500,22 @@ class ControlMenu {
             }
 
             const selected = filters[entry.id];
+            const selectedColor = entry.id === 'color' && selected
+                ? (window.PhotoColors?.getColorMeta(selected) || null)
+                : null;
+            const selectedTitle = selectedColor
+                ? `${entry.label}: ${selectedColor.label}`
+                : (selected ? `${entry.label}: ${selected}` : `Filter by ${entry.label.toLowerCase()}`);
             const node = this.node({
                 label: entry.label,
-                sub: selected ? this.shorten(selected, 12) : '',
+                sub: selected && !selectedColor ? this.shorten(selected, 12) : '',
+                swatch: selectedColor?.swatch || '',
                 size,
                 radius: this.geometry.ringB,
                 angle: angles[index],
                 active: Boolean(selected),
                 open: this.filterType === entry.id,
-                title: selected ? `${entry.label}: ${selected}` : `Filter by ${entry.label.toLowerCase()}`,
+                title: selectedTitle,
                 onClick: () => {
                     this.filterType = entry.id;
                     this.leafOffset = 0;
@@ -516,18 +554,21 @@ class ControlMenu {
             const angle = top - (index - this.leafOffset) * this.leafStep;
             if (angle < bottom - 1 || angle > top + 1) return;
 
-            const isActive = filters[this.filterType] === item.value;
+            const isActive = this.globeExplorer?._isFilterOptionActive?.(this.filterType, item)
+                ?? (filters[this.filterType] === item.value);
+            const isColorLeaf = this.filterType === 'color' && item.swatch;
             const node = this.node({
-                label: this.shorten(item.label, 16),
+                label: isColorLeaf ? '' : this.shorten(item.label, 16),
                 sub: String(item.count),
                 size,
                 radius,
                 angle,
                 active: isActive,
+                colorFill: isColorLeaf ? item.swatch : '',
                 title: `${item.label} — ${item.count} photo${item.count === 1 ? '' : 's'}`,
                 onClick: () => {
                     if (isActive) {
-                        this.globeExplorer?.clearFilters?.();
+                        this.globeExplorer?.clearFilterType?.(this.filterType);
                         return;
                     }
                     this.globeExplorer?.applyFilterOption?.(this.filterType, item);
@@ -583,7 +624,10 @@ class ControlMenu {
     emptyLeafHint() {
         const hint = document.createElement('div');
         hint.className = 'cm-leaf-hint';
-        hint.textContent = this.globeExplorer?.hasFilterData ? 'NO OPTIONS' : 'LOADING';
+        const ready = this.filterType === 'color'
+            ? this.globeExplorer?.hasColorFilterData
+            : this.globeExplorer?.hasPlaceFilterData;
+        hint.textContent = ready ? 'NO OPTIONS' : 'LOADING';
         this.place(hint, this.geometry.ringC, 45, this.geometry.nodeC * 1.6);
         return hint;
     }

@@ -1,5 +1,12 @@
+import { colorMatchSql, parseColors } from './colors.js';
+
 const DEFAULT_LIMIT = 24;
 const MAX_LIMIT = 60;
+
+export const PHOTO_DETAIL_COLUMNS = `
+    id, storage_key, location, description, taken_at, uploaded_at, width, height,
+    latitude, longitude, country, state, camera, colors
+`;
 
 export function parseLimit(rawValue) {
     const parsed = Number.parseInt(rawValue, 10);
@@ -91,6 +98,7 @@ export function mapPhotoRecord(record) {
         country: record.country || '',
         state: record.state || '',
         camera: record.camera || '',
+        colors: parseColors(record.colors),
         storageKey: record.storage_key,
         image: {
             url: buildImageUrl(record.id, 'full'),
@@ -121,4 +129,51 @@ export function getExtensionFromType(contentType = '') {
     }
 
     return 'jpg';
+}
+
+export function collectPhotoFilters(searchParams) {
+    return {
+        country: searchParams.get('country') || '',
+        state: searchParams.get('state') || '',
+        location: searchParams.get('location') || '',
+        color: searchParams.get('color') || '',
+        takenFrom: searchParams.get('takenFrom') || '',
+        takenTo: searchParams.get('takenTo') || ''
+    };
+}
+
+export function buildPhotoFilterClause(filters = {}) {
+    const clauses = [];
+    const bindings = [];
+
+    if (filters.country) {
+        clauses.push('LOWER(TRIM(country)) = LOWER(TRIM(?))');
+        bindings.push(filters.country);
+    }
+    if (filters.state) {
+        clauses.push('LOWER(TRIM(state)) = LOWER(TRIM(?))');
+        bindings.push(filters.state);
+    }
+    if (filters.location) {
+        clauses.push('LOWER(TRIM(location)) = LOWER(TRIM(?))');
+        bindings.push(filters.location);
+    }
+    if (filters.color) {
+        clauses.push(colorMatchSql());
+        bindings.push(filters.color);
+    }
+    if (filters.takenFrom) {
+        clauses.push('taken_at >= ?');
+        bindings.push(filters.takenFrom);
+    }
+    if (filters.takenTo) {
+        clauses.push('taken_at <= ?');
+        bindings.push(filters.takenTo);
+    }
+
+    return {
+        clauses,
+        bindings,
+        whereClause: clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
+    };
 }
