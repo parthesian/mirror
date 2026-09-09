@@ -3194,12 +3194,6 @@ body.exposure-1  .globe-explorer { background: rgba(255, 255, 255, 0.98); color:
     transition: opacity var(--dur-mid) var(--ease);
 }
 
-/* Layers dim out of the way so a grid animation stays legible. */
-body.ui-animating .control-menu {
-    opacity: 0.07;
-    pointer-events: none;
-}
-
 .cm-disc {
     position: absolute;
     border-radius: 50%;
