@@ -54,6 +54,7 @@ class GlobeExplorer {
         this.selectedFilters = { country: '', state: '', location: '', color: '' };
         this.colorOptions = [];
         this._colorsFetchedOnce = false;
+        this._colorsFilterKey = '';
         this._colorsPromise = null;
         this.lastManualRotateAt = 0;
         this.locationGroupByKey = new Map();
@@ -1027,30 +1028,70 @@ class GlobeExplorer {
         this._renderFilterMenu();
     }
 
+    _colorFacetKey() {
+        const filters = this.selectedFilters || {};
+        return [
+            filters.country || '',
+            filters.state || '',
+            filters.location || '',
+            this.imageService?.takenFromFilter || '',
+            this.imageService?.takenToFilter || ''
+        ].join('\u0001');
+    }
+
     async _fetchColors() {
-        if (this._colorsFetchedOnce) return;
-        if (this._colorsPromise) return this._colorsPromise;
-        this._colorsPromise = this._fetchColorsInternal();
+        const key = this._colorFacetKey();
+        if (this._colorsFetchedOnce && this._colorsFilterKey === key && !this._colorsPromise) {
+            return;
+        }
+        if (this._colorsPromise && this._colorsFilterKey === key) {
+            return this._colorsPromise;
+        }
+
+        this._colorsFilterKey = key;
+        const request = this._fetchColorsInternal(key);
+        this._colorsPromise = request;
         try {
-            await this._colorsPromise;
+            await request;
         } finally {
-            this._colorsPromise = null;
+            if (this._colorsPromise === request) {
+                this._colorsPromise = null;
+            }
         }
     }
 
-    async _fetchColorsInternal() {
+    async _fetchColorsInternal(key) {
         try {
             const base = (window.CONFIG?.API_BASE_URL || '').replace(/\/$/, '');
-            const url = base ? `${base}/api/photos/colors` : '/api/photos/colors';
-            const res = await fetch(url);
+            const url = new URL(base ? `${base}/api/photos/colors` : '/api/photos/colors', window.location.origin);
+            const filters = this.selectedFilters || {};
+            if (filters.country) url.searchParams.set('country', filters.country);
+            if (filters.state) url.searchParams.set('state', filters.state);
+            if (filters.location) url.searchParams.set('location', filters.location);
+            if (this.imageService?.takenFromFilter) {
+                url.searchParams.set('takenFrom', this.imageService.takenFromFilter);
+            }
+            if (this.imageService?.takenToFilter) {
+                url.searchParams.set('takenTo', this.imageService.takenToFilter);
+            }
+
+            const res = await fetch(url.toString());
             const data = await res.json();
+            if (this._colorFacetKey() !== key) {
+                return;
+            }
             this.colorOptions = Array.isArray(data.colors) ? data.colors : [];
         } catch (err) {
+            if (this._colorFacetKey() !== key) {
+                return;
+            }
             console.error('[GlobeExplorer] failed to fetch color facets', err);
             this.colorOptions = [];
         } finally {
-            this._colorsFetchedOnce = true;
-            this._renderFilterMenu();
+            if (this._colorFacetKey() === key) {
+                this._colorsFetchedOnce = true;
+                this._renderFilterMenu();
+            }
         }
     }
 
@@ -2061,6 +2102,8 @@ class GlobeExplorer {
         if (this.isOpen || this.isExiting) {
             await this._playExit();
         }
+        this._syncImageServiceFilters(takenFrom, takenTo);
+        await this._fetchColors();
         this._renderFilterMenu();
         this._syncImageServiceFilters(takenFrom, takenTo);
         this._emitFilterChange();
@@ -2102,6 +2145,7 @@ class GlobeExplorer {
         this.selectedFilterValue = '';
         this.selectedFilters = this._emptyFilters();
         this._syncImageServiceFilters();
+        await this._fetchColors();
         this._renderFilterMenu();
         this._emitFilterChange();
         if (window.gallery) {
