@@ -1,15 +1,14 @@
 /**
- * Tracks whether a gallery-wide animation is running so chrome can get out
- * of the way. Scopes nest, so a randomize that triggers a layout morph only
- * restores the chrome once both have finished.
+ * Tracks whether a gallery-wide animation is running. Scopes nest, so a
+ * randomize that triggers a layout morph only ends once both have finished.
+ * The control menu stays under user control while this is active.
  */
 const UIAnimation = {
     depth: 0,
     watchdog: null,
 
-    // While a scope is open the chrome is nearly transparent. No gallery
-    // animation runs anywhere near this long, so if one never reports back
-    // the controls are restored rather than left invisible.
+    // No gallery animation runs anywhere near this long, so a hung scope
+    // is cleared rather than left open.
     MAX_MS: 6000,
 
     begin() {

@@ -80,6 +80,9 @@ class ControlMenu {
 
         this.slideMs = 380;
         this.expandMs = 520;
+        // Filter applies rebuild the nodes and reload the gallery. Ignore
+        // leftover outside pointerdowns so the menu stays in the user's hands.
+        this.dismissLockedUntil = 0;
 
         this.applyGeometry();
         this.bindEvents();
@@ -161,14 +164,16 @@ class ControlMenu {
         document.addEventListener('keydown', (event) => {
             if (event.key === 'Escape' && this.isOpen && !this.isAnimating) {
                 event.preventDefault();
-                this.close();
+                this.close({ user: true });
                 this.hub.focus();
             }
         });
 
         document.addEventListener('pointerdown', (event) => {
-            if (!this.isOpen || this.isAnimating) return;
+            if (!this.isOpen || this.isAnimating || this.isDismissLocked()) return;
             if (this.root.contains(event.target)) return;
+            const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
+            if (path.includes(this.root)) return;
             this.close();
         });
 
@@ -190,9 +195,18 @@ class ControlMenu {
         });
         document.addEventListener('galleryLayoutChange', () => this.renderOptions());
         document.addEventListener('galleryFilterChange', () => {
+            this.lockDismiss(900);
             this.syncFilterState();
             this.render();
         });
+    }
+
+    lockDismiss(ms = 700) {
+        this.dismissLockedUntil = Math.max(this.dismissLockedUntil, Date.now() + ms);
+    }
+
+    isDismissLocked() {
+        return Date.now() < this.dismissLockedUntil || Boolean(window.UIAnimation?.isRunning);
     }
 
     setAnimating(value) {
@@ -201,7 +215,7 @@ class ControlMenu {
     }
 
     toggle() {
-        if (this.isOpen) this.close();
+        if (this.isOpen) this.close({ user: true });
         else this.open();
     }
 
@@ -254,7 +268,8 @@ class ControlMenu {
         });
     }
 
-    close() {
+    close({ user = false } = {}) {
+        if (!user && this.isDismissLocked()) return;
         if (!this.isOpen && !this.isAnimating) return;
         this.clearPhase();
         this.isOpen = false;
@@ -278,7 +293,7 @@ class ControlMenu {
 
     async selectSection(id) {
         if (id === 'globe') {
-            this.close();
+            this.close({ user: true });
             await this.globeExplorer?.open?.();
             return;
         }
@@ -391,6 +406,7 @@ class ControlMenu {
 
         btn.addEventListener('click', (event) => {
             event.stopPropagation();
+            this.lockDismiss(900);
             onClick();
         });
         if (onHover) {
