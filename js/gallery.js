@@ -12,7 +12,7 @@ class Gallery {
         this.minColumns = 2;
         this.maxColumns = 6;
         this.columns = 4;
-        this.layoutMode = 'grid';
+        this.layoutMode = Gallery.defaultLayoutMode();
 
         this.imagePreloader = imagePreloader || new ImagePreloader();
         this.globeService = globeService || new GlobeService();
@@ -1503,13 +1503,23 @@ class Gallery {
         catch (e) { /* ignore */ }
     }
 
+    static isMobileViewport(win = typeof window !== 'undefined' ? window : null) {
+        return Boolean(win && Number(win.innerWidth) <= 768);
+    }
+
+    static defaultLayoutMode(win = typeof window !== 'undefined' ? window : null) {
+        return Gallery.isMobileViewport(win) ? 'masonry' : 'grid';
+    }
+
     loadLayoutPreference() {
         try {
             const stored = localStorage.getItem('mirror-layout');
             if (stored === 'masonry' || stored === 'grid') {
                 this.layoutMode = stored;
+                return;
             }
         } catch (e) { /* ignore */ }
+        this.layoutMode = Gallery.defaultLayoutMode();
     }
 
     // ── keyboard scroll ──
@@ -1589,4 +1599,9 @@ class Gallery {
     }
 }
 
-window.Gallery = Gallery;
+if (typeof window !== 'undefined') {
+    window.Gallery = Gallery;
+}
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = Gallery;
+}

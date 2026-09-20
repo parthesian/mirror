@@ -15,6 +15,7 @@ class Modal {
         this.modalCameraName = document.getElementById('modal-camera-name');
         this.modalCameraIconDslr = document.getElementById('modal-camera-icon-dslr');
         this.modalCameraIconMobile = document.getElementById('modal-camera-icon-mobile');
+        this.modalCameraIconTlr = document.getElementById('modal-camera-icon-tlr');
         this.modalTimestamp = document.getElementById('modal-timestamp');
         this.globeContainer = document.getElementById('modal-globe');
         this.modalCopy = this.modal?.querySelector('.modal-copy');
@@ -322,13 +323,7 @@ class Modal {
         if (camera && this.modalCameraRow && this.modalCameraName) {
             this.modalCameraRow.classList.remove('hidden');
             this.modalCameraName.textContent = camera;
-            const mobile = Modal.isMobileCameraName(camera);
-            if (this.modalCameraIconDslr) {
-                this.modalCameraIconDslr.classList.toggle('hidden', mobile);
-            }
-            if (this.modalCameraIconMobile) {
-                this.modalCameraIconMobile.classList.toggle('hidden', !mobile);
-            }
+            this.applyCameraIcon(camera);
         } else if (this.modalCameraRow) {
             this.modalCameraRow.classList.add('hidden');
         }
@@ -1126,6 +1121,48 @@ class Modal {
         }, { passive: true });
     }
 
+    applyCameraIcon(name) {
+        const kind = Modal.cameraIconKind(name);
+        if (this.modalCameraIconDslr) {
+            this.modalCameraIconDslr.classList.toggle('hidden', kind !== 'dslr');
+        }
+        if (this.modalCameraIconMobile) {
+            this.modalCameraIconMobile.classList.toggle('hidden', kind !== 'mobile');
+        }
+        if (this.modalCameraIconTlr) {
+            this.modalCameraIconTlr.classList.toggle('hidden', kind !== 'tlr');
+        }
+    }
+
+    /**
+     * Pick the camera glyph: Rolleicord uses the twin-lens mark, phones use
+     * the mobile mark, everything else uses the SLR body.
+     * @param {string} name - Camera or device name from metadata
+     * @returns {'tlr'|'mobile'|'dslr'}
+     */
+    static cameraIconKind(name) {
+        if (Modal.isTlrCameraName(name)) {
+            return 'tlr';
+        }
+        if (Modal.isMobileCameraName(name)) {
+            return 'mobile';
+        }
+        return 'dslr';
+    }
+
+    /**
+     * Twin-lens Rolleicord (and close family names) use the stacked-lens glyph.
+     * @param {string} name - Camera or device name from metadata
+     * @returns {boolean} Whether to show the TLR icon
+     */
+    static isTlrCameraName(name) {
+        const n = (name || '').toLowerCase();
+        if (!n.trim()) {
+            return false;
+        }
+        return n.includes('rolleicord') || n.includes('rolleiflex') || /\btlr\b/.test(n);
+    }
+
     /**
      * Heuristic for icon: common phone / tablet device strings use the mobile glyph.
      * @param {string} name - Camera or device name from metadata
@@ -1145,5 +1182,9 @@ class Modal {
     }
 }
 
-// Export for use in other modules
-window.Modal = Modal;
+if (typeof window !== 'undefined') {
+    window.Modal = Modal;
+}
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = Modal;
+}

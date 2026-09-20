@@ -31,6 +31,12 @@ const MOCK_ASPECTS = [
     [1500, 1000]
 ];
 
+const MOCK_CAMERAS = [
+    'Rolleicord',
+    'iPhone 15 Pro',
+    'Canon EOS R5'
+];
+
 const MockPhotos = {
     LIMIT: 24,
 
@@ -66,7 +72,8 @@ const MockPhotos = {
                 uploadedAt: `${year}-${month}-${day}T18:00:00.000Z`,
                 description: `${place.location} ${i + 1}`,
                 color: place.color,
-                accent: place.accent
+                accent: place.accent,
+                camera: MOCK_CAMERAS[i % MOCK_CAMERAS.length]
             });
         }
         photos.sort((a, b) => {
@@ -175,7 +182,7 @@ const MockPhotos = {
             longitude: photo.longitude,
             country: photo.country,
             state: photo.state,
-            camera: 'Mock Camera',
+            camera: photo.camera || 'Mock Camera',
             image: { url: `/api/photos/${photo.id}/image`, width: photo.width, height: photo.height },
             thumbnail: { url: this.svgDataUrl(photo), width: photo.width, height: photo.height }
         };
