@@ -649,7 +649,9 @@ class ControlMenu {
     }
 
     renderLayoutOptions() {
-        const mode = this.gallery?.layoutMode || 'grid';
+        const mode = this.gallery?.layoutMode || (typeof Gallery !== 'undefined'
+            ? Gallery.defaultLayoutMode()
+            : 'grid');
         const modes = [
             { id: 'grid', label: 'GRID' },
             { id: 'masonry', label: 'MASONRY' }

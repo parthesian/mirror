@@ -265,6 +265,24 @@ const listResponse = MockPhotos.handleRequest('http://local.test/api/photos?limi
 assert(listResponse.status === 200, 'mock list handler answers /api/photos');
 const imageResponse = MockPhotos.handleRequest('http://local.test/api/photos/mock-001/image');
 assert(imageResponse.headers.get('Content-Type').includes('image/svg+xml'), 'mock image handler returns a coloured SVG');
+const mockCameras = new Set(MockPhotos.catalog().map((photo) => MockPhotos.metadata(photo.id).camera));
+assert(mockCameras.has('Rolleicord'), 'mock catalog includes Rolleicord for the TLR glyph');
+assert(mockCameras.has('iPhone 15 Pro'), 'mock catalog includes a phone camera for the mobile glyph');
+assert(mockCameras.has('Canon EOS R5'), 'mock catalog includes an SLR camera for the default glyph');
+
+const classSandbox = { window: {}, console, module: { exports: {} } };
+vm.createContext(classSandbox);
+vm.runInContext(fs.readFileSync(path.join(repoRoot, 'js/gallery.js'), 'utf8'), classSandbox);
+vm.runInContext(fs.readFileSync(path.join(repoRoot, 'js/modal.js'), 'utf8'), classSandbox);
+const Gallery = classSandbox.window.Gallery || classSandbox.module.exports;
+const Modal = classSandbox.window.Modal;
+assert(Gallery.defaultLayoutMode({ innerWidth: 390 }) === 'masonry', 'phones default to masonry');
+assert(Gallery.defaultLayoutMode({ innerWidth: 1280 }) === 'grid', 'desktops default to grid');
+assert(Gallery.isMobileViewport({ innerWidth: 768 }) === true, '768px is still the mobile breakpoint');
+assert(Modal.cameraIconKind('Rolleicord') === 'tlr', 'Rolleicord maps to the TLR icon');
+assert(Modal.cameraIconKind('Rolleicord Vb') === 'tlr', 'Rolleicord variants still use the TLR icon');
+assert(Modal.cameraIconKind('iPhone 15 Pro') === 'mobile', 'iPhone maps to the mobile icon');
+assert(Modal.cameraIconKind('Canon EOS R5') === 'dslr', 'other cameras keep the SLR icon');
 
 const gallerySrc = fs.readFileSync(path.join(repoRoot, 'js/gallery.js'), 'utf8');
 assert(gallerySrc.includes('beginSurfaceLock'), 'filter reloads lock the current gallery height');
@@ -274,5 +292,6 @@ assert(!gallerySrc.includes('this.aspectReflowTimer = window.setTimeout(() => {\
 assert(indexHtml.includes('js/photoColors.js'), 'public page loads the named color vocabulary');
 assert(indexHtml.includes('js/mockPhotos.js'), 'public page can install the opt-in mock catalog');
 assert(indexHtml.includes('js/galleryTransition.js'), 'public page loads the settle helper');
+assert(indexHtml.includes('modal-camera-icon-tlr'), 'photo modal includes the TLR camera glyph');
 
 console.log('gallery-order, location-model, flipboard, and image-url checks passed');
