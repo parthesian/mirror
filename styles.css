@@ -1023,6 +1023,13 @@ body.exposure-1 .scroll-loading p {
     color: var(--ink-soft, #888);
 }
 
+/* The TLR body is a narrower box than the SLR, so the same 1em
+   slot leaves extra air on the name side. Pull the wrap back so
+   the 0.4rem gap reads like the other glyphs. */
+.modal-camera-row.is-tlr .modal-camera-icon-wrap {
+    margin-inline-start: -0.22em;
+}
+
 .modal-camera-svg {
     display: block;
     width: 1em;

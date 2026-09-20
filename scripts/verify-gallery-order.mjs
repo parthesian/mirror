@@ -293,5 +293,7 @@ assert(indexHtml.includes('js/photoColors.js'), 'public page loads the named col
 assert(indexHtml.includes('js/mockPhotos.js'), 'public page can install the opt-in mock catalog');
 assert(indexHtml.includes('js/galleryTransition.js'), 'public page loads the settle helper');
 assert(indexHtml.includes('modal-camera-icon-tlr'), 'photo modal includes the TLR camera glyph');
+const indexCss = fs.readFileSync(path.join(repoRoot, 'styles.css'), 'utf8');
+assert(indexCss.includes('.modal-camera-row.is-tlr .modal-camera-icon-wrap'), 'TLR camera row pulls the narrower glyph back to the name');
 
 console.log('gallery-order, location-model, flipboard, and image-url checks passed');
