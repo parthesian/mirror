@@ -326,6 +326,7 @@ class Modal {
             this.applyCameraIcon(camera);
         } else if (this.modalCameraRow) {
             this.modalCameraRow.classList.add('hidden');
+            this.modalCameraRow.classList.remove('is-tlr');
         }
 
         this.syncModalGlobeSize();
@@ -1123,6 +1124,9 @@ class Modal {
 
     applyCameraIcon(name) {
         const kind = Modal.cameraIconKind(name);
+        if (this.modalCameraRow) {
+            this.modalCameraRow.classList.toggle('is-tlr', kind === 'tlr');
+        }
         if (this.modalCameraIconDslr) {
             this.modalCameraIconDslr.classList.toggle('hidden', kind !== 'dslr');
         }
