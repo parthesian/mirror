@@ -212,6 +212,57 @@ queue.pump();
 assert(queue.queue.length === 1, 'pump does not drop a disconnected tile');
 assert(queue.active === 0, 'a disconnected tile does not consume a decode slot');
 
+class FakeImg {
+    constructor() {
+        this.isConnected = true;
+        this.dataset = {};
+        this.complete = false;
+        this.naturalWidth = 0;
+        this.listeners = { load: new Set(), error: new Set() };
+        this.attrs = {};
+    }
+    get src() { return this.attrs.src || ''; }
+    set src(value) { this.attrs.src = value; this.complete = false; this.naturalWidth = 0; }
+    getAttribute(name) { return this.attrs[name] ?? null; }
+    removeAttribute(name) { delete this.attrs[name]; }
+    addEventListener(type, fn) { this.listeners[type]?.add(fn); }
+    removeEventListener(type, fn) { this.listeners[type]?.delete(fn); }
+    finish(ok = true) {
+        this.complete = true;
+        this.naturalWidth = ok ? 100 : 0;
+        for (const fn of Array.from(this.listeners[ok ? 'load' : 'error'])) fn();
+    }
+}
+
+const slotQueue = new ImageLoadQueue({ limit: 2 });
+const tiles = Array.from({ length: 5 }, () => new FakeImg());
+tiles.forEach((img, i) => slotQueue.assign(img, `/t${i}.jpg`, 0));
+assert(slotQueue.active === 2 && slotQueue.queue.length === 3, 'queue caps concurrent thumbnail loads');
+slotQueue.cancel(tiles[0]);
+tiles[0].removeAttribute('src');
+assert(slotQueue.active === 2 && tiles[2].src === '/t2.jpg', 'unmounting an in-flight tile hands its slot to the next tile');
+slotQueue.retryStuck([tiles[1], tiles[2]]);
+assert(slotQueue.active === 2 && tiles[1].src === '/t1.jpg', 'the watchdog leaves downloading tiles alone');
+tiles[1].finish(true);
+tiles[2].finish(false);
+assert(slotQueue.active === 2, 'finished tiles free their slots for the rest of the queue');
+slotQueue.retryStuck([tiles[2]]);
+assert(slotQueue.queue.some((job) => job.img === tiles[2]), 'an errored tile is queued for another attempt');
+tiles[3].finish(true);
+tiles[4].finish(true);
+assert(slotQueue.active === 1 && tiles[2].src === '/t2.jpg', 'the retried tile gets a slot back');
+tiles[2].finish(true);
+assert(slotQueue.active === 0 && slotQueue.queue.length === 0, 'no slot leaks after cancels, retries, and errors');
+
+const churnQueue = new ImageLoadQueue({ limit: 3 });
+for (let round = 0; round < 50; round++) {
+    const img = new FakeImg();
+    churnQueue.assign(img, `/churn${round}.jpg`, 0);
+    churnQueue.cancel(img);
+    img.removeAttribute('src');
+}
+assert(churnQueue.active === 0, 'fast scrolling past in-flight tiles never exhausts the slots');
+
 const globeSandbox = { window: {}, console, document: { getElementById() { return null; } } };
 vm.createContext(globeSandbox);
 vm.runInContext(fs.readFileSync(path.join(repoRoot, 'js/globeExplorer.js'), 'utf8'), globeSandbox);

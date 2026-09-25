@@ -5,14 +5,23 @@
  * cannot open 80+ decodes at once (the usual cause of tiles that stay
  * blank). preloadImage never waits on a DOM element's promise — removing
  * that <img> used to leave the map entry pending forever.
+ *
+ * Every slot is owned by exactly one release function. Removing an
+ * in-flight src fires neither load nor error, so a slot is also released
+ * on cancel, on reassignment, and after slotTimeoutMs. A slow thumbnail
+ * keeps downloading after its timeout; it just stops blocking the rest.
  */
 class ImageLoadQueue {
     constructor(options = {}) {
         this.limit = Math.max(1, options.limit || 8);
-        this.active = 0;
+        this.slotTimeoutMs = Math.max(1, options.slotTimeoutMs || 4000);
         this.queue = [];
         this.paused = false;
-        this._inflight = new WeakSet();
+        this._inflight = new Map();
+    }
+
+    get active() {
+        return this._inflight.size;
     }
 
     setLimit(limit) {
@@ -29,16 +38,32 @@ class ImageLoadQueue {
         this.pump();
     }
 
-    cancel(img) {
+    dequeue(img) {
         this.queue = this.queue.filter((job) => job.img !== img);
+    }
+
+    cancel(img) {
+        if (!img) {
+            return;
+        }
+        this.dequeue(img);
+        this._inflight.get(img)?.release();
+    }
+
+    isTracked(img) {
+        return this._inflight.has(img) || this.queue.some((job) => job.img === img);
     }
 
     assign(img, url, priority = 1) {
         if (!img || !url) {
             return;
         }
+        const running = this._inflight.get(img);
+        if (running && running.url === url) {
+            return;
+        }
         this.cancel(img);
-        if (img.dataset.loadUrl === url && this.hasAssignedSrc(img)) {
+        if (this.isLoadingOrLoaded(img, url)) {
             return;
         }
         this.queue.push({ img, url, priority: Number(priority) || 0 });
@@ -46,67 +71,86 @@ class ImageLoadQueue {
         this.pump();
     }
 
-    hasAssignedSrc(img) {
-        const src = img.getAttribute('src') || '';
-        return Boolean(src);
+    /**
+     * An errored tile has src set and complete=true with no pixels; that
+     * one must be queued again rather than treated as assigned.
+     */
+    isLoadingOrLoaded(img, url) {
+        if (img.dataset.loadUrl !== url || !img.getAttribute('src')) {
+            return false;
+        }
+        return !img.complete || img.naturalWidth > 0;
     }
 
     pump() {
         if (this.paused) {
             return;
         }
-        const stillWaiting = [];
-        while (this.active < this.limit && this.queue.length) {
-            const job = this.queue.shift();
-            if (!job.img.isConnected) {
-                stillWaiting.push(job);
-                continue;
+        while (this._inflight.size < this.limit) {
+            const index = this.queue.findIndex((job) => job.img.isConnected);
+            if (index === -1) {
+                return;
             }
+            const [job] = this.queue.splice(index, 1);
             this.start(job);
         }
-        this.queue = stillWaiting.concat(this.queue);
     }
 
     start(job) {
-        const { img, url } = job;
-        this.active += 1;
-        this._inflight.add(img);
+        const { img, url, priority } = job;
+        let released = false;
+        let timer = null;
 
-        const finish = () => {
-            if (!this._inflight.has(img)) {
+        const release = () => {
+            if (released) {
                 return;
             }
-            this._inflight.delete(img);
-            this.active = Math.max(0, this.active - 1);
+            released = true;
+            window.clearTimeout(timer);
+            img.removeEventListener('load', release);
+            img.removeEventListener('error', release);
+            if (this._inflight.get(img)?.release === release) {
+                this._inflight.delete(img);
+            }
             this.pump();
         };
 
-        const onDone = () => {
-            img.removeEventListener('load', onDone);
-            img.removeEventListener('error', onDone);
-            finish();
-        };
+        this._inflight.set(img, { url, release });
+        img.addEventListener('load', release);
+        img.addEventListener('error', release);
+        timer = window.setTimeout(release, this.slotTimeoutMs);
 
-        img.addEventListener('load', onDone);
-        img.addEventListener('error', onDone);
+        if ('fetchPriority' in img) {
+            img.fetchPriority = priority === 0 ? 'high' : 'auto';
+        }
         img.dataset.loadUrl = url;
+        if (img.getAttribute('src') === url) {
+            img.removeAttribute('src');
+        }
         img.src = url;
         if (img.complete) {
-            onDone();
+            release();
         }
     }
 
+    /**
+     * Only restart tiles that are idle: never assigned, or finished with an
+     * error. A tile that is still downloading is left alone — tearing its
+     * src out restarts the request from zero.
+     */
     retryStuck(images) {
         for (const img of images) {
-            if (!img || !img.isConnected || img.naturalWidth) {
+            if (!img || !img.isConnected || img.naturalWidth || this.isTracked(img)) {
                 continue;
             }
             const url = img.dataset.loadUrl || img.getAttribute('src');
             if (!url) {
                 continue;
             }
-            img.dataset.retrying = '1';
-            img.removeAttribute('src');
+            const errored = img.getAttribute('src') && img.complete;
+            if (img.getAttribute('src') && !errored) {
+                continue;
+            }
             this.assign(img, url, 0);
         }
     }

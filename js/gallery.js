@@ -625,12 +625,12 @@ class Gallery {
     releaseItem(child) {
         const img = child.querySelector('.gallery-item-image');
         const url = img?.dataset.loadUrl || img?.getAttribute('src');
+        if (img) {
+            this.loadQueue.cancel(img);
+        }
         if (img && url && !img.complete) {
             this.imagePreloader.abandon(url);
             img.removeAttribute('src');
-        }
-        if (img) {
-            this.loadQueue.cancel(img);
         }
         this.mountedItems.delete(child.dataset.imageId);
         child.remove();
@@ -688,9 +688,6 @@ class Gallery {
         img.alt = '';
         img.setAttribute('aria-hidden', 'true');
         img.decoding = 'async';
-        if ('fetchPriority' in img) {
-            img.fetchPriority = 'high';
-        }
 
         item.appendChild(img);
 
@@ -725,6 +722,9 @@ class Gallery {
                 if (live?.url && live.thumbnailUrl !== live.url) {
                     this.imagePreloader.prefetch([live.url], { concurrency: 1 });
                 }
+                if (live && !live.detailLoaded && typeof this.imageService.ensurePhotoDetail === 'function') {
+                    this.imageService.ensurePhotoDetail(live.id).catch(() => {});
+                }
             }, 250);
         });
         item.addEventListener('pointerleave', clearHoverPrefetch);
@@ -746,10 +746,6 @@ class Gallery {
 
         img.addEventListener('load', markReady);
         img.addEventListener('error', () => {
-            if (img.dataset.retrying === '1') {
-                delete img.dataset.retrying;
-                return;
-            }
             const intended = img.dataset.loadUrl || url;
             attempts += 1;
             if (intended && attempts < 3) {
@@ -1021,6 +1017,8 @@ class Gallery {
         this.bindItemMetadata(node, image);
         const img = node.querySelector('.gallery-item-image');
         if (img && image.thumbnailUrl && !this.sameImageUrl(img.src, image.thumbnailUrl)) {
+            this.loadQueue.cancel(img);
+            img.dataset.loadUrl = image.thumbnailUrl;
             img.src = image.thumbnailUrl;
         }
         node.classList.add('loaded', 'instant');
