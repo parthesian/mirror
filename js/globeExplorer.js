@@ -601,24 +601,6 @@ class GlobeExplorer {
             .map((x) => x.key);
     }
 
-    _collectUniqueHitLocationKeys(hits, camera, group, THREE) {
-        if (!Array.isArray(hits) || !hits.length) return [];
-        const worldQuat = group.getWorldQuaternion(new THREE.Quaternion());
-        const cameraDir = this._getCameraFacingDirection(THREE, camera, group);
-        const seen = new Set();
-        const keys = [];
-        for (const hit of hits) {
-            const idx = hit.index;
-            if (idx == null || idx >= this.renderedPointLocations.length) continue;
-            if (!this._isLocationPointFacingCamera(idx, worldQuat, cameraDir)) continue;
-            const key = this._locationKeyFor(this.renderedPointLocations[idx]);
-            if (seen.has(key)) continue;
-            seen.add(key);
-            keys.push(key);
-        }
-        return keys;
-    }
-
     _applyDotHighlight() {
         const s = this.threeState;
         if (!s?.dotColors || !s?.dotsMesh?.geometry) return;
@@ -1366,47 +1348,23 @@ class GlobeExplorer {
             };
 
             if (dotsMesh) {
-                const hits = raycaster.intersectObject(dotsMesh);
                 const pointerPx = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-                const preciseIdx = this._pickPrecisePointIndex(
-                    hits,
+                const pointerType = e.pointerType || 'mouse';
+                // Screen-space radius, so a tap on an empty country never
+                // snaps to a dot that is visibly elsewhere on the globe.
+                const pickRadiusPx = (pointerType === 'touch' || pointerType === 'pen') ? 26 : 18;
+                const allDots = this.locationUnitVectors.map((_, index) => ({ index }));
+                const candidateKeys = this._collectIntersectingLocationKeys(
+                    allDots,
                     pointerPx,
                     camera,
                     renderer,
                     group,
                     THREE,
-                    15
+                    pickRadiusPx
                 );
-                const selectedLocation = (preciseIdx != null && preciseIdx < this.renderedPointLocations.length)
-                    ? this.renderedPointLocations[preciseIdx]
-                    : null;
-                const preferredKey = selectedLocation
-                    ? this._locationKeyFor(selectedLocation)
-                    : '';
 
-                const intersectKeys = this._collectIntersectingLocationKeys(
-                    hits,
-                    pointerPx,
-                    camera,
-                    renderer,
-                    group,
-                    THREE,
-                    22
-                );
-                const previousThreshold = raycaster.params.Points?.threshold ?? 0.034;
-                raycaster.params.Points.threshold = 0.095;
-                const expandedHits = raycaster.intersectObject(dotsMesh);
-                raycaster.params.Points.threshold = previousThreshold;
-
-                const rawHitKeys = this._collectUniqueHitLocationKeys(expandedHits, camera, group, THREE);
-                let candidateKeys = [];
-                if (intersectKeys.length > 1) candidateKeys = intersectKeys;
-                else if (rawHitKeys.length > 1) candidateKeys = rawHitKeys;
-                else if (preferredKey) candidateKeys = [preferredKey];
-                else if (rawHitKeys.length === 1) candidateKeys = rawHitKeys;
-
-                const uniqueKeys = [...new Set(candidateKeys)];
-                const options = uniqueKeys
+                const options = candidateKeys
                     .map((key) => {
                         const groupEntry = this.locationGroupByKey.get(key);
                         const sample = groupEntry?.sample;
@@ -1437,7 +1395,7 @@ class GlobeExplorer {
                         return;
                     }
                     this._applyGlobePick({
-                        sample: option?.sample || selectedLocation
+                        sample: option?.sample
                     });
                 };
 
