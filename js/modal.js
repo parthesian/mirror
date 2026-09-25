@@ -57,6 +57,9 @@ class Modal {
         this._layoutAnimTimer = 0;
         this._resizeTimer = 0;
         this._safeAreaTop = null;
+        this._photoToken = 0;
+        this._photoStage = 'placeholder';
+        this._frameAspect = 0;
         
         // Globe integration — share the gallery preload instance so the
         // hidden warmup actually transfers into the modal.
@@ -70,6 +73,7 @@ class Modal {
      * Initialize the modal
      */
     init() {
+        this.setPhotoSource(Modal.BLANK_SRC, 'placeholder');
         this.bindEvents();
         this.addSwipeSupport();
         this.addDismissGesture();
@@ -174,40 +178,31 @@ class Modal {
             void this.open(e.detail.imageId);
         });
 
-        // Handle image load events
         this.modalImage.addEventListener('load', () => {
-            this.hideImageLoading();
+            if (this._photoStage === 'placeholder' || this._photoStage === 'error') return;
             this.refinePhotoPlacementFromNaturalSize();
         });
 
         this.modalImage.addEventListener('error', () => {
-            this.handleImageError();
+            if (this._photoStage === 'thumb') {
+                this.setPhotoSource(Modal.BLANK_SRC, 'placeholder');
+                return;
+            }
+            if (this._photoStage === 'full') {
+                this.handleImageError();
+            }
         });
     }
 
     /**
-     * Open modal with specific image
+     * Open modal with specific image. The photo is on screen in the same
+     * frame as the click; metadata fills in when it arrives.
      * @param {string} imageId - Image ID to display
      */
     async open(imageId) {
-        const base = this.imageService.getImageById(imageId);
-        if (!base) {
-            console.error('Image not found:', imageId);
-            return;
-        }
-
-        try {
-            if (typeof this.imageService.ensurePhotoDetail === 'function') {
-                await this.imageService.ensurePhotoDetail(imageId);
-            }
-        } catch (err) {
-            console.error('Modal: failed to load photo metadata', err);
-            return;
-        }
-
         const image = this.imageService.getImageById(imageId);
         if (!image) {
-            console.error('Image not found after detail load:', imageId);
+            console.error('Image not found:', imageId);
             return;
         }
 
@@ -256,10 +251,12 @@ class Modal {
         this.modal.classList.add('hidden');
         document.body.style.overflow = ''; // Restore scrolling
         
-        // Clear image to prevent flash when reopening
+        // An empty src paints the broken-image glyph on the next open, so
+        // park a transparent pixel instead once the fade-out is done.
+        this._photoToken += 1;
         setTimeout(() => {
             if (!this.isOpen) {
-                this.modalImage.src = '';
+                this.setPhotoSource(Modal.BLANK_SRC, 'placeholder');
             }
         }, 300); // Match CSS transition duration
     }
@@ -284,26 +281,76 @@ class Modal {
      * @param {Object} image - Image object
      */
     loadImageContent(image) {
-        this.applyPhotoPlacement(image, { animate: this.shouldAnimatePhotoLayout() });
+        this.showPhoto(image);
+        this.renderDetails(image);
+        this.prefetchAdjacentImages(image.id);
 
+        if (!image.detailLoaded && typeof this.imageService.ensurePhotoDetail === 'function') {
+            this.imageService.ensurePhotoDetail(image.id).then((detailed) => {
+                if (!detailed || !this.isOpen || this.currentImageId !== image.id) return;
+                if (Math.abs(this.getPhotoAspect(detailed) - this._frameAspect) > 0.02) {
+                    this.applyPhotoPlacement(detailed, { animate: this.shouldAnimatePhotoLayout() });
+                }
+                this.renderDetails(detailed);
+                this.updateNavigationButtons();
+            }).catch((err) => {
+                console.error('Modal: failed to load photo metadata', err);
+            });
+        }
+    }
+
+    /**
+     * Progressive photo: the frame is sized from the known aspect before any
+     * pixels arrive, the grid's already-decoded thumbnail fills it at once,
+     * and the full image replaces it only after it has decoded — so the box
+     * never changes size and the swap reads as the photo sharpening.
+     */
+    showPhoto(image) {
+        const token = ++this._photoToken;
+        this.applyPhotoPlacement(image, { animate: this.shouldAnimatePhotoLayout() });
         this.modalImage.alt = image.description || 'Photo';
 
-        if (image.thumbnailUrl && image.thumbnailUrl !== image.url) {
-            this.modalImage.style.opacity = '1';
-            this.modalImage.src = image.thumbnailUrl;
+        const fullUrl = image.url;
+        const thumbUrl = image.thumbnailUrl && image.thumbnailUrl !== fullUrl ? image.thumbnailUrl : null;
+        const isCurrent = () => token === this._photoToken;
 
-            this.imagePreloader.preloadImage(image.url).then((loaded) => {
-                if (this.currentImageId === image.id && loaded) {
-                    this.modalImage.src = image.url;
-                    this.hideImageLoading();
-                }
-            });
-        } else {
-            this.showImageLoading();
-            this.modalImage.src = image.url;
+        if (this.imagePreloader.isImageLoaded(fullUrl)) {
+            this.setPhotoSource(fullUrl, 'full');
+            return;
         }
 
-        // Set text content
+        if (thumbUrl && this.imagePreloader.isImageLoaded(thumbUrl)) {
+            this.setPhotoSource(thumbUrl, 'thumb');
+        } else {
+            this.setPhotoSource(Modal.BLANK_SRC, 'placeholder');
+            if (thumbUrl) {
+                this.imagePreloader.preloadImage(thumbUrl).then((loaded) => {
+                    if (loaded && isCurrent() && this._photoStage === 'placeholder') {
+                        this.setPhotoSource(thumbUrl, 'thumb');
+                    }
+                });
+            }
+        }
+
+        // A failed or timed-out preload still hands the URL to the <img> so
+        // the browser can finish it or surface the error state.
+        this.imagePreloader.preloadImage(fullUrl).then(() => {
+            if (isCurrent()) {
+                this.setPhotoSource(fullUrl, 'full');
+            }
+        });
+    }
+
+    setPhotoSource(url, stage) {
+        this._photoStage = stage;
+        this.modalImage.classList.toggle('is-placeholder', stage === 'placeholder');
+        if (this.modalImage.getAttribute('src') !== url) {
+            this.modalImage.src = url;
+        }
+    }
+
+    renderDetails(image) {
+        this.modalImage.alt = image.description || 'Photo';
         this.modalDescription.textContent = image.description || '';
         const place = this.formatLocationWithState(image);
         this.modalLocation.textContent = place;
@@ -330,13 +377,16 @@ class Modal {
         }
 
         this.syncModalGlobeSize();
-        this.updateGlobe({
-            latitude: image.latitude,
-            longitude: image.longitude,
-            country: image.country,
-            location: image.location
-        });
-        this.prefetchAdjacentImages(image.id);
+        // List rows carry no coordinates; wait for the detail record rather
+        // than spinning the globe to nowhere and back.
+        if (image.detailLoaded) {
+            this.updateGlobe({
+                latitude: image.latitude,
+                longitude: image.longitude,
+                country: image.country,
+                location: image.location
+            });
+        }
     }
 
     isVerticalModal() {
@@ -383,13 +433,15 @@ class Modal {
 
     getPhotoAspect(image) {
         const ratio = Number(image?.aspectRatio);
-        if (Number.isFinite(ratio) && ratio > 0) {
+        if (image?.aspectRatioKnown && Number.isFinite(ratio) && ratio > 0) {
             return ratio;
         }
-        const width = this.modalImage?.naturalWidth;
-        const height = this.modalImage?.naturalHeight;
-        if (width && height) {
-            return width / height;
+        const thumb = this.imagePreloader.getLoadedImage(image?.thumbnailUrl);
+        if (thumb?.naturalWidth && thumb?.naturalHeight) {
+            return thumb.naturalWidth / thumb.naturalHeight;
+        }
+        if (Number.isFinite(ratio) && ratio > 0) {
+            return ratio;
         }
         return 4 / 3;
     }
@@ -470,10 +522,12 @@ class Modal {
 
         if (!this.isVerticalModal()) {
             this.clearPhotoPlacement();
+            this.sizePhotoFrame(this.measureDesktopPhotoBox(image));
             return;
         }
 
         const box = this.measurePhotoBox(image);
+        this.sizePhotoFrame(box);
         const offset = this.computePhotoOffset(box.height);
 
         if (animate) {
@@ -493,8 +547,44 @@ class Modal {
         }
     }
 
+    /**
+     * Desktop mirror of the CSS caps (container width, 90vh). Photos are
+     * never enlarged past their stored pixel size.
+     */
+    measureDesktopPhotoBox(image) {
+        const aspect = this.getPhotoAspect(image);
+        const container = this.modalImageContainer;
+        const maxWidth = Math.max(1, container?.clientWidth || window.innerWidth * 0.6);
+        const maxHeight = Math.max(1, Math.min(container?.clientHeight || window.innerHeight, window.innerHeight * 0.9));
+        let width = maxWidth;
+        let height = width / aspect;
+        if (height > maxHeight) {
+            height = maxHeight;
+            width = height * aspect;
+        }
+        const storedWidth = Number(image?.width);
+        if (storedWidth > 0 && width > storedWidth) {
+            width = storedWidth;
+            height = width / aspect;
+        }
+        return { width, height, aspect };
+    }
+
+    /**
+     * Pin the <img> box so a small thumbnail is stretched into the final
+     * frame instead of rendering at its own pixel size first.
+     */
+    sizePhotoFrame(box) {
+        if (!this.modalImage || !box) {
+            return;
+        }
+        this.modalImage.style.width = `${Math.round(box.width)}px`;
+        this.modalImage.style.height = `${Math.round(box.height)}px`;
+        this._frameAspect = box.aspect;
+    }
+
     refinePhotoPlacementFromNaturalSize() {
-        if (!this.isOpen || !this.isVerticalModal() || !this.modalImage) {
+        if (!this.isOpen || !this.modalImage) {
             return;
         }
         const image = this.imageService.getImageById(this.currentImageId);
@@ -506,11 +596,15 @@ class Modal {
             return;
         }
         const natural = width / height;
-        if (image.aspectRatioKnown && Math.abs(Number(image.aspectRatio) - natural) < 0.02) {
+        const matchesFrame = Math.abs(this._frameAspect - natural) < 0.02;
+        if (image.aspectRatioKnown && matchesFrame) {
             return;
         }
         image.aspectRatio = natural;
         image.aspectRatioKnown = true;
+        if (matchesFrame) {
+            return;
+        }
         this.applyPhotoPlacement(image, { animate: this._photoLayoutReady && !this.prefersReducedMotion() });
     }
 
@@ -664,9 +758,6 @@ class Modal {
         try {
             const prevImage = await this.getAdjacentImage(this.currentImageId, 'previous');
             if (prevImage) {
-                if (typeof this.imageService.ensurePhotoDetail === 'function') {
-                    await this.imageService.ensurePhotoDetail(prevImage.id);
-                }
                 const resolved = this.imageService.getImageById(prevImage.id) || prevImage;
                 this.currentImageId = resolved.id;
                 this.loadImageContent(resolved);
@@ -687,9 +778,6 @@ class Modal {
         try {
             const nextImage = await this.getAdjacentImage(this.currentImageId, 'next');
             if (nextImage) {
-                if (typeof this.imageService.ensurePhotoDetail === 'function') {
-                    await this.imageService.ensurePhotoDetail(nextImage.id);
-                }
                 const resolved = this.imageService.getImageById(nextImage.id) || nextImage;
                 this.currentImageId = resolved.id;
                 this.loadImageContent(resolved);
@@ -740,33 +828,26 @@ class Modal {
      * @param {string} imageId - Current image ID
      */
     prefetchAdjacentImages(imageId) {
-        const adjacentUrls = ['previous', 'next']
-            .map((direction) => this.peekAdjacentImage(imageId, direction)?.url)
+        const adjacent = ['previous', 'next']
+            .map((direction) => this.peekAdjacentImage(imageId, direction))
             .filter(Boolean);
 
-        this.imagePreloader.prefetch(adjacentUrls, { concurrency: 2 });
-    }
-
-    /**
-     * Show image loading state
-     */
-    showImageLoading() {
-        this.modalImage.style.opacity = '0.5';
-        // You could add a spinner here if desired
-    }
-
-    /**
-     * Hide image loading state
-     */
-    hideImageLoading() {
-        this.modalImage.style.opacity = '1';
+        this.imagePreloader.prefetch(adjacent.map((image) => image.url).filter(Boolean), { concurrency: 2 });
+        if (typeof this.imageService.ensurePhotoDetail === 'function') {
+            for (const image of adjacent) {
+                if (!image.detailLoaded) {
+                    this.imageService.ensurePhotoDetail(image.id).catch(() => {});
+                }
+            }
+        }
     }
 
     /**
      * Handle image load error
      */
     handleImageError() {
-        this.modalImage.style.opacity = '1';
+        this.setPhotoSource(Modal.BLANK_SRC, 'error');
+        this.modalImage.classList.remove('is-placeholder');
         this.modalImage.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAwIiBoZWlnaHQ9IjYwMCIgdmlld0JveD0iMCAwIDgwMCA2MDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI4MDAiIGhlaWdodD0iNjAwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0zNzUgMjc1SDQyNVYzMjVIMzc1VjI3NVoiIGZpbGw9IiM5Q0EzQUYiLz4KPHA+SW1hZ2UgTm90IEZvdW5kPC9wPgo8L3N2Zz4K';
         
         // Show error message in description
@@ -801,9 +882,6 @@ class Modal {
         if (this.isOpen) {
             const image = this.imageService.getImageById(imageId);
             if (image) {
-                if (typeof this.imageService.ensurePhotoDetail === 'function') {
-                    await this.imageService.ensurePhotoDetail(imageId);
-                }
                 const resolved = this.imageService.getImageById(imageId) || image;
                 this.currentImageId = imageId;
                 this.loadImageContent(resolved);
@@ -1185,6 +1263,9 @@ class Modal {
         return mobileHints.some((h) => n.includes(h));
     }
 }
+
+/** Transparent 1×1 GIF: a valid, instantly decoded "nothing" for the viewer. */
+Modal.BLANK_SRC = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 
 if (typeof window !== 'undefined') {
     window.Modal = Modal;

@@ -573,7 +573,8 @@ body.exposure-1 .scroll-loading p {
 
     .modal-content.modal-layout-animating .modal-image-container,
     .modal-content.modal-layout-animating .modal-info,
-    .modal-content.modal-layout-animating #modal-globe {
+    .modal-content.modal-layout-animating #modal-globe,
+    .modal-content.modal-layout-animating #modal-image {
         transition: none;
     }
 
@@ -883,14 +884,23 @@ body.exposure-1 .scroll-loading p {
     align-items: center;
     justify-content: center;
     max-width: calc(100vw - 350px);
+    /* The photo box is pinned in px by JS; let the flex slot, not the
+       previous photo, decide the width it measures. */
+    min-width: 0;
 }
 
 #modal-image {
+    display: block;
     max-width: 100%;
     max-height: 90vh;
     object-fit: contain;
     transition: opacity 0.35s ease, transform 0.5s ease;
     transform: scale(0.95);
+}
+
+/* Reserved frame while neither the thumbnail nor the full photo is ready. */
+#modal-image.is-placeholder {
+    background: rgba(0, 0, 0, 0.07);
 }
 
 .modal.active #modal-image {
@@ -2210,6 +2220,13 @@ body.exposure-1 .btn-secondary {
 
     .modal-content.modal-layout-animating .modal-info {
         transition: width var(--dur-slow) var(--ease);
+    }
+
+    .modal-content.modal-layout-animating #modal-image {
+        transition:
+            width var(--dur-slow) var(--ease),
+            height var(--dur-slow) var(--ease),
+            transform 0.5s ease;
     }
 
     .modal-content.modal-layout-animating #modal-globe {

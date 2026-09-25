@@ -792,6 +792,16 @@ class ImageService {
         }
 
         const photo = this.mapPhoto(data);
+        const existing = this.imagesById.get(id);
+        // Legacy rows have no stored size; keep the ratio the thumbnail
+        // already taught us instead of snapping the viewer back to 4:3.
+        if (!photo.aspectRatioKnown && existing?.aspectRatioKnown) {
+            photo.aspectRatio = existing.aspectRatio;
+            photo.aspectRatioKnown = true;
+        }
+        if (existing?.thumbnailUrl && this.isDerivedThumbUrl(photo.thumbnailUrl, id)) {
+            photo.thumbnailUrl = existing.thumbnailUrl;
+        }
         this.mergePhotos([photo], { replace: false });
         return this.imagesById.get(id) || null;
     }
