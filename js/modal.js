@@ -1115,75 +1115,143 @@ class Modal {
     }
 
     /**
-     * Add swipe gesture support for mobile devices
+     * One tracker for swipe-to-navigate and pull-to-dismiss. A gesture runs
+     * from the first finger down until the last finger lifts, so the stray
+     * finger left over from a pinch can never be read as a swipe. Listeners
+     * are passive and nothing moves until the gesture ends, so native
+     * pinch-zoom and scrolling stay untouched.
      */
     addSwipeSupport() {
-        let startX = 0;
-        let startY = 0;
-        let endX = 0;
-        let endY = 0;
+        const surface = this.modalContent || this.modal;
+        if (!surface) return;
 
-        this.modalImage.addEventListener('touchstart', (e) => {
-            startX = e.touches[0].clientX;
-            startY = e.touches[0].clientY;
-        });
+        let gesture = null;
 
-        this.modalImage.addEventListener('touchend', (e) => {
-            endX = e.changedTouches[0].clientX;
-            endY = e.changedTouches[0].clientY;
-            
-            const deltaX = endX - startX;
-            const deltaY = endY - startY;
-            
-            // Check if horizontal swipe is more significant than vertical
-            if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
-                if (deltaX > 0) {
-                    // Swipe right - show previous image
-                    this.showPreviousImage();
-                } else {
-                    // Swipe left - show next image
-                    this.showNextImage();
-                }
+        const findTouch = (list, id) => {
+            for (let i = 0; i < list.length; i++) {
+                if (list[i].identifier === id) return list[i];
             }
-        });
+            return null;
+        };
+
+        surface.addEventListener('touchstart', (e) => {
+            if (!this.isOpen) return;
+            if (gesture) {
+                gesture.multiTouch = true;
+                return;
+            }
+            const touch = e.touches[0];
+            gesture = {
+                id: touch.identifier,
+                startX: touch.clientX,
+                startY: touch.clientY,
+                lastX: touch.clientX,
+                lastY: touch.clientY,
+                startTime: performance.now(),
+                multiTouch: e.touches.length > 1,
+                zoomed: Modal.isPageZoomed(),
+                onImage: Boolean(e.target.closest?.('#modal-image')),
+                onGlobe: Boolean(e.target.closest?.('#modal-globe')),
+                startScroll: surface.scrollTop || 0
+            };
+        }, { passive: true });
+
+        surface.addEventListener('touchmove', (e) => {
+            if (!gesture) return;
+            if (e.touches.length > 1) gesture.multiTouch = true;
+            const touch = findTouch(e.touches, gesture.id);
+            if (touch) {
+                gesture.lastX = touch.clientX;
+                gesture.lastY = touch.clientY;
+            }
+        }, { passive: true });
+
+        const finish = (e, cancelled) => {
+            if (!gesture || e.touches.length > 0) return;
+            const g = gesture;
+            gesture = null;
+            if (cancelled || !this.isOpen) return;
+
+            const touch = findTouch(e.changedTouches, g.id);
+            const action = Modal.classifyTouchGesture({
+                dx: (touch ? touch.clientX : g.lastX) - g.startX,
+                dy: (touch ? touch.clientY : g.lastY) - g.startY,
+                duration: performance.now() - g.startTime,
+                multiTouch: g.multiTouch,
+                zoomed: g.zoomed || Modal.isPageZoomed(),
+                onImage: g.onImage,
+                onGlobe: g.onGlobe,
+                atTop: g.startScroll <= 1 && (surface.scrollTop || 0) <= 1,
+                viewportWidth: window.innerWidth
+            });
+
+            if (action === 'next') this.showNextImage();
+            else if (action === 'previous') this.showPreviousImage();
+            else if (action === 'dismiss') this.close();
+        };
+
+        surface.addEventListener('touchend', (e) => finish(e, false), { passive: true });
+        surface.addEventListener('touchcancel', (e) => finish(e, true), { passive: true });
     }
 
     /**
-     * Pull down past the top of the overlay to return to the gallery.
-     * The globe keeps its own drag, so a pull there does not dismiss.
+     * Decide what a finished single-finger gesture meant. Pinches, pans on a
+     * zoomed page, and diagonal drags return null so the photo stays put.
+     * Swipes count as either a quick flick or a deliberate drag across a
+     * good share of the screen, and must be clearly horizontal.
+     */
+    static classifyTouchGesture({
+        dx = 0,
+        dy = 0,
+        duration = 0,
+        multiTouch = false,
+        zoomed = false,
+        onImage = false,
+        onGlobe = false,
+        atTop = false,
+        viewportWidth = 390
+    } = {}) {
+        if (multiTouch || zoomed || onGlobe) {
+            return null;
+        }
+
+        const absX = Math.abs(dx);
+        const absY = Math.abs(dy);
+
+        if (onImage && absX > absY * 1.8) {
+            const speed = absX / Math.max(1, duration);
+            const flick = absX >= 40 && speed >= 0.4 && duration <= 350;
+            const drag = absX >= Math.min(140, viewportWidth * 0.3);
+            if (flick || drag) {
+                return dx < 0 ? 'next' : 'previous';
+            }
+            return null;
+        }
+
+        if (atTop && dy > 72 && dy > absX * 1.15) {
+            return 'dismiss';
+        }
+        return null;
+    }
+
+    /**
+     * True while the page is pinch-zoomed; one-finger drags then pan the
+     * zoomed photo instead of navigating or dismissing.
+     */
+    static isPageZoomed(win = typeof window !== 'undefined' ? window : null) {
+        const scale = Number(win?.visualViewport?.scale);
+        return Number.isFinite(scale) && scale > 1.02;
+    }
+
+    /**
+     * Pull down past the top of the overlay (trackpad or wheel) to return to
+     * the gallery. Touch pulls are handled by the shared gesture tracker.
      */
     addDismissGesture() {
         const scroller = this.modalContent || this.modal;
         if (!scroller) return;
 
-        let startX = 0;
-        let startY = 0;
-        let startScroll = 0;
-        let tracking = false;
         let wheelPull = 0;
-
-        scroller.addEventListener('touchstart', (e) => {
-            if (!this.isOpen || e.touches.length !== 1) return;
-            if (e.target.closest?.('#modal-globe')) {
-                tracking = false;
-                return;
-            }
-            startX = e.touches[0].clientX;
-            startY = e.touches[0].clientY;
-            startScroll = scroller.scrollTop || 0;
-            tracking = startScroll <= 1;
-        }, { passive: true });
-
-        scroller.addEventListener('touchend', (e) => {
-            if (!this.isOpen || !tracking) return;
-            tracking = false;
-            const touch = e.changedTouches[0];
-            const dx = touch.clientX - startX;
-            const dy = touch.clientY - startY;
-            if (startScroll <= 1 && dy > 72 && dy > Math.abs(dx) * 1.15) {
-                this.close();
-            }
-        }, { passive: true });
 
         scroller.addEventListener('wheel', (e) => {
             if (!this.isOpen) return;

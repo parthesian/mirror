@@ -82,3 +82,31 @@ away, and it only gets sharper after that. It never changes size or blinks.
 - **Stale loads are ignored.** Each photo shown gets a token, so fast arrow-key
   navigation never swaps in an image that finishes late for a photo you have
   already left.
+
+## Viewer gestures on mobile: pinch-zoom changing photos
+
+**Symptom.** Pinch-zooming a photo often jumped to the previous or next one.
+
+**Cause.** The swipe handler compared the *first* finger's start point with
+whichever finger lifted *last*. In a pinch those are two different fingers, so
+the gap between them looked like a long horizontal swipe. One-finger panning
+around a zoomed photo was also read as a swipe, and a downward pan could
+dismiss the viewer.
+
+**Decisions.**
+
+- **A gesture lasts from the first finger down to the last finger up.** If a
+  second finger touches at any point, the whole gesture is a pinch and never
+  navigates or dismisses, whichever order the fingers lift in.
+- **Only one finger is tracked, by its touch identifier.** The start and end
+  points always belong to the same finger.
+- **No swipes while zoomed.** When the page is pinch-zoomed
+  (`visualViewport.scale > 1`), one-finger drags pan the photo, the same as in
+  the Photos app. Swipes work again after zooming back out.
+- **A swipe must be clearly horizontal.** Horizontal movement has to be at
+  least 1.8× the vertical, and the swipe must be either a quick flick
+  (≥ 40px, fast, under 350ms) or a deliberate drag across about 30% of the
+  screen. Slow, short, or diagonal movements do nothing.
+- **Smoothness is unchanged.** Listeners are passive and never call
+  `preventDefault`. Native pinch-zoom and scrolling run on the compositor
+  exactly as before, and the decision is made only when the fingers lift.

@@ -335,6 +335,22 @@ assert(Modal.cameraIconKind('Rolleicord Vb') === 'tlr', 'Rolleicord variants sti
 assert(Modal.cameraIconKind('iPhone 15 Pro') === 'mobile', 'iPhone maps to the mobile icon');
 assert(Modal.cameraIconKind('Canon EOS R5') === 'dslr', 'other cameras keep the SLR icon');
 
+const swipe = (overrides) => Modal.classifyTouchGesture({ onImage: true, viewportWidth: 390, duration: 180, ...overrides });
+assert(swipe({ dx: -90, dy: 6 }) === 'next', 'a quick left flick on the photo goes to the next photo');
+assert(swipe({ dx: 90, dy: -4 }) === 'previous', 'a quick right flick goes to the previous photo');
+assert(swipe({ dx: -150, dy: 10, duration: 900 }) === 'next', 'a slow deliberate drag across the screen still navigates');
+assert(swipe({ dx: -70, dy: 5, duration: 900 }) === null, 'a slow short drag is not a swipe');
+assert(swipe({ dx: -220, dy: 8, multiTouch: true }) === null, 'a pinch never navigates, whichever finger lifts last');
+assert(swipe({ dx: -220, dy: 8, zoomed: true }) === null, 'panning a pinch-zoomed photo never navigates');
+assert(swipe({ dx: -90, dy: 70 }) === null, 'a diagonal drag is not read as a swipe');
+assert(swipe({ dx: 10, dy: 120, atTop: true }) === 'dismiss', 'pulling down at the top dismisses');
+assert(swipe({ dx: 10, dy: 120, atTop: true, zoomed: true }) === null, 'pulling down while zoomed pans instead of dismissing');
+assert(swipe({ dx: 10, dy: 120, atTop: true, multiTouch: true }) === null, 'a pinch that drifts down does not dismiss');
+assert(swipe({ dx: 5, dy: 120, atTop: true, onImage: false, onGlobe: true }) === null, 'the globe keeps its own drag');
+assert(Modal.isPageZoomed({ visualViewport: { scale: 1.6 } }) === true, 'pinch-zoom is detected from the visual viewport');
+assert(Modal.isPageZoomed({ visualViewport: { scale: 1 } }) === false, 'an unzoomed page allows swipes');
+assert(Modal.isPageZoomed({}) === false, 'browsers without visualViewport keep swipes working');
+
 const gallerySrc = fs.readFileSync(path.join(repoRoot, 'js/gallery.js'), 'utf8');
 assert(gallerySrc.includes('beginSurfaceLock'), 'filter reloads lock the current gallery height');
 assert(gallerySrc.includes('settleIncomingCollection'), 'new collections wait for a stable masonry pass');
