@@ -71,6 +71,7 @@ class GlobeExplorer {
         this.pendingPick = null;
         this.isExiting = false;
         this._exitPromise = null;
+        this.backStack = (typeof window !== 'undefined' ? window.overlayBackStack : null);
 
         this._bindEvents();
         this._setFilterPanelExpanded(false);
@@ -732,6 +733,7 @@ class GlobeExplorer {
         this.overlay.classList.remove('hidden', 'is-exiting');
         this.overlay.classList.add('active');
         document.body.style.overflow = 'hidden';
+        this.backStack?.claim('globe', () => this.close());
 
         try {
             this._prefetchAssets({ includeBoundaries: true, includeGeo: true });
@@ -755,6 +757,7 @@ class GlobeExplorer {
     }
 
     _playExit() {
+        this.backStack?.release('globe');
         if (this.isExiting && this._exitPromise) {
             return this._exitPromise;
         }

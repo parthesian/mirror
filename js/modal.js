@@ -65,6 +65,7 @@ class Modal {
         // hidden warmup actually transfers into the modal.
         this.globeService = globeService || new GlobeService();
         this.imagePreloader = imagePreloader || new ImagePreloader();
+        this.backStack = (typeof window !== 'undefined' ? window.overlayBackStack : null);
         
         this.init();
     }
@@ -212,6 +213,7 @@ class Modal {
         this.modal.classList.remove('hidden');
         this.modal.classList.add('active');
         document.body.style.overflow = 'hidden';
+        this.backStack?.claim('photo', () => this.close());
 
         this.loadImageContent(image);
 
@@ -237,10 +239,14 @@ class Modal {
      * Close modal
      */
     close() {
+        if (!this.isOpen) {
+            return;
+        }
         this.isOpen = false;
         this.currentImageId = null;
         this.isNavigating = false;
         this.clearPhotoPlacement();
+        this.backStack?.release('photo');
 
         // Keep globe instance alive for reuse across modal opens, but
         // stop the hidden 60fps loop until the next photo needs it.

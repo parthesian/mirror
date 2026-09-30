@@ -8,6 +8,7 @@ const require = createRequire(import.meta.url);
 const GalleryOrder = require('../js/galleryOrder.js');
 const LocationModel = require('../js/locationModel.js');
 const Flipboard = require('../js/flipboard.js');
+const OverlayBackStack = require('../js/overlayBackStack.js');
 
 function assert(condition, message) {
     if (!condition) {
@@ -359,8 +360,145 @@ assert(!gallerySrc.includes('this.aspectReflowTimer = window.setTimeout(() => {\
 assert(indexHtml.includes('js/photoColors.js'), 'public page loads the named color vocabulary');
 assert(indexHtml.includes('js/mockPhotos.js'), 'public page can install the opt-in mock catalog');
 assert(indexHtml.includes('js/galleryTransition.js'), 'public page loads the settle helper');
+assert(indexHtml.includes('js/overlayBackStack.js'), 'public page loads the same-URL overlay back stack');
 assert(indexHtml.includes('modal-camera-icon-tlr'), 'photo modal includes the TLR camera glyph');
 const indexCss = fs.readFileSync(path.join(repoRoot, 'styles.css'), 'utf8');
 assert(indexCss.includes('.modal-camera-row.is-tlr .modal-camera-icon-wrap'), 'TLR camera row pulls the narrower glyph back to the name');
+
+const modalSrc = fs.readFileSync(path.join(repoRoot, 'js/modal.js'), 'utf8');
+assert(modalSrc.includes("backStack?.claim('photo'"), 'photo viewer claims a same-URL history entry');
+assert(modalSrc.includes("backStack?.release('photo'"), 'photo viewer releases history when dismissed from the UI');
+const globeSrc = fs.readFileSync(path.join(repoRoot, 'js/globeExplorer.js'), 'utf8');
+assert(globeSrc.includes("backStack?.claim('globe'"), 'globe explorer claims a same-URL history entry');
+assert(globeSrc.includes("backStack?.release('globe'"), 'globe explorer releases history when dismissed from the UI');
+
+function createMemoryHistory({ href = 'https://example.test/', asyncPop = false } = {}) {
+    const location = { href };
+    const entries = [{ state: null }];
+    let index = 0;
+    const listeners = [];
+
+    const firePop = () => {
+        const event = { state: entries[index].state };
+        for (const listener of listeners) {
+            listener(event);
+        }
+    };
+
+    const history = {
+        get state() {
+            return entries[index].state;
+        },
+        get length() {
+            return entries.length;
+        },
+        pushState(state) {
+            entries.splice(index + 1);
+            entries.push({ state });
+            index += 1;
+        },
+        replaceState(state) {
+            entries[index] = { state };
+        },
+        back() {
+            if (index === 0) {
+                return;
+            }
+            index -= 1;
+            if (asyncPop) {
+                setTimeout(firePop, 0);
+                return;
+            }
+            firePop();
+        }
+    };
+
+    const target = {
+        addEventListener(type, fn) {
+            if (type === 'popstate') {
+                listeners.push(fn);
+            }
+        },
+        removeEventListener(type, fn) {
+            if (type === 'popstate') {
+                const at = listeners.indexOf(fn);
+                if (at >= 0) {
+                    listeners.splice(at, 1);
+                }
+            }
+        }
+    };
+
+    return {
+        history,
+        location,
+        target,
+        get index() {
+            return index;
+        }
+    };
+}
+
+const flush = () => Promise.resolve();
+const waitForPop = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+const startHref = 'https://example.test/';
+const memory = createMemoryHistory({ href: startHref });
+const stack = new OverlayBackStack(memory.history, memory.location, memory.target);
+const dismissed = [];
+
+stack.claim('photo', () => dismissed.push('photo'));
+await flush();
+assert(memory.index === 1 && memory.history.length === 2, 'opening a photo borrows one history entry');
+assert(memory.history.state.__mirrorOverlay === 'photo', 'photo history state is tagged without changing the URL');
+assert(memory.location.href === startHref, 'opening a photo must not change the URL');
+
+stack.claim('photo', () => dismissed.push('photo-again'));
+await flush();
+assert(memory.index === 1 && memory.history.length === 2, 'changing photos must not stack history entries');
+
+stack.release('photo');
+await flush();
+assert(memory.index === 0, 'closing a photo from the UI returns to the gallery entry');
+assert(dismissed.length === 0, 'a UI close must not re-dismiss through popstate');
+assert(memory.location.href === startHref, 'closing a photo must not change the URL');
+
+stack.claim('photo', () => dismissed.push('photo-back'));
+await flush();
+memory.history.back();
+assert(dismissed.join(',') === 'photo-back', 'Android back dismisses the photo overlay');
+assert(stack.activeKey === null, 'back clears the overlay claim');
+assert(memory.index === 0, 'back returns to the original gallery entry');
+assert(memory.location.href === startHref, 'back from a photo must not change the URL');
+
+stack.claim('photo', () => dismissed.push('photo-transfer'));
+await flush();
+stack.release('photo');
+stack.claim('globe', () => dismissed.push('globe'));
+await flush();
+assert(memory.index === 1 && memory.history.length === 2, 'photo → globe in one turn keeps a single borrowed entry');
+assert(memory.history.state.__mirrorOverlay === 'globe', 'the borrowed entry is retagged for the globe');
+assert(dismissed.join(',') === 'photo-back', 'replacing photo with globe does not dismiss either overlay');
+assert(memory.location.href === startHref, 'moving from photo to globe must not change the URL');
+
+stack.release('globe');
+await flush();
+assert(memory.index === 0, 'closing the globe from the UI restores the gallery entry');
+stack.destroy();
+
+const asyncMemory = createMemoryHistory({ href: startHref, asyncPop: true });
+const asyncStack = new OverlayBackStack(asyncMemory.history, asyncMemory.location, asyncMemory.target);
+let asyncClosed = 0;
+asyncStack.claim('photo', () => {
+    asyncClosed += 1;
+    asyncStack.release('photo');
+});
+await flush();
+asyncStack.release('photo');
+await flush();
+await waitForPop();
+assert(asyncClosed === 0, 'an async UI pop must not treat history.back as a user back');
+assert(asyncMemory.index === 0, 'an async UI close still returns to the gallery entry');
+asyncStack.destroy();
 
 console.log('gallery-order, location-model, flipboard, and image-url checks passed');
