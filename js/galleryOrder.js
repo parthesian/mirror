@@ -1,38 +1,44 @@
 /**
- * Gallery display-order helpers.
- *
- * Chronology stays the source of truth for pagination and timeline jumps.
- * Randomize only remaps the visible sequence so infinite-scroll cursors,
- * hover prefetch, and modal neighbors keep working against the same IDs.
+ * @param {typeof globalThis} root
  */
 (function attachGalleryOrder(root) {
+    /**
+     * @returns {'chrono' | 'random'}
+     */
     function readStoredMode() {
         try {
             const stored = root.localStorage?.getItem('mirror-view-mode');
             if (stored === 'random' || stored === 'chrono') {
                 return stored;
             }
-        } catch (error) {
-            // Private mode / blocked storage should not block first paint.
+        } catch {
+            return 'chrono';
         }
         return 'chrono';
     }
 
+    /**
+     * @param {string[]} ids
+     * @returns {string[]}
+     */
     function shuffleIds(ids) {
         const next = Array.isArray(ids) ? ids.slice() : [];
         for (let i = next.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             const current = next[i];
-            next[i] = next[j];
+            const swapped = next[j];
+            if (current === undefined || swapped === undefined) {
+                continue;
+            }
+            next[i] = swapped;
             next[j] = current;
         }
         return next;
     }
 
     /**
-     * Build the visible ID list without reshuffling photos the user already saw.
-     * Fresh fetches reshuffle; pages loaded later append a shuffled tail so
-     * already-mounted tiles do not jump under the viewport.
+     * @param {{ chronoIds?: string[], currentOrder?: string[], mode?: 'chrono' | 'random', reshuffle?: boolean }} [options]
+     * @returns {string[]}
      */
     function buildDisplayOrder(options = {}) {
         const chronoIds = Array.isArray(options.chronoIds) ? options.chronoIds : [];
@@ -58,10 +64,10 @@
     const GalleryOrder = { readStoredMode, shuffleIds, buildDisplayOrder };
 
     if (root) {
-        root.GalleryOrder = GalleryOrder;
+        Object.assign(root, { GalleryOrder });
     }
 
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = GalleryOrder;
     }
-})(typeof window !== 'undefined' ? window : globalThis);
+})(globalThis);

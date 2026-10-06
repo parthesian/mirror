@@ -1,0 +1,40 @@
+{
+    "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+    "files": {
+        "includes": [
+            "shared/**",
+            "server/**",
+            "functions/**",
+            "tests/**",
+            "vite.config.mts",
+            "vitest.config.mts",
+            "playwright.config.mts",
+            "AGENTS.md"
+        ]
+    },
+    "formatter": {
+        "indentStyle": "space",
+        "indentWidth": 4,
+        "lineWidth": 100
+    },
+    "javascript": {
+        "formatter": {
+            "quoteStyle": "single",
+            "semicolons": "always"
+        }
+    },
+    "linter": {
+        "enabled": true,
+        "rules": {
+            "preset": "recommended"
+        }
+    },
+    "assist": {
+        "enabled": true,
+        "actions": {
+            "source": {
+                "organizeImports": "on"
+            }
+        }
+    }
+}
