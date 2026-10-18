@@ -29,8 +29,18 @@ import { promisify } from 'node:util';
 
 const require = createRequire(import.meta.url);
 const execFileAsync = promisify(execFile);
-const PhotoColors = require('../js/photoColors.js');
+let PhotoColors;
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+async function loadPhotoColors() {
+    const { emitSharedBrowser } = await import('./emit-shared-browser.mjs');
+    await emitSharedBrowser();
+    require('../js/generated/photo-colors.js');
+    PhotoColors = globalThis.PhotoColors;
+    if (!PhotoColors?.serializeColors || !PhotoColors.extractColorsFromRgba) {
+        throw new Error('Generated photo color bundle did not set PhotoColors.');
+    }
+}
 
 const DEFAULT_DATABASE = 'PHOTO_DB';
 const DEFAULT_BATCH = 25;
@@ -173,6 +183,7 @@ async function fetchSample(site, photoId) {
 }
 
 async function main() {
+    await loadPhotoColors();
     const options = parseArgs(process.argv.slice(2));
     if (options.help) {
         printUsage();

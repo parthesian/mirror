@@ -114,7 +114,7 @@ assert(!indexHtml.includes('js/customCalendar.js'), 'public gallery must not loa
 assert(indexHtml.includes('format=auto') === false, 'thumb format=auto is derived in JS, not hardcoded in HTML');
 
 const imageServiceSrc = fs.readFileSync(path.join(repoRoot, 'js/imageService.js'), 'utf8');
-const photosLibSrc = fs.readFileSync(path.join(repoRoot, 'functions/_lib/photos.js'), 'utf8');
+const photosLibSrc = fs.readFileSync(path.join(repoRoot, 'shared/urls.ts'), 'utf8');
 assert(imageServiceSrc.includes('format=auto'), 'client thumb URLs must request format=auto');
 assert(photosLibSrc.includes('format=auto'), 'server thumb URLs must request format=auto');
 
@@ -357,7 +357,7 @@ assert(gallerySrc.includes('beginSurfaceLock'), 'filter reloads lock the current
 assert(gallerySrc.includes('settleIncomingCollection'), 'new collections wait for a stable masonry pass');
 assert(gallerySrc.includes('fillViewportIfNeeded'), 'short filter results load more before releasing height');
 assert(!gallerySrc.includes('this.aspectReflowTimer = window.setTimeout(() => {\n            this.aspectReflowTimer = null;\n            if (!this.aspectReflowNeeded || !this.isMasonry || this.isMorphing) return;'), 'aspect reflow is no longer a 48ms first-hit remorph');
-assert(indexHtml.includes('js/photoColors.js'), 'public page loads the named color vocabulary');
+assert(indexHtml.includes('js/generated/photo-colors.js'), 'public page loads the named color vocabulary');
 assert(indexHtml.includes('js/mockPhotos.js'), 'public page can install the opt-in mock catalog');
 assert(indexHtml.includes('js/galleryTransition.js'), 'public page loads the settle helper');
 assert(indexHtml.includes('js/overlayBackStack.js'), 'public page loads the same-URL overlay back stack');

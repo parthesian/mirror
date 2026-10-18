@@ -24,7 +24,7 @@ while keeping the existing repo connected to `Cloudflare Pages` auto deploys.
 3. Set `ADMIN_EMAIL_ALLOWLIST` in the Cloudflare project.
 4. Leave dashboard-managed secrets and vars out of `wrangler.toml` so the deployed Pages environment remains the source of truth.
 5. Protect `/admin/*` and `/api/admin/*` with Cloudflare Access.
-6. Deploy the repo so `functions/` becomes active in Pages.
+6. Set the Pages build command to `npm run build` and the output directory to `dist`. Deploy so `functions/` becomes active in Pages. The Functions directory stays at the repository root.
 7. Validate public reads at `/api/photos`.
 8. Validate admin auth at `/api/admin/session`.
 9. Validate uploads from `/admin/`.

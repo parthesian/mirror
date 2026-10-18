@@ -116,6 +116,7 @@ Thumbs.db
 build/
 dist/
 out/
+js/generated/
 
 # Local development
 .local

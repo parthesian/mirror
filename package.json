@@ -3,24 +3,39 @@
   "version": "1.0.0",
   "description": "Photo gallery application",
   "scripts": {
-    "dev": "npx wrangler pages dev . --live-reload",
+    "dev": "node build.js && node scripts/emit-shared-browser.mjs && vite",
+    "dev:api": "wrangler pages dev dist --live-reload",
     "mock": "node scripts/mock-photos-server.mjs",
-    "build": "node build.js",
+    "build": "node build.js && node scripts/emit-shared-browser.mjs && vite build && node scripts/verify-dist-scripts.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.browser.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "lint": "biome check .",
     "generate:d1-import": "node scripts/generate-d1-import.mjs",
-    "test": "node scripts/verify-gallery-order.mjs",
+    "test": "vitest run && node scripts/verify-gallery-order.mjs && node scripts/verify-photo-colors.mjs",
+    "test:e2e": "playwright test",
     "backfill:colors": "node scripts/backfill-photo-colors.mjs",
     "verify:colors": "node scripts/verify-photo-colors.mjs"
   },
   "engines": {
-    "node": ">=14"
+    "node": ">=22.14"
   },
   "dependencies": {
+    "drizzle-orm": "^0.45.3",
+    "hono": "^4.13.13",
     "jose": "^6.2.2",
     "jpeg-js": "^0.4.4",
     "three": "^0.160.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
+    "@cloudflare/workers-types": "^5.20261006.1",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.6.4",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.3",
+    "vitest": "^5.0.3",
     "wrangler": "^4.80.0"
   }
 }

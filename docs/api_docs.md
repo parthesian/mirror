@@ -4,9 +4,11 @@
 
 The gallery now targets a Cloudflare-native backend:
 
-- Static site: `Cloudflare Pages`
-- Public photo API: `Pages Functions`
-- Admin upload API: `Pages Functions` protected by `Cloudflare Access`
+- Static site: `Cloudflare Pages`, built by Vite into `dist/`
+- Public photo API: one Hono app mounted from `functions/api/[[route]].ts`
+- Admin upload API: the same Hono app, protected by `Cloudflare Access`
+- Request checks: Zod schemas in `shared/`
+- Queries: Drizzle against `D1`
 - Image storage: `R2`
 - Metadata storage: `D1`
 
@@ -28,7 +30,7 @@ Grid views should use `thumbnail.url`; fullscreen/modal views should use `image.
 - `limit` optional, defaults to `24`
 - `cursor` optional opaque pagination cursor from the previous response
 - `country`, `state`, `location` optional exact place filters
-- `color` optional named palette color (`black`, `gray`, `white`, `brown`, `red`, `orange`, `yellow`, `green`, `teal`, `blue`, `purple`, `pink`). Matches photos that list that color anywhere in their stored top-color array.
+- `color` optional named palette color (`black`, `gray`, `white`, `brown`, `red`, `orange`, `yellow`, `green`, `teal`, `blue`, `purple`, `pink`). Matches photos that list that color anywhere in their stored top-color array. Any other value returns 400.
 
 **Response:**
 
