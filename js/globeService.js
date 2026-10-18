@@ -83,13 +83,12 @@ class GlobeService {
     }
   }
 
-  // Yaw that brings this longitude to the camera. Latitude stays on the
-  // sphere so the pole remains at the top of the disc.
-  _rotationForLatLng(_lat, lon, THREE) {
-    const lonRad = THREE.MathUtils.degToRad(lon);
+  // Bring this lat/lon to the camera. The mesh is already yawed -90° so
+  // the texture seam matches the data; pitch lifts that latitude to center.
+  _rotationForLatLng(lat, lon, THREE) {
     return {
-      x: 0,
-      y: -lonRad
+      x: THREE.MathUtils.degToRad(lat),
+      y: -THREE.MathUtils.degToRad(lon)
     };
   }
 
@@ -233,24 +232,16 @@ class GlobeService {
         return;
       }
 
-      // Shortest yaw, then snap. A slow exponential tail reads as lag,
-      // and pitching on X tips the pole off the top of the disc.
+      // Shortest yaw avoids spinning the long way between photos. Pitch
+      // still settles on the latitude so the place faces the camera.
       const now = performance.now();
       const dt = state.lastTick == null ? 16.67 : Math.min(48, now - state.lastTick);
       state.lastTick = now;
-      const ease = 1 - Math.pow(0.78, dt / 16.67);
+      const ease = 1 - Math.pow(0.88, dt / 16.67);
       const yaw = this._shortestYaw(state.group.rotation.y, state.targetRotation.y);
-      if (Math.abs(yaw) < 0.004) {
-        state.group.rotation.y = state.targetRotation.y;
-      } else {
-        state.group.rotation.y += yaw * ease;
-      }
+      state.group.rotation.y += Math.abs(yaw) < 0.004 ? yaw : yaw * ease;
       const pitch = state.targetRotation.x - state.group.rotation.x;
-      if (Math.abs(pitch) < 0.004) {
-        state.group.rotation.x = state.targetRotation.x;
-      } else {
-        state.group.rotation.x += pitch * ease;
-      }
+      state.group.rotation.x += Math.abs(pitch) < 0.004 ? pitch : pitch * ease;
 
       state.renderer.render(state.scene, state.camera);
       state.rafId = requestAnimationFrame(animate);
