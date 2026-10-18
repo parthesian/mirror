@@ -862,12 +862,30 @@ class GlobeExplorer {
         this.autoRotateEnabled = false;
         if (s.controls) {
             s.controls.autoRotate = false;
-            s.controls.reset?.();
         }
-        s.group.rotation.x = THREE.MathUtils.degToRad(lat);
-        s.group.rotation.y = -Math.PI / 2 - THREE.MathUtils.degToRad(lon);
+        this._levelCamera(s);
+        // Longitude only. Pitching by latitude points the pole at the
+        // camera, so the next spin is no longer around the top of the globe.
+        s.group.rotation.x = 0;
+        s.spinTargetY = -Math.PI / 2 - THREE.MathUtils.degToRad(lon);
         this.lastManualRotateAt = Date.now();
         this._syncRotateToggleUI();
+    }
+
+    _levelCamera(s) {
+        if (!s?.camera) return;
+        const distance = s.camera.position.length() || 3.2;
+        s.camera.up.set(0, 1, 0);
+        s.camera.position.set(0, 0, distance);
+        s.camera.lookAt(0, 0, 0);
+        if (s.controls) {
+            s.controls.target.set(0, 0, 0);
+            s.controls.update();
+        }
+    }
+
+    _shortestYaw(from, to) {
+        return Math.atan2(Math.sin(to - from), Math.cos(to - from));
     }
 
     prefetch() {
@@ -928,7 +946,10 @@ class GlobeExplorer {
         this.autoRotateEnabled = !this.autoRotateEnabled;
         const controls = this.threeState?.controls;
         if (controls) {
-            controls.autoRotate = this.autoRotateEnabled;
+            controls.autoRotate = false;
+        }
+        if (this.autoRotateEnabled && this.threeState) {
+            this.threeState.spinTargetY = null;
         }
         this._syncRotateToggleUI();
     }
@@ -1152,18 +1173,18 @@ class GlobeExplorer {
         let controls = null;
         if (OrbitControls) {
             controls = new OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
-            controls.dampingFactor = 0.08;
-            controls.enableRotate = true;
+            // Yaw lives on the globe group so the pole stays at the top.
+            // Camera orbit plus a pitched mesh spins around a diagonal axis,
+            // and damping made that spin lag behind the finger.
+            controls.enableDamping = false;
+            controls.enableRotate = false;
             controls.enablePan = false;
             controls.minDistance = 1.8;
             controls.maxDistance = 8;
-            controls.minPolarAngle = Math.PI / 2 - THREE.MathUtils.degToRad(62);
-            controls.maxPolarAngle = Math.PI / 2 + THREE.MathUtils.degToRad(62);
-            controls.rotateSpeed = 0.5;
+            controls.minPolarAngle = Math.PI / 2;
+            controls.maxPolarAngle = Math.PI / 2;
             controls.enableZoom = true;
-            controls.autoRotate = this.autoRotateEnabled;
-            controls.autoRotateSpeed = 0.45;
+            controls.autoRotate = false;
         }
 
         const group = new THREE.Group();
@@ -1219,20 +1240,22 @@ class GlobeExplorer {
             const dx = e.clientX - drag.x;
             const dy = e.clientY - drag.y;
             const slop = (this.pointerGesture?.pointerType === 'touch') ? 18 : 6;
-            if (this.pointerGesture && ((dx * dx + dy * dy) > slop * slop)) {
-                this.pointerGesture.dragged = true;
-                this.lastManualRotateAt = Date.now();
-                if (this.autoRotateEnabled) {
-                    this.autoRotateEnabled = false;
-                    if (controls) {
-                        controls.autoRotate = false;
-                    }
-                    this._syncRotateToggleUI();
-                }
+            if (!this.pointerGesture || ((dx * dx + dy * dy) <= slop * slop)) {
+                return;
             }
-            if (!controls) {
-                group.rotation.y = drag.rotY + dx * 0.005;
-                group.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, drag.rotX + dy * 0.005));
+            this.pointerGesture.dragged = true;
+            this.lastManualRotateAt = Date.now();
+            if (this.autoRotateEnabled) {
+                this.autoRotateEnabled = false;
+                if (controls) {
+                    controls.autoRotate = false;
+                }
+                this._syncRotateToggleUI();
+            }
+            group.rotation.y = drag.rotY + dx * 0.005;
+            group.rotation.x = 0;
+            if (this.threeState) {
+                this.threeState.spinTargetY = null;
             }
         });
         let pendingHoverPointer = null;
@@ -1458,9 +1481,32 @@ class GlobeExplorer {
                 state.rafId = null;
                 return;
             }
-            if (controls) controls.update();
-            else if (this.autoRotateEnabled) group.rotation.y += 0.001;
-            this._updateClickPulses(performance.now());
+            const now = performance.now();
+            const dt = state.lastTick == null ? 16.67 : Math.min(48, now - state.lastTick);
+            state.lastTick = now;
+            const ease = 1 - Math.pow(0.8, dt / 16.67);
+            if (state.spinTargetY != null) {
+                const delta = this._shortestYaw(group.rotation.y, state.spinTargetY);
+                group.rotation.x += (0 - group.rotation.x) * ease;
+                if (Math.abs(delta) < 0.003 && Math.abs(group.rotation.x) < 0.003) {
+                    group.rotation.y = state.spinTargetY;
+                    group.rotation.x = 0;
+                    state.spinTargetY = null;
+                } else {
+                    group.rotation.y += delta * ease;
+                }
+            } else if (this.autoRotateEnabled) {
+                group.rotation.y += 0.252 * (dt / 1000);
+                if (group.rotation.x !== 0) {
+                    group.rotation.x += (0 - group.rotation.x) * ease;
+                    if (Math.abs(group.rotation.x) < 0.001) group.rotation.x = 0;
+                }
+            }
+            if (controls) {
+                controls.autoRotate = false;
+                controls.update();
+            }
+            this._updateClickPulses(now);
             renderer.render(scene, camera);
             state.rafId = requestAnimationFrame(animate);
         };

@@ -52,10 +52,10 @@ body {
     --chrome-top: 2rem;
     --header-h: 4.4rem;
 
-    --dur-fast: 180ms;
-    --dur-mid: 320ms;
-    --dur-slow: 520ms;
-    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --dur-fast: 140ms;
+    --dur-mid: 220ms;
+    --dur-slow: 320ms;
+    --ease: cubic-bezier(0.22, 0.8, 0.24, 1);
 }
 
 @media (max-width: 768px) {
@@ -894,7 +894,7 @@ body.exposure-1 .scroll-loading p {
     max-width: 100%;
     max-height: 90vh;
     object-fit: contain;
-    transition: opacity 0.35s ease, transform 0.5s ease;
+    transition: opacity 0.18s ease, transform 0.22s ease;
     transform: scale(0.95);
 }
 
@@ -3239,8 +3239,8 @@ body.exposure-1  .globe-explorer { background: rgba(255, 255, 255, 0.98); color:
             color-mix(in srgb, var(--ink, #333) 13%, var(--surface, rgba(240, 240, 240, 0.72))) 0%,
             color-mix(in srgb, var(--ink, #333) 7%, var(--surface, rgba(240, 240, 240, 0.72))) 60%,
             color-mix(in srgb, var(--ink, #333) 3%, var(--surface, rgba(240, 240, 240, 0.72))) 100%);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     /* Hairline outer edge so the disc reads as the outermost ring rather
        than an accidental shadow across the photos. */
     border: 1px solid var(--cm-edge);

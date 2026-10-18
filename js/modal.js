@@ -264,7 +264,7 @@ class Modal {
             if (!this.isOpen) {
                 this.setPhotoSource(Modal.BLANK_SRC, 'placeholder');
             }
-        }, 300); // Match CSS transition duration
+        }, 240);
     }
 
     formatLocationWithState(image) {
@@ -517,7 +517,7 @@ class Modal {
         window.clearTimeout(this._layoutAnimTimer);
         this._layoutAnimTimer = window.setTimeout(() => {
             this.modalContent?.classList.remove('modal-layout-animating');
-        }, 580);
+        }, 360);
     }
 
     applyPhotoPlacement(image, { animate = false } = {}) {

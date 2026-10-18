@@ -78,8 +78,8 @@ class ControlMenu {
         this.scale = 1;
         this.geometry = { ...CM_BASE };
 
-        this.slideMs = 380;
-        this.expandMs = 520;
+        this.slideMs = this.cssDuration('--dur-mid', 220);
+        this.expandMs = this.cssDuration('--dur-slow', 320);
         // Filter applies rebuild the nodes and reload the gallery. Ignore
         // leftover outside pointerdowns so the menu stays in the user's hands.
         this.dismissLockedUntil = 0;
@@ -87,6 +87,13 @@ class ControlMenu {
         this.applyGeometry();
         this.bindEvents();
         this.render();
+    }
+
+    cssDuration(token, fallback) {
+        const raw = getComputedStyle(document.documentElement).getPropertyValue(token).trim();
+        if (raw.endsWith('ms')) return parseFloat(raw) || fallback;
+        if (raw.endsWith('s')) return (parseFloat(raw) || 0) * 1000 || fallback;
+        return fallback;
     }
 
     // ── geometry ──
