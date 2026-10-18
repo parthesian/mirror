@@ -83,20 +83,18 @@ class GlobeService {
     }
   }
 
-  // Compute target rotation for the globe group to bring lat/lon to the camera front
-  _rotationForLatLng(lat, lon, THREE) {
-    // Convert degrees to radians
-    const latRad = THREE.MathUtils.degToRad(lat);
+  // Yaw that brings this longitude to the camera. Latitude stays on the
+  // sphere so the pole remains at the top of the disc.
+  _rotationForLatLng(_lat, lon, THREE) {
     const lonRad = THREE.MathUtils.degToRad(lon);
-
-    // Map so the given lat/lon faces the camera (+Z):
-    // - Positive latitude (north rotates up toward camera)
-    // - Negative longitude to match typical map projections
-    // - Globe mesh is pre-rotated -90° to align texture seam
     return {
-      x: latRad,
+      x: 0,
       y: -lonRad
     };
+  }
+
+  _shortestYaw(from, to) {
+    return Math.atan2(Math.sin(to - from), Math.cos(to - from));
   }
 
   _resolveCoords(locationOrOptions) {
@@ -235,10 +233,24 @@ class GlobeService {
         return;
       }
 
-      // Ease current rotation toward target
-      const ease = 0.08;
-      state.group.rotation.x += (state.targetRotation.x - state.group.rotation.x) * ease;
-      state.group.rotation.y += (state.targetRotation.y - state.group.rotation.y) * ease;
+      // Shortest yaw, then snap. A slow exponential tail reads as lag,
+      // and pitching on X tips the pole off the top of the disc.
+      const now = performance.now();
+      const dt = state.lastTick == null ? 16.67 : Math.min(48, now - state.lastTick);
+      state.lastTick = now;
+      const ease = 1 - Math.pow(0.78, dt / 16.67);
+      const yaw = this._shortestYaw(state.group.rotation.y, state.targetRotation.y);
+      if (Math.abs(yaw) < 0.004) {
+        state.group.rotation.y = state.targetRotation.y;
+      } else {
+        state.group.rotation.y += yaw * ease;
+      }
+      const pitch = state.targetRotation.x - state.group.rotation.x;
+      if (Math.abs(pitch) < 0.004) {
+        state.group.rotation.x = state.targetRotation.x;
+      } else {
+        state.group.rotation.x += pitch * ease;
+      }
 
       state.renderer.render(state.scene, state.camera);
       state.rafId = requestAnimationFrame(animate);
