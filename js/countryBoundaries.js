@@ -28,7 +28,8 @@ class CountryBoundaries {
 
     async _load() {
         const dataSources = [
-            'public/data/ne_110m_admin_0_countries.geojson',
+            // Vite serves public/data at /data, not /public/data.
+            '/data/ne_110m_admin_0_countries.geojson',
             'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson'
         ];
 

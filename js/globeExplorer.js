@@ -1217,7 +1217,7 @@ class GlobeExplorer {
         try {
             tex = window.threeLoader
                 ? await window.threeLoader.createEarthTexture(THREE)
-                : await new THREE.TextureLoader().loadAsync('public/earth_atmos_2048.jpg');
+                : await new THREE.TextureLoader().loadAsync('/earth_atmos_2048.jpg');
             if (!window.threeLoader) {
                 tex.colorSpace = THREE.SRGBColorSpace;
             }

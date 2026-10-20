@@ -10,7 +10,9 @@ class ThreeLoader {
         this._threePromise = null;
         this._orbitPromise = null;
         this._earthImagePromise = null;
-        this.textureUrl = 'public/earth_atmos_2048.jpg';
+        // Vite copies public/ onto the site root. The old public/ prefix 404s
+        // and the explorer falls back to a blank gray sphere.
+        this.textureUrl = '/earth_atmos_2048.jpg';
     }
 
     loadThree() {
