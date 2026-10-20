@@ -14,8 +14,8 @@ class GlobeService {
   constructor() {
     this._threePromise = null;
     this.instances = new Map();
-    // Texture: use local texture from public folder
-    this.textureUrl = 'public/earth_atmos_2048.jpg';
+    // Same site-root JPEG threeLoader fetches. Vite does not serve public/.
+    this.textureUrl = '/earth_atmos_2048.jpg';
     // Preloading state
     this.preloadContainer = null;
     this.isPreloaded = false;
