@@ -723,7 +723,7 @@ class GlobeExplorer {
         }
         if (this.isOpen) {
             if (focusLocation) {
-                await this._focusLocation(focusLocation);
+                this._focusLocation(focusLocation);
             }
             return;
         }
@@ -738,13 +738,21 @@ class GlobeExplorer {
         try {
             this._prefetchAssets({ includeBoundaries: true, includeGeo: true });
             await this._fetchLocations();
+            // Idle spin stays on when nothing is focused. A photo click must
+            // not start that orbit before the place is facing the camera.
+            const focusLat = Number(focusLocation?.latitude);
+            const focusLon = Number(focusLocation?.longitude);
+            const focusOnPlace = Number.isFinite(focusLat) && Number.isFinite(focusLon);
+            if (focusOnPlace) {
+                this.autoRotateEnabled = false;
+            }
             await this._initScene();
-            this._setSceneRunning(true);
+            if (focusLocation) {
+                this._focusLocation(focusLocation);
+            }
             this.threeState?.onResize?.();
             this._fitGlobeInView();
-            if (focusLocation) {
-                await this._focusLocation(focusLocation);
-            }
+            this._setSceneRunning(true);
             this._syncRotateToggleUI();
         } catch (err) {
             console.error('[GlobeExplorer] failed to initialize', err);
@@ -816,13 +824,10 @@ class GlobeExplorer {
         return Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
     }
 
-    async _focusLocation(location) {
-        await this._fetchLocations();
-        if (!this.threeState) return;
+    _focusLocation(location) {
+        if (!this.threeState || !location) return;
 
         const match = this._findLocationMatch(location) || location;
-        if (!match) return;
-
         this._rotateToLocation(match);
         const key = this._locationKeyFor(match);
         if (this.locationGroupByKey.has(key)) {
@@ -852,50 +857,70 @@ class GlobeExplorer {
         return this.locationGroupByKey.get(key)?.sample || null;
     }
 
+    /**
+     * Absolute group rotation that puts this coordinate on +Z.
+     * The explorer mesh has no extra yaw, so the texture's -90° lives here.
+     */
+    static focusRotation(lat, lon) {
+        return {
+            x: (lat * Math.PI) / 180,
+            y: -Math.PI / 2 - (lon * Math.PI) / 180
+        };
+    }
+
     _rotateToLocation(location) {
-        const THREE = window.THREE;
         const s = this.threeState;
         const lat = Number(location?.latitude);
         const lon = Number(location?.longitude);
-        if (!THREE || !s?.group || !Number.isFinite(lat) || !Number.isFinite(lon)) return;
+        if (!s?.group || !Number.isFinite(lat) || !Number.isFinite(lon)) return;
 
         this.autoRotateEnabled = false;
         s.uprightSpin = false;
+        s.orientTarget = null;
+        const pose = GlobeExplorer.focusRotation(lat, lon);
+        // Pose first. OrbitControls.update() turns around the up axis it
+        // captured at construction; writing camera.up later does not change
+        // that axis. Parking the camera before this assignment is a separate
+        // turn, and the place is not facing the camera yet.
+        s.group.rotation.x = pose.x;
+        s.group.rotation.y = pose.y;
         if (s.controls) {
             s.controls.autoRotate = false;
+            this._resetFocusOrbit(s.controls);
+        } else if (s.camera) {
+            const distance = s.camera.position.length() || 3.2;
+            s.camera.position.set(0, 0, distance);
+            s.camera.lookAt(0, 0, 0);
         }
-        this._levelCamera(s);
-        // Same pose as the photo globes: this latitude faces the camera.
-        // Auto-spin stays off until the user resumes, so a pitched mesh
-        // is not spun around the vertical axis.
-        s.orientTarget = {
-            x: THREE.MathUtils.degToRad(lat),
-            y: -Math.PI / 2 - THREE.MathUtils.degToRad(lon)
-        };
         this.lastManualRotateAt = Date.now();
         this._syncRotateToggleUI();
     }
 
-    _levelCamera(s) {
-        if (!s?.camera) return;
-        const distance = s.camera.position.length() || 3.2;
-        if (!s.controls) {
-            s.camera.up.set(0, 1, 0);
-            s.camera.position.set(0, 0, distance);
-            s.camera.lookAt(0, 0, 0);
-            return;
+    _resetFocusOrbit(controls) {
+        // Auto-rotate leaves a damped sphericalDelta. reset() would apply
+        // that delta around the captured pole in the same update that
+        // restores the camera. An undamped update pinned to the upright
+        // view consumes the delta, then reset() restores the saved distance.
+        const damping = controls.enableDamping;
+        const minAzimuthAngle = controls.minAzimuthAngle;
+        const maxAzimuthAngle = controls.maxAzimuthAngle;
+        const minPolarAngle = controls.minPolarAngle;
+        const maxPolarAngle = controls.maxPolarAngle;
+        controls.enableDamping = false;
+        controls.minAzimuthAngle = 0;
+        controls.maxAzimuthAngle = 0;
+        controls.minPolarAngle = Math.PI / 2;
+        controls.maxPolarAngle = Math.PI / 2;
+        try {
+            controls.update();
+        } finally {
+            controls.minAzimuthAngle = minAzimuthAngle;
+            controls.maxAzimuthAngle = maxAzimuthAngle;
+            controls.minPolarAngle = minPolarAngle;
+            controls.maxPolarAngle = maxPolarAngle;
+            controls.enableDamping = damping;
         }
-        // One undamped update spends any leftover drag inertia. The next
-        // update then adopts the level pose instead of blending back to it.
-        const damping = s.controls.enableDamping;
-        s.controls.enableDamping = false;
-        s.controls.update();
-        s.controls.target.set(0, 0, 0);
-        s.camera.up.set(0, 1, 0);
-        s.camera.position.set(0, 0, distance);
-        s.camera.lookAt(0, 0, 0);
-        s.controls.update();
-        s.controls.enableDamping = damping;
+        controls.reset();
     }
 
     _shortestYaw(from, to) {
@@ -1539,8 +1564,9 @@ class GlobeExplorer {
             state.rafId = requestAnimationFrame(animate);
         };
         state.animate = animate;
-        state.running = true;
-        animate();
+        // open() focuses a photo, then starts the loop, so the first frame
+        // is not an auto-rotate step around the pole.
+        state.running = false;
 
         this.threeState = state;
         this._applyDotHighlight();
