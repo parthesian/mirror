@@ -737,15 +737,18 @@ class GlobeExplorer {
 
         try {
             this._prefetchAssets({ includeBoundaries: true, includeGeo: true });
-            await this._fetchLocations();
             // Idle spin stays on when nothing is focused. A photo click must
-            // not start that orbit before the place is facing the camera.
+            // not orbit, and a resumed scene must not paint, before the place
+            // is facing the camera. The geo fetch below yields a frame.
             const focusLat = Number(focusLocation?.latitude);
             const focusLon = Number(focusLocation?.longitude);
             const focusOnPlace = Number.isFinite(focusLat) && Number.isFinite(focusLon);
             if (focusOnPlace) {
                 this.autoRotateEnabled = false;
+                if (this.threeState?.controls) this.threeState.controls.autoRotate = false;
+                this._setSceneRunning(false);
             }
+            await this._fetchLocations();
             await this._initScene();
             if (focusLocation) {
                 this._focusLocation(focusLocation);
@@ -876,7 +879,6 @@ class GlobeExplorer {
 
         this.autoRotateEnabled = false;
         s.uprightSpin = false;
-        s.orientTarget = null;
         const pose = GlobeExplorer.focusRotation(lat, lon);
         // Pose first. OrbitControls.update() turns around the up axis it
         // captured at construction; writing camera.up later does not change
@@ -921,10 +923,6 @@ class GlobeExplorer {
             controls.enableDamping = damping;
         }
         controls.reset();
-    }
-
-    _shortestYaw(from, to) {
-        return Math.atan2(Math.sin(to - from), Math.cos(to - from));
     }
 
     prefetch() {
@@ -984,9 +982,6 @@ class GlobeExplorer {
     _toggleRotation() {
         this.autoRotateEnabled = !this.autoRotateEnabled;
         const s = this.threeState;
-        if (s) {
-            s.orientTarget = null;
-        }
         const pitched = Math.abs(s?.group?.rotation?.x || 0) > 0.02;
         if (this.autoRotateEnabled && s && pitched) {
             s.uprightSpin = true;
@@ -1295,7 +1290,6 @@ class GlobeExplorer {
                     this._syncRotateToggleUI();
                 }
                 if (this.threeState) {
-                    this.threeState.orientTarget = null;
                     this.threeState.uprightSpin = false;
                 }
             }
@@ -1531,19 +1525,7 @@ class GlobeExplorer {
             const dt = state.lastTick == null ? 16.67 : Math.min(48, now - state.lastTick);
             state.lastTick = now;
             const ease = 1 - Math.pow(0.86, dt / 16.67);
-            if (state.orientTarget) {
-                const yaw = this._shortestYaw(group.rotation.y, state.orientTarget.y);
-                const pitch = state.orientTarget.x - group.rotation.x;
-                if (Math.abs(yaw) < 0.004 && Math.abs(pitch) < 0.004) {
-                    group.rotation.y += yaw;
-                    group.rotation.x = state.orientTarget.x;
-                    state.orientTarget = null;
-                } else {
-                    group.rotation.y += yaw * ease;
-                    group.rotation.x += pitch * ease;
-                }
-                if (controls) controls.autoRotate = false;
-            } else if (state.uprightSpin) {
+            if (state.uprightSpin) {
                 const pitch = -group.rotation.x;
                 if (Math.abs(pitch) < 0.004) {
                     group.rotation.x = 0;

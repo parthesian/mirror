@@ -141,7 +141,6 @@ describe('photo globe focus', () => {
                 controls: OrbitControls;
                 camera: PerspectiveCamera;
                 uprightSpin: boolean;
-                orientTarget: FocusPose | null;
             };
             _rotateToLocation(location: { latitude: number; longitude: number }): void;
         };
@@ -153,7 +152,6 @@ describe('photo globe focus', () => {
             controls,
             camera,
             uprightSpin: true,
-            orientTarget: { x: 0.4, y: 0.2 },
         };
 
         explorer._rotateToLocation(place);
@@ -168,7 +166,6 @@ describe('photo globe focus', () => {
         expect(camera.up.toArray()).toEqual([0, 1, 0]);
         expect(explorer.autoRotateEnabled).toBe(false);
         expect(controls.autoRotate).toBe(false);
-        expect(explorer.threeState.orientTarget).toBeNull();
         expect(explorer.threeState.uprightSpin).toBe(false);
         expect(facingDot(group, place.latitude, place.longitude, camera)).toBeCloseTo(1, 5);
         expect(controls.getAzimuthalAngle()).toBeCloseTo(0, 5);
