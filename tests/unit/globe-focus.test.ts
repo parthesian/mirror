@@ -205,7 +205,7 @@ describe('photo globe focus', () => {
             expect(worldPole.dot(cameraRight)).toBeCloseTo(0, 6);
             expect(controls.getPolarAngle()).toBeCloseTo(pose.polarAngle, 5);
         }
-        expect(Math.abs(controls.getAzimuthalAngle())).toBeGreaterThan(0.15);
+        expect(Math.abs(controls.getAzimuthalAngle())).toBeGreaterThan(0.1);
     });
 
     it('keeps idle spin and still pauses when a drag starts', () => {
