@@ -861,13 +861,19 @@ class GlobeExplorer {
     }
 
     /**
-     * Absolute group rotation that puts this coordinate on +Z.
-     * The explorer mesh has no extra yaw, so the texture's -90° lives here.
+     * Upright group yaw plus camera polar angle that puts this coordinate on
+     * the camera axis while keeping the globe's North Pole on world +Y.
+     * Pitching group.rotation.x would tilt the mesh pole off OrbitControls's
+     * (0, 1, 0) orbit axis and make subsequent spins wobble on a skewed axis.
      */
     static focusRotation(lat, lon) {
+        const clampedLat = Math.max(-85, Math.min(85, Number(lat) || 0));
+        const latRad = (clampedLat * Math.PI) / 180;
         return {
-            x: (lat * Math.PI) / 180,
-            y: -Math.PI / 2 - (lon * Math.PI) / 180
+            x: 0,
+            y: -Math.PI / 2 - (lon * Math.PI) / 180,
+            latRad,
+            polarAngle: Math.PI / 2 - latRad
         };
     }
 
@@ -878,43 +884,41 @@ class GlobeExplorer {
         if (!s?.group || !Number.isFinite(lat) || !Number.isFinite(lon)) return;
 
         this.autoRotateEnabled = false;
-        s.uprightSpin = false;
         const pose = GlobeExplorer.focusRotation(lat, lon);
-        // Pose first. OrbitControls.update() turns around the up axis it
-        // captured at construction; writing camera.up later does not change
-        // that axis. Parking the camera before this assignment is a separate
-        // turn, and the place is not facing the camera yet.
-        s.group.rotation.x = pose.x;
+        s.group.rotation.x = 0;
         s.group.rotation.y = pose.y;
+        if (s.camera) {
+            const distance = s.camera.position.length() || 3.2;
+            s.camera.position.set(
+                0,
+                distance * Math.sin(pose.latRad),
+                distance * Math.cos(pose.latRad)
+            );
+            s.camera.lookAt(0, 0, 0);
+        }
         if (s.controls) {
             s.controls.autoRotate = false;
-            this._resetFocusOrbit(s.controls);
-        } else if (s.camera) {
-            const distance = s.camera.position.length() || 3.2;
-            s.camera.position.set(0, 0, distance);
-            s.camera.lookAt(0, 0, 0);
+            this._resetFocusOrbit(s.controls, pose.polarAngle);
         }
         this.lastManualRotateAt = Date.now();
         this._syncRotateToggleUI();
     }
 
-    _resetFocusOrbit(controls) {
-        // Auto-rotate leaves a damped sphericalDelta. reset() would apply
-        // that delta around the captured pole in the same update that
-        // restores the camera. An undamped update pinned to the upright
-        // view consumes the delta, then reset() restores the saved distance.
+    _resetFocusOrbit(controls, polarAngle = Math.PI / 2) {
         const damping = controls.enableDamping;
         const minAzimuthAngle = controls.minAzimuthAngle;
         const maxAzimuthAngle = controls.maxAzimuthAngle;
-        const minPolarAngle = controls.minPolarAngle;
-        const maxPolarAngle = controls.maxPolarAngle;
+        const minPolarAngle = Math.min(controls.minPolarAngle, polarAngle);
+        const maxPolarAngle = Math.max(controls.maxPolarAngle, polarAngle);
+        controls.target?.set?.(0, 0, 0);
+        controls.saveState?.();
         controls.enableDamping = false;
         controls.minAzimuthAngle = 0;
         controls.maxAzimuthAngle = 0;
-        controls.minPolarAngle = Math.PI / 2;
-        controls.maxPolarAngle = Math.PI / 2;
+        controls.minPolarAngle = polarAngle;
+        controls.maxPolarAngle = polarAngle;
         try {
-            controls.update();
+            controls.reset();
         } finally {
             controls.minAzimuthAngle = minAzimuthAngle;
             controls.maxAzimuthAngle = maxAzimuthAngle;
@@ -922,7 +926,6 @@ class GlobeExplorer {
             controls.maxPolarAngle = maxPolarAngle;
             controls.enableDamping = damping;
         }
-        controls.reset();
     }
 
     prefetch() {
@@ -982,13 +985,8 @@ class GlobeExplorer {
     _toggleRotation() {
         this.autoRotateEnabled = !this.autoRotateEnabled;
         const s = this.threeState;
-        const pitched = Math.abs(s?.group?.rotation?.x || 0) > 0.02;
-        if (this.autoRotateEnabled && s && pitched) {
-            s.uprightSpin = true;
-            if (s.controls) s.controls.autoRotate = false;
-        } else if (s) {
-            s.uprightSpin = false;
-            if (s.controls) s.controls.autoRotate = this.autoRotateEnabled;
+        if (s?.controls) {
+            s.controls.autoRotate = this.autoRotateEnabled;
         }
         this._syncRotateToggleUI();
     }
@@ -1267,10 +1265,11 @@ class GlobeExplorer {
                 hadWheel: false,
                 tapHandled: false
             };
+            const camDist = camera.position.length() || 3.2;
             drag = {
                 x: e.clientX,
                 y: e.clientY,
-                rotX: group.rotation.x,
+                lat: Math.asin(THREE.MathUtils.clamp(camera.position.y / camDist, -1, 1)),
                 rotY: group.rotation.y
             };
         });
@@ -1289,13 +1288,14 @@ class GlobeExplorer {
                     }
                     this._syncRotateToggleUI();
                 }
-                if (this.threeState) {
-                    this.threeState.uprightSpin = false;
-                }
             }
             if (!controls) {
                 group.rotation.y = drag.rotY + dx * 0.005;
-                group.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, drag.rotX + dy * 0.005));
+                const maxLat = THREE.MathUtils.degToRad(85);
+                const nextLat = Math.max(-maxLat, Math.min(maxLat, drag.lat + dy * 0.005));
+                const dist = camera.position.length() || 3.2;
+                camera.position.set(0, dist * Math.sin(nextLat), dist * Math.cos(nextLat));
+                camera.lookAt(0, 0, 0);
             }
         });
         let pendingHoverPointer = null;
@@ -1524,23 +1524,12 @@ class GlobeExplorer {
             const now = performance.now();
             const dt = state.lastTick == null ? 16.67 : Math.min(48, now - state.lastTick);
             state.lastTick = now;
-            const ease = 1 - Math.pow(0.86, dt / 16.67);
-            if (state.uprightSpin) {
-                const pitch = -group.rotation.x;
-                if (Math.abs(pitch) < 0.004) {
-                    group.rotation.x = 0;
-                    state.uprightSpin = false;
-                    if (controls && this.autoRotateEnabled) controls.autoRotate = true;
-                } else {
-                    group.rotation.x += pitch * ease;
-                    if (controls) controls.autoRotate = false;
-                }
-            } else if (controls) {
-                controls.autoRotate = this.autoRotateEnabled && Math.abs(group.rotation.x) < 0.02;
+            if (controls) {
+                controls.autoRotate = this.autoRotateEnabled;
+                controls.update();
             } else if (this.autoRotateEnabled) {
                 group.rotation.y += 0.12 * (dt / 1000);
             }
-            if (controls) controls.update();
             this._updateClickPulses(now);
             renderer.render(scene, camera);
             state.rafId = requestAnimationFrame(animate);

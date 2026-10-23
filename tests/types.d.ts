@@ -61,6 +61,8 @@ declare module 'three/examples/jsm/controls/OrbitControls.js' {
         maxPolarAngle: number;
         minAzimuthAngle: number;
         maxAzimuthAngle: number;
+        target: Vector3;
+        saveState(): void;
         update(): boolean;
         reset(): void;
         getAzimuthalAngle(): number;
