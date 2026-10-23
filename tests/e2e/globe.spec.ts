@@ -58,3 +58,56 @@ test('phone photo view shows the location globe', async ({ page }) => {
     expect(sized.width).toBeGreaterThan(40);
     expect(sized.height).toBeGreaterThan(40);
 });
+
+test('clicking a photo globe and spinning keeps the polar axis upright', async ({ page }) => {
+    await page.goto('/?mock=1');
+    await page.locator('.gallery-item').first().click();
+
+    const modalGlobe = page.locator('#modal-globe');
+    await expect(modalGlobe).toBeVisible();
+    await modalGlobe.click();
+
+    const canvas = page.locator('#globe-explorer-scene canvas');
+    await expect(canvas).toBeVisible();
+
+    const box = await canvas.boundingBox();
+    expect(box).not.toBeNull();
+    if (!box) return;
+
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.mouse.move(cx + 140, cy, { steps: 10 });
+    await page.mouse.up();
+
+    const afterDrag = (await page.evaluate(`(() => {
+        const THREE = window.THREE;
+        const s = window.app.globeExplorer.threeState;
+        const worldPole = new THREE.Vector3(0, 1, 0).applyQuaternion(s.group.quaternion);
+        const theta = s.controls.getAzimuthalAngle();
+        const cameraRight = new THREE.Vector3(Math.cos(theta), 0, -Math.sin(theta));
+        return {
+            rotX: s.group.rotation.x,
+            poleX: worldPole.x,
+            poleY: worldPole.y,
+            poleZ: worldPole.z,
+            screenPoleSkew: worldPole.dot(cameraRight),
+            azimuth: theta
+        };
+    })()`)) as {
+        rotX: number;
+        poleX: number;
+        poleY: number;
+        poleZ: number;
+        screenPoleSkew: number;
+        azimuth: number;
+    };
+
+    expect(afterDrag.rotX).toBe(0);
+    expect(afterDrag.poleX).toBeCloseTo(0, 6);
+    expect(afterDrag.poleY).toBeCloseTo(1, 6);
+    expect(afterDrag.poleZ).toBeCloseTo(0, 6);
+    expect(afterDrag.screenPoleSkew).toBeCloseTo(0, 6);
+    expect(Math.abs(afterDrag.azimuth)).toBeGreaterThan(0.05);
+});
