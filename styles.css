@@ -58,7 +58,7 @@ body {
     --ease: cubic-bezier(0.22, 0.8, 0.24, 1);
 }
 
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-height: 500px) {
     :root {
         --gutter: 1.25rem;
         --chrome-top: 1.5rem;
@@ -284,13 +284,9 @@ body.view-random .timeline-sidebar:not(.is-animated) {
     z-index: 2;
 }
 
-@media (min-width: 769px) {
+@media (min-width: 769px) and (min-height: 501px) {
+    /* Both orders keep the rails reserved, so a shuffle does not slide the grid. */
     .main-content {
-        transition: padding var(--dur-slow) var(--ease);
-    }
-
-    /* Reserve the rail on both sides so the grid stays optically centred. */
-    body.has-timeline .main-content {
         padding-left: var(--rail-reserve);
         padding-right: var(--rail-reserve);
     }
@@ -517,7 +513,8 @@ body.exposure-1 .scroll-loading p {
 }
 
 .gallery-item.instant .gallery-item-image {
-    transition: none;
+    transition: transform var(--dur-slow) var(--ease),
+                filter var(--dur-mid) var(--ease);
 }
 
 .gallery-item:hover .gallery-item-image {
@@ -578,8 +575,7 @@ body.exposure-1 .scroll-loading p {
         transition: none;
     }
 
-    .timeline-sidebar.is-animated,
-    .main-content {
+    .timeline-sidebar.is-animated {
         transition: none;
     }
 
@@ -884,14 +880,11 @@ body.exposure-1 .scroll-loading p {
 
 .modal-image-container {
     position: relative;
-    flex: 1;
+    flex: 0 1 auto;
     height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
-    max-width: calc(100vw - 350px);
-    /* The photo box is pinned in px by JS; let the flex slot, not the
-       previous photo, decide the width it measures. */
     min-width: 0;
 }
 
@@ -900,12 +893,36 @@ body.exposure-1 .scroll-loading p {
     max-width: 100%;
     max-height: 90vh;
     object-fit: contain;
+    touch-action: pan-y pinch-zoom;
     transition: opacity 0.18s ease;
 }
 
 /* Reserved frame while neither the thumbnail nor the full photo is ready. */
 #modal-image.is-placeholder {
     background: rgba(0, 0, 0, 0.07);
+}
+
+.modal-content.modal-layout-animating #modal-image {
+    transition:
+        opacity 0.18s ease,
+        width var(--dur-slow) var(--ease),
+        height var(--dur-slow) var(--ease);
+}
+
+.modal-photo-ghost {
+    position: absolute;
+    z-index: 2;
+    object-fit: contain;
+    pointer-events: none;
+    max-width: none;
+    max-height: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .modal-content.modal-layout-animating #modal-image,
+    .modal-photo-ghost {
+        transition: none;
+    }
 }
 
 .nav-btn {
@@ -2145,13 +2162,12 @@ body.exposure-1 .btn-secondary {
     display: none !important;
 }
 
-/* Responsive design */
-@media (max-width: 768px) {
+/* Responsive design. Short landscape shares the phone chrome. */
+@media (max-width: 768px), (max-height: 500px) {
     .header h1 {
         font-size: 1.25rem;
     }
 
-    /* Hide timeline on mobile */
     .timeline-sidebar {
         display: none;
     }
@@ -2159,7 +2175,9 @@ body.exposure-1 .btn-secondary {
     .main-content {
         padding: var(--gallery-top) 1rem 1rem;
     }
+}
 
+@media (max-width: 768px) {
     /* Hide navigation buttons on mobile in modal */
     .nav-btn {
         display: none !important;
@@ -2223,12 +2241,6 @@ body.exposure-1 .btn-secondary {
         transition: width var(--dur-slow) var(--ease);
     }
 
-    .modal-content.modal-layout-animating #modal-image {
-        transition:
-            width var(--dur-slow) var(--ease),
-            height var(--dur-slow) var(--ease);
-    }
-
     .modal-content.modal-layout-animating #modal-globe {
         transition:
             width var(--dur-slow) var(--ease),
@@ -2290,7 +2302,7 @@ body.exposure-1 .btn-secondary {
         width: auto;
         height: auto;
         aspect-ratio: 1 / 1;
-        max-width: 42vw;
+        max-width: 30%;
         margin: 0;
     }
 }
@@ -2778,7 +2790,6 @@ body::before {
             rgba(var(--leak-c4, 120, 160, 255), 0.10),
             transparent 60%
         );
-    transition: opacity 0.5s ease;
 }
 
 body.exposure--1 { --leak-opacity: 0.9; }
@@ -3613,7 +3624,7 @@ body.exposure-1  .globe-explorer { background: rgba(255, 255, 255, 0.98); color:
 
 /* On a narrow viewport the disc spans nearly the full width, so there is no
    room beside it: the readout moves above the arc instead. */
-@media (max-width: 768px) {
+@media (max-width: 768px), (max-height: 500px) {
     .control-menu,
     .cm-hub {
         --cm-orb: 44px;

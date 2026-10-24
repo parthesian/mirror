@@ -991,13 +991,7 @@ class Gallery {
                 this.rebindMountedWindow(nodes, next.slice(start, end));
                 // A shuffle reorders aspect ratios, so masonry has to re-solve.
                 if (this.isMasonry) {
-                    this.beginSurfaceLock();
-                    this.cachedLayout = null;
-                    this.renderVisibleWindow(true);
-                    await this.endSurfaceLock({
-                        animate: true,
-                        height: this.containerPaddingY() + (this.getLayout().totalHeight || 0)
-                    });
+                    await this.morphLayout(next);
                 }
                 this.checkIfNeedsMoreContent();
             } finally {
@@ -1502,6 +1496,9 @@ class Gallery {
     }
 
     static isMobileViewport(win = typeof window !== 'undefined' ? window : null) {
+        if (typeof GalleryLayout !== 'undefined' && GalleryLayout.isCompact) {
+            return GalleryLayout.isCompact(win);
+        }
         return Boolean(win && Number(win.innerWidth) <= 768);
     }
 

@@ -684,7 +684,8 @@ class ControlMenu {
     }
 
     renderColumnLeaf() {
-        if (window.innerWidth <= 768) {
+        const compact = window.GalleryLayout?.isCompact?.(window) || window.innerWidth <= 768;
+        if (compact) {
             const hint = document.createElement('div');
             hint.className = 'cm-leaf-hint';
             hint.textContent = 'COLUMNS AUTO';
@@ -693,7 +694,8 @@ class ControlMenu {
             return;
         }
 
-        const counts = [2, 3, 4, 5, 6];
+        const width = this.gallery?.galleryContainer?.clientWidth || window.innerWidth;
+        const counts = window.GalleryLayout?.fittingColumnCounts?.(width) || [2, 3, 4, 5, 6];
         const size = this.controlSize();
         const angles = this.packAngles(counts.length, this.geometry.ringC, size);
         const current = this.gallery?.columns;
