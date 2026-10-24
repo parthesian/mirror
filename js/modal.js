@@ -222,7 +222,7 @@ class Modal {
     }
 
     /**
-     * Open while the exit fade is running, closed once it settles.
+     * True while the scrim is entering or fully open. False during the exit fade.
      * @returns {boolean}
      */
     get isOpen() {
@@ -236,6 +236,7 @@ class Modal {
         this.clearPhotoPlacement();
         this.hideModalGlobe();
         this._removePhotoGhost();
+        this.clearPhotoMotion();
         this._photoToken += 1;
         this.setPhotoSource(Modal.BLANK_SRC, 'placeholder');
     }
@@ -573,10 +574,16 @@ class Modal {
      * @param {'next'|'previous'} direction
      */
     spawnPhotoGhost(direction) {
-        if (this.prefersReducedMotion()) return;
         const image = this.modalImage;
         const container = this.modalImageContainer;
-        if (!image || !container || !image.getAttribute('src')) return;
+        if (!image || !container || !image.getAttribute('src')) {
+            this.clearPhotoMotion();
+            return;
+        }
+        if (this.prefersReducedMotion()) {
+            this.clearPhotoMotion();
+            return;
+        }
         this._removePhotoGhost();
         const ghost = image.cloneNode(false);
         ghost.removeAttribute('id');
@@ -586,10 +593,7 @@ class Modal {
         ghost.src = image.currentSrc || image.src;
         const imageRect = image.getBoundingClientRect();
         const containerRect = container.getBoundingClientRect();
-        image.style.transition = 'none';
-        image.style.transform = 'none';
-        void image.offsetWidth;
-        image.style.transition = '';
+        this.clearPhotoMotion();
         const travel = direction === 'previous' ? 20 : -20;
         ghost.style.left = `${Math.round(imageRect.left - containerRect.left)}px`;
         ghost.style.top = `${Math.round(imageRect.top - containerRect.top)}px`;
@@ -630,8 +634,12 @@ class Modal {
             : 0;
         const infoWidth = info ? info.getBoundingClientRect().width : 0;
         const contentWidth = content ? content.clientWidth : window.innerWidth;
+        const padY = contentStyle
+            ? (parseFloat(contentStyle.paddingTop) || 0) + (parseFloat(contentStyle.paddingBottom) || 0)
+            : 0;
+        const contentHeight = content ? content.clientHeight - padY : window.innerHeight;
         const maxWidth = Math.max(1, contentWidth - padX - infoWidth - gap);
-        const maxHeight = Math.max(1, window.innerHeight * 0.9);
+        const maxHeight = Math.max(1, Math.min(contentHeight, window.innerHeight * 0.9));
         let width = maxWidth;
         let height = width / aspect;
         if (height > maxHeight) {
@@ -841,6 +849,8 @@ class Modal {
                 this.spawnPhotoGhost('previous');
                 this.currentImageId = resolved.id;
                 this.loadImageContent(resolved);
+            } else {
+                this.releasePhotoDrag(true);
             }
         } finally {
             this.isNavigating = false;
@@ -862,6 +872,8 @@ class Modal {
                 this.spawnPhotoGhost('next');
                 this.currentImageId = resolved.id;
                 this.loadImageContent(resolved);
+            } else {
+                this.releasePhotoDrag(true);
             }
         } finally {
             this.isNavigating = false;
@@ -1218,17 +1230,35 @@ class Modal {
         gesture.dragged = true;
     }
 
+    clearPhotoMotion() {
+        const image = this.modalImage;
+        if (!image) return;
+        image.style.transition = 'none';
+        image.style.transform = 'none';
+        void image.offsetWidth;
+        image.style.transition = '';
+    }
+
     releasePhotoDrag(ease) {
         const image = this.modalImage;
         if (!image) return;
         const current = image.style.transform;
-        if (!current || current === 'none') return;
-        image.style.transition = ease ? 'transform var(--dur-mid) var(--ease)' : 'none';
-        image.style.transform = 'none';
-        if (!ease) {
-            void image.offsetWidth;
-            image.style.transition = '';
+        if (!current || current === 'none' || !ease || this.prefersReducedMotion()) {
+            this.clearPhotoMotion();
+            return;
         }
+        image.style.transition = 'transform var(--dur-mid) var(--ease)';
+        image.style.transform = 'none';
+        const done = (event) => {
+            if (event && event.target !== image) return;
+            if (event && event.propertyName && event.propertyName !== 'transform') return;
+            image.removeEventListener('transitionend', done);
+            if (image.style.transition.startsWith('transform')) {
+                image.style.transition = '';
+            }
+        };
+        image.addEventListener('transitionend', done);
+        window.setTimeout(done, 280);
     }
 
     /**
@@ -1290,7 +1320,10 @@ class Modal {
             if (!gesture || e.touches.length > 0) return;
             const g = gesture;
             gesture = null;
-            if (cancelled || !this.isOpen) return;
+            if (cancelled || !this.isOpen) {
+                this.releasePhotoDrag(true);
+                return;
+            }
 
             const touch = findTouch(e.changedTouches, g.id);
             const action = Modal.classifyTouchGesture({

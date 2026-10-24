@@ -991,7 +991,12 @@ class Gallery {
                 this.rebindMountedWindow(nodes, next.slice(start, end));
                 // A shuffle reorders aspect ratios, so masonry has to re-solve.
                 if (this.isMasonry) {
-                    await this.morphLayout(next);
+                    if (this.shouldAnimateLayout()) {
+                        await this.morphLayout(next);
+                    } else {
+                        this.cachedLayout = null;
+                        this.renderVisibleWindow(true);
+                    }
                 }
                 this.checkIfNeedsMoreContent();
             } finally {

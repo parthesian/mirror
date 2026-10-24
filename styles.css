@@ -517,6 +517,17 @@ body.exposure-1 .scroll-loading p {
                 filter var(--dur-mid) var(--ease);
 }
 
+.gallery-window.is-morphing .gallery-item.instant .gallery-item-image,
+.gallery-item.instant.flipboard-busy .gallery-item-image {
+    transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .gallery-item.instant .gallery-item-image {
+        transition: none;
+    }
+}
+
 .gallery-item:hover .gallery-item-image {
     filter: grayscale(0);
 }
