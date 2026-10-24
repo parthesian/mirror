@@ -50,7 +50,9 @@ class Modal {
         );
         
         this.currentImageId = null;
-        this.isOpen = false;
+        this.lifecycle = new OverlayLifecycle(this.modal, {
+            onClosed: () => this._onOverlayClosed()
+        });
         this.isUploadModalOpen = false;
         this.isNavigating = false;
         this._photoLayoutReady = false;
@@ -196,8 +198,7 @@ class Modal {
     }
 
     /**
-     * Open modal with specific image. The photo is on screen in the same
-     * frame as the click; metadata fills in when it arrives.
+     * Open the photo overlay. The scrim fades in. Metadata fills in when it arrives.
      * @param {string} imageId - Image ID to display
      */
     async open(imageId) {
@@ -208,11 +209,8 @@ class Modal {
         }
 
         this.currentImageId = imageId;
-        this.isOpen = true;
-
-        this.modal.classList.remove('hidden');
-        this.modal.classList.add('active');
-        document.body.style.overflow = 'hidden';
+        this._photoLayoutReady = false;
+        const shown = this.lifecycle.open();
         this.backStack?.claim('photo', () => this.close());
 
         this.loadImageContent(image);
@@ -220,6 +218,30 @@ class Modal {
         this.updateNavigationButtons();
 
         this.modal.focus({ preventScroll: true });
+        await shown;
+    }
+
+    /**
+     * Open while the exit fade is running, closed once it settles.
+     * @returns {boolean}
+     */
+    get isOpen() {
+        return this.lifecycle.isOpen;
+    }
+
+    /** Tear down the photo only after the scrim has left the screen. */
+    _onOverlayClosed() {
+        this.currentImageId = null;
+        this.isNavigating = false;
+        this.clearPhotoPlacement();
+        this.hideModalGlobe();
+        this._removePhotoGhost();
+        this._photoToken += 1;
+        this.setPhotoSource(Modal.BLANK_SRC, 'placeholder');
+    }
+
+    _removePhotoGhost() {
+        this.modalImageContainer?.querySelector('.modal-photo-ghost')?.remove();
     }
 
     /**
@@ -239,32 +261,14 @@ class Modal {
      * Close modal
      */
     close() {
+        if (this.lifecycle.isClosing) return this.lifecycle.close();
         if (!this.isOpen) {
             return;
         }
-        this.isOpen = false;
-        this.currentImageId = null;
         this.isNavigating = false;
-        this.clearPhotoPlacement();
-        this.backStack?.release('photo');
-
-        // Keep globe instance alive for reuse across modal opens, but
-        // stop the hidden 60fps loop until the next photo needs it.
-        this.hideModalGlobe();
-        
-        // Hide modal
-        this.modal.classList.remove('active');
-        this.modal.classList.add('hidden');
-        document.body.style.overflow = ''; // Restore scrolling
-        
-        // An empty src paints the broken-image glyph on the next open, so
-        // park a transparent pixel instead once the fade-out is done.
         this._photoToken += 1;
-        setTimeout(() => {
-            if (!this.isOpen) {
-                this.setPhotoSource(Modal.BLANK_SRC, 'placeholder');
-            }
-        }, 240);
+        this.backStack?.release('photo');
+        return this.lifecycle.close();
     }
 
     formatLocationWithState(image) {
@@ -743,7 +747,6 @@ class Modal {
         const image = this.imageService.getImageById(this.currentImageId);
         if (!image || !window.app?.globeExplorer) return;
 
-        this.close();
         await window.app.globeExplorer.open({
             id: image.id,
             latitude: image.latitude,
@@ -752,6 +755,7 @@ class Modal {
             state: image.state,
             location: image.location
         });
+        this.close();
     }
 
     /**

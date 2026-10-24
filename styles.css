@@ -820,10 +820,7 @@ body.exposure-1 .scroll-loading p {
 /* Modal styles - Fullscreen experience */
 .modal {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
+    inset: 0;
     background: rgba(168, 168, 168, 0.98);
     z-index: 1000;
     display: flex;
@@ -831,17 +828,26 @@ body.exposure-1 .scroll-loading p {
     justify-content: center;
     opacity: 0;
     visibility: hidden;
-    transition: all 0.5s ease;
+    transition:
+        opacity var(--dur-mid) var(--ease),
+        visibility 0s linear var(--dur-mid);
 }
 
 .modal.active {
     opacity: 1;
     visibility: visible;
+    transition:
+        opacity var(--dur-mid) var(--ease),
+        visibility 0s linear 0s;
+}
+
+.modal.is-exiting {
+    pointer-events: none;
 }
 
 .modal-content {
-    width: 100vw;
-    height: 100vh;
+    width: 100%;
+    height: 100%;
     background: transparent;
     position: relative;
     display: flex;
@@ -894,17 +900,12 @@ body.exposure-1 .scroll-loading p {
     max-width: 100%;
     max-height: 90vh;
     object-fit: contain;
-    transition: opacity 0.18s ease, transform 0.22s ease;
-    transform: scale(0.95);
+    transition: opacity 0.18s ease;
 }
 
 /* Reserved frame while neither the thumbnail nor the full photo is ready. */
 #modal-image.is-placeholder {
     background: rgba(0, 0, 0, 0.07);
-}
-
-.modal.active #modal-image {
-    transform: scale(1);
 }
 
 .nav-btn {
@@ -2177,7 +2178,7 @@ body.exposure-1 .btn-secondary {
         /* Room under the last fact/globe so a short viewport can scroll
            past it instead of pinning chrome to the home-indicator. */
         padding-bottom: calc(2.75rem + env(safe-area-inset-bottom, 0px) + 64px);
-        height: 100vh; /* Full viewport height */
+        height: 100%;
         overflow-y: auto;
         align-items: stretch;
         justify-content: flex-start;
@@ -2225,8 +2226,7 @@ body.exposure-1 .btn-secondary {
     .modal-content.modal-layout-animating #modal-image {
         transition:
             width var(--dur-slow) var(--ease),
-            height var(--dur-slow) var(--ease),
-            transform 0.5s ease;
+            height var(--dur-slow) var(--ease);
     }
 
     .modal-content.modal-layout-animating #modal-globe {
@@ -2370,22 +2370,6 @@ body.exposure-1 .btn-secondary {
         padding: 0.6rem 1.2rem;
         font-size: 0.85rem;
     }
-}
-
-/* Animation keyframes for smooth image transitions */
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: scale(0.95);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1);
-    }
-}
-
-.modal.active .modal-content {
-    animation: fadeIn 0.5s ease;
 }
 
 /* Enhanced hover effects */
@@ -2860,7 +2844,9 @@ body.exposure-1 { --leak-opacity: 0.35; }
     justify-content: center;
     opacity: 0;
     visibility: hidden;
-    transition: opacity 0.5s ease, visibility 0.5s ease;
+    transition:
+        opacity var(--dur-mid) var(--ease),
+        visibility 0s linear var(--dur-mid);
     background: rgba(168, 168, 168, 0.98);
 }
 
@@ -2894,6 +2880,18 @@ body.exposure-1 { --leak-opacity: 0.35; }
 .globe-explorer.active {
     opacity: 1;
     visibility: visible;
+    transition:
+        opacity var(--dur-mid) var(--ease),
+        visibility 0s linear 0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .modal,
+    .modal.active,
+    .globe-explorer,
+    .globe-explorer.active {
+        transition: none;
+    }
 }
 
 .globe-explorer-content {
@@ -3135,8 +3133,6 @@ body.exposure-1 { --leak-opacity: 0.35; }
 }
 
 .globe-explorer.is-exiting {
-    opacity: 0;
-    visibility: hidden;
     pointer-events: none;
 }
 
@@ -3806,7 +3802,6 @@ body.exposure-0 .timeline-sidebar.timeline-popout .timeline-month.active {
     font-family: 'Helvetica Neue', Arial, sans-serif;
     font-size: 0.9rem;
     font-weight: 300;
-    animation: slideIn 0.3s ease;
 }
 
 .app-error-toast-row {
