@@ -223,10 +223,17 @@ class Timeline {
         this.slideTimer = window.setTimeout(() => done(), 560);
     }
 
+    isCompactViewport() {
+        if (typeof GalleryLayout !== 'undefined' && GalleryLayout.isCompact) {
+            return GalleryLayout.isCompact(window);
+        }
+        return window.innerWidth <= 768;
+    }
+
     slideAway() {
         if (!this.container) return;
         this.clearSlideWait();
-        if (window.innerWidth <= 768 || this.prefersReducedMotion()) {
+        if (this.isCompactViewport() || this.prefersReducedMotion()) {
             this.hideImmediately();
             return;
         }
@@ -237,14 +244,13 @@ class Timeline {
         requestAnimationFrame(() => {
             this.container.classList.add('is-offstage');
         });
-        document.body.classList.remove('has-timeline');
         this.waitForSlide(() => this.hideImmediately());
     }
 
     slideIn() {
         if (!this.container) return;
         this.clearSlideWait();
-        if (window.innerWidth <= 768 || this.prefersReducedMotion()) {
+        if (this.isCompactViewport() || this.prefersReducedMotion()) {
             this.updateSidebarPosition();
             return;
         }
@@ -252,7 +258,6 @@ class Timeline {
         this.container.style.display = '';
         this.container.classList.add('is-offstage');
         this.container.classList.remove('is-animated');
-        document.body.classList.add('has-timeline');
         this.placeSidebar();
         this.container.setAttribute('aria-hidden', 'false');
         requestAnimationFrame(() => {
@@ -275,7 +280,6 @@ class Timeline {
         this.container.style.display = 'none';
         this.container.setAttribute('aria-hidden', 'true');
         this.container.classList.remove('timeline-popout');
-        document.body.classList.remove('has-timeline');
     }
 
     settleAfterSlide(isRandom) {
@@ -294,7 +298,7 @@ class Timeline {
             }
             return;
         }
-        if (isRandom || window.innerWidth <= 768) {
+        if (isRandom || this.isCompactViewport()) {
             this.hideImmediately();
             return;
         }
@@ -322,8 +326,7 @@ class Timeline {
 
         const isRandomView = this.imageService?.viewMode === 'random'
             || document.body.classList.contains('view-random');
-        const showTimeline = window.innerWidth > 768 && !isRandomView;
-        document.body.classList.toggle('has-timeline', showTimeline);
+        const showTimeline = !this.isCompactViewport() && !isRandomView;
 
         if (!showTimeline) {
             this.hideImmediately();

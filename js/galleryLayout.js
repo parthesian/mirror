@@ -9,6 +9,8 @@
 
 const GRID_ASPECT = 4 / 3;
 const DESKTOP_GAPS = { 1: 30, 2: 25, 3: 22, 4: 20, 5: 18, 6: 15 };
+const MIN_DESKTOP_TILE = 150;
+const COMPACT_QUERY = '(max-width: 768px), (max-height: 500px)';
 
 // Keeps a single very tall or very wide frame from wrecking a column.
 const MIN_ASPECT = 0.5;
@@ -16,6 +18,8 @@ const MAX_ASPECT = 2.4;
 
 const GalleryLayout = {
     GRID_ASPECT,
+    COMPACT_QUERY,
+    DESKTOP_QUERY: '(min-width: 769px) and (min-height: 501px)',
 
     /**
      * Column count and gap for the current viewport. Below the desktop
@@ -30,12 +34,18 @@ const GalleryLayout = {
         if (window.innerWidth <= 480) {
             gap = 10;
             columns = Math.max(1, Math.floor((width + gap) / (120 + gap)));
-        } else if (window.innerWidth <= 768) {
+        } else if (this.isCompact(window)) {
             gap = 15;
-            columns = Math.max(1, Math.floor((width + gap) / (150 + gap)));
+            columns = Math.max(1, Math.floor((width + gap) / (MIN_DESKTOP_TILE + gap)));
         } else {
-            columns = requestedColumns;
-            gap = DESKTOP_GAPS[requestedColumns] || 15;
+            columns = Math.max(1, requestedColumns || 1);
+            gap = DESKTOP_GAPS[columns] || 15;
+            while (columns > 1) {
+                const fitted = (width - gap * (columns - 1)) / columns;
+                if (fitted >= MIN_DESKTOP_TILE) break;
+                columns -= 1;
+                gap = DESKTOP_GAPS[columns] || 15;
+            }
         }
 
         const columnWidth = Math.max(1, (width - gap * Math.max(columns - 1, 0)) / columns);
@@ -112,6 +122,41 @@ const GalleryLayout = {
             rects,
             totalHeight: Math.max(0, tallest - gap)
         };
+    },
+
+    /**
+     * Narrow or short viewports share one chrome mode. A plain `{ innerWidth }`
+     * object, which the order check uses, has no matchMedia.
+     */
+    isCompact(win = typeof window !== 'undefined' ? window : null) {
+        if (!win) return false;
+        if (typeof win.matchMedia === 'function') {
+            try {
+                return Boolean(win.matchMedia(COMPACT_QUERY).matches);
+            } catch {
+                // Fall through to the width and height numbers.
+            }
+        }
+        const width = Number(win.innerWidth);
+        const height = Number(win.innerHeight);
+        const narrow = Number.isFinite(width) && width <= 768;
+        const short = Number.isFinite(height) && height <= 500;
+        return narrow || short;
+    },
+
+    /**
+     * Desktop column counts whose tiles stay at least 150px in this width.
+     * The leaf starts at 2. The stored preference can still be wider.
+     */
+    fittingColumnCounts(containerWidth) {
+        const width = Math.max(1, Number(containerWidth) || 0);
+        const counts = [];
+        for (let count = 2; count <= 6; count += 1) {
+            const gap = DESKTOP_GAPS[count] || 15;
+            const columnWidth = (width - gap * (count - 1)) / count;
+            if (columnWidth >= MIN_DESKTOP_TILE) counts.push(count);
+        }
+        return counts;
     },
 
     /**
