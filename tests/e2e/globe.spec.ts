@@ -287,6 +287,76 @@ test('zooming to local detail fetches the 10m file once across reopen', async ({
     expect(watch.nearOk).toBe(true);
 });
 
+test('texture tiles stay off at the fit distance and the base photo remains', async ({ page }) => {
+    test.setTimeout(60_000);
+    const tileUrls: string[] = [];
+    const tileStatuses: number[] = [];
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => {
+        pageErrors.push(String(error));
+    });
+    page.on('response', (response) => {
+        const url = response.url();
+        if (url.includes('/data/globe-tiles/')) {
+            tileUrls.push(url);
+            tileStatuses.push(response.status());
+        }
+    });
+
+    await page.goto('/?mock=1');
+    await openExplorer(page);
+    await page.waitForTimeout(2000);
+    expect(tileUrls).toEqual([]);
+    const fitDistance = (await page.evaluate(
+        `window.app.globeExplorer.threeState.camera.position.length()`,
+    )) as number;
+    expect(fitDistance).toBeGreaterThanOrEqual(2.6);
+
+    await wheelNotches(page, 8, -100);
+    await expect
+        .poll(async () => {
+            return page.evaluate(`window.app.globeExplorer.threeState.camera.position.length()`);
+        })
+        .toBeLessThan(1.51);
+    await expect
+        .poll(() => {
+            return tileUrls.some((url, index) => {
+                const path = url.split('?')[0] ?? url;
+                return (
+                    path.includes('/data/globe-tiles/v1/r') &&
+                    path.endsWith('.jpg') &&
+                    tileStatuses[index] === 200
+                );
+            });
+        })
+        .toBe(true);
+
+    await expect
+        .poll(
+            async () => {
+                await wheelNotches(page, 2, 100);
+                return page.evaluate(
+                    `window.app.globeExplorer.threeState.camera.position.length()`,
+                );
+            },
+            { timeout: 20000 },
+        )
+        .toBeGreaterThan(2.2);
+
+    expect(pageErrors).toEqual([]);
+    const texture = (await page.evaluate(`(() => {
+        const image = window.app.globeExplorer.threeState.tex
+            ? window.app.globeExplorer.threeState.tex.image
+            : null;
+        return {
+            width: image ? image.naturalWidth : 0,
+            src: image ? (image.currentSrc || image.src || '') : ''
+        };
+    })()`)) as { width: number; src: string };
+    expect(texture.width).toBe(2048);
+    expect(texture.src).toContain('/earth_atmos_2048.jpg');
+});
+
 test('wheel zoom then drag keeps the polar axis upright', async ({ page }) => {
     await page.goto('/?mock=1');
     await openExplorer(page);

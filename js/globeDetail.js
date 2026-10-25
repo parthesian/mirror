@@ -55,6 +55,22 @@
         LEVEL_D: { regional: 2.05, local: 1.55 },
         HYSTERESIS: 0.04,
         PREFETCH_D: { regional: 2.35, local: 1.80 },
+        TEXTURE: {
+            radius: 1.0002,
+            minIncidence: 0.30,
+            grid: 9,
+            margin: 1,
+            viewCap: 16,
+            lru: 16,
+            inflight: 4,
+            featherTexels: 8,
+            tileDeg: 15,
+            cols: 24,
+            rows: 12,
+            tileSize: 450,
+            maxTileBytes: 80000,
+            manifest: '/data/globe-tiles/v1/manifest.json'
+        },
         CROSSFADE_MS: 360,
         CROSSFADE_REDUCED_MS: 120,
         HOVER_IN_MS: 140,
@@ -458,6 +474,313 @@
             z: oz + t * dirZ,
             t
         };
+    }
+
+    /**
+     * Longitude in [-180, 180). 180 and -180 both land on -180.
+     * @param {number} lon
+     * @returns {number}
+     */
+    function wrapLon(lon) {
+        let turns = (lon + 180) % 360;
+        if (turns < 0) {
+            turns += 360;
+        }
+        if (turns >= 360) {
+            turns -= 360;
+        }
+        return turns - 180;
+    }
+
+    /**
+     * Next IEEE-754 value from `x` toward `y`.
+     * @param {number} x
+     * @param {number} y
+     * @returns {number}
+     */
+    function nextAfter(x, y) {
+        if (Number.isNaN(x) || Number.isNaN(y)) {
+            return NaN;
+        }
+        if (x === y) {
+            return x;
+        }
+        if (x === 0) {
+            return y < 0 ? -Number.MIN_VALUE : Number.MIN_VALUE;
+        }
+        const buffer = new ArrayBuffer(8);
+        const view = new DataView(buffer);
+        view.setFloat64(0, x, false);
+        const high = view.getUint32(0, false);
+        const low = view.getUint32(4, false);
+        let bits = BigInt(high) * 4294967296n + BigInt(low);
+        const towardPositive = y > x;
+        const positive = x > 0;
+        if (towardPositive === positive) {
+            bits += 1n;
+        } else {
+            bits -= 1n;
+        }
+        view.setUint32(0, Number(bits >> 32n), false);
+        view.setUint32(4, Number(bits & 0xffffffffn), false);
+        return view.getFloat64(0, false);
+    }
+
+    /**
+     * @param {number} lat
+     * @param {number} lon
+     * @returns {{ row: number, col: number }}
+     */
+    function tileIndex(lat, lon) {
+        const tex = CONFIG.TEXTURE;
+        const wrapped = wrapLon(lon);
+        let latPrime = Math.min(lat, 90);
+        if (latPrime === 90) {
+            latPrime = nextAfter(90, 0);
+        }
+        const col = clamp(Math.floor((wrapped + 180) / tex.tileDeg), 0, tex.cols - 1);
+        const row = clamp(Math.floor((90 - clamp(latPrime, -90, 90)) / tex.tileDeg), 0, tex.rows - 1);
+        return { row, col };
+    }
+
+    /**
+     * @param {Vec3} a
+     * @param {Vec3} b
+     * @returns {Vec3}
+     */
+    function cross3(a, b) {
+        return {
+            x: a.y * b.z - a.z * b.y,
+            y: a.z * b.x - a.x * b.z,
+            z: a.x * b.y - a.y * b.x
+        };
+    }
+
+    /**
+     * @param {number} lat1
+     * @param {number} lon1
+     * @param {number} lat2
+     * @param {number} lon2
+     * @returns {number}
+     */
+    function distanceDegrees(lat1, lon1, lat2, lon2) {
+        const toRad = Math.PI / 180;
+        const phi1 = lat1 * toRad;
+        const phi2 = lat2 * toRad;
+        const dPhi = (lat2 - lat1) * toRad;
+        const dLon = (lon2 - lon1) * toRad;
+        const haversine = Math.sin(dPhi / 2) ** 2
+            + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dLon / 2) ** 2;
+        const angle = 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(Math.max(0, 1 - haversine)));
+        return angle / toRad;
+    }
+
+    /**
+     * @param {Vec3} right
+     * @param {Vec3} up
+     * @param {Vec3} forward
+     * @param {number} nx
+     * @param {number} ny
+     * @param {number} aspect
+     * @param {number} tanHalf
+     * @returns {Vec3}
+     */
+    function viewRay(right, up, forward, nx, ny, aspect, tanHalf) {
+        const sx = nx * aspect * tanHalf;
+        const sy = ny * tanHalf;
+        return {
+            x: right.x * sx + up.x * sy + forward.x,
+            y: right.y * sx + up.y * sy + forward.y,
+            z: right.z * sx + up.z * sy + forward.z
+        };
+    }
+
+    /**
+     * @param {{ x: number, y: number, z: number }} hit
+     * @param {Vec3} camera
+     * @returns {number}
+     */
+    function hitIncidence(hit, camera) {
+        const hitLen = Math.hypot(hit.x, hit.y, hit.z);
+        const vx = camera.x - hit.x;
+        const vy = camera.y - hit.y;
+        const vz = camera.z - hit.z;
+        const viewLen = Math.hypot(vx, vy, vz);
+        if (!(hitLen > 0) || !(viewLen > 0)) {
+            return 0;
+        }
+        return (hit.x / hitLen) * (vx / viewLen)
+            + (hit.y / hitLen) * (vy / viewLen)
+            + (hit.z / hitLen) * (vz / viewLen);
+    }
+
+    /**
+     * @param {{ x: number, y: number, z: number }} hit
+     * @returns {{ lat: number, lon: number }}
+     */
+    function hitLatLon(hit) {
+        const lat = Math.asin(clamp(hit.y, -1, 1)) * 180 / Math.PI;
+        if (Math.hypot(hit.x, hit.z) < 1e-8) {
+            return { lat, lon: 0 };
+        }
+        const lon = wrapLon(Math.atan2(hit.z, -hit.x) * 180 / Math.PI - 180);
+        return { lat, lon };
+    }
+
+    /**
+     * @param {Vec3} camera
+     * @param {Vec3} right
+     * @param {Vec3} up
+     * @param {Vec3} forward
+     * @param {number} nx
+     * @param {number} ny
+     * @param {number} aspect
+     * @param {number} tanHalf
+     * @returns {{ x: number, y: number, z: number, t: number } | null}
+     */
+    function castViewRay(camera, right, up, forward, nx, ny, aspect, tanHalf) {
+        const direct = viewRay(right, up, forward, nx, ny, aspect, tanHalf);
+        const hit = rayUnitSphere(camera.x, camera.y, camera.z, direct.x, direct.y, direct.z);
+        if (hit) {
+            return hit;
+        }
+        let lo = 0;
+        let hi = 1;
+        /** @type {{ x: number, y: number, z: number, t: number } | null} */
+        let last = null;
+        for (let iteration = 0; iteration < 12; iteration += 1) {
+            const scale = (lo + hi) / 2;
+            const scaled = viewRay(right, up, forward, nx * scale, ny * scale, aspect, tanHalf);
+            const limb = rayUnitSphere(camera.x, camera.y, camera.z, scaled.x, scaled.y, scaled.z);
+            if (limb) {
+                last = limb;
+                lo = scale;
+            } else {
+                hi = scale;
+            }
+        }
+        return last;
+    }
+
+    /**
+     * Visible tile ids for one aim. `d` is used as given.
+     * @param {{ lat: number, lon: number, d: number, aspect: number, fovDeg?: number }} view
+     * @returns {{ row: number, col: number }[]}
+     */
+    function tilesForView(view) {
+        const tex = CONFIG.TEXTURE;
+        const lat = view.lat;
+        const lon = view.lon;
+        const distance = view.d;
+        const aspect = view.aspect;
+        const fovDeg = view.fovDeg == null ? 45 : view.fovDeg;
+        const camera = latLonToXYZ(lat, lon, distance);
+        const cameraLen = Math.hypot(camera.x, camera.y, camera.z);
+        if (!(cameraLen > 0) || !(tex.grid > 1)) {
+            return [];
+        }
+        const forward = {
+            x: -camera.x / cameraLen,
+            y: -camera.y / cameraLen,
+            z: -camera.z / cameraLen
+        };
+        let right = cross3(forward, { x: 0, y: 1, z: 0 });
+        const rightLen = Math.hypot(right.x, right.y, right.z);
+        if (rightLen < 1e-8) {
+            right = { x: 1, y: 0, z: 0 };
+        } else {
+            right = { x: right.x / rightLen, y: right.y / rightLen, z: right.z / rightLen };
+        }
+        let up = cross3(right, forward);
+        const upLen = Math.hypot(up.x, up.y, up.z);
+        if (!(upLen > 0)) {
+            return [];
+        }
+        up = { x: up.x / upLen, y: up.y / upLen, z: up.z / upLen };
+        const tanHalf = Math.tan(fovDeg * Math.PI / 360);
+        const steps = tex.grid - 1;
+        /** @type {Set<string>} */
+        const coreKeys = new Set();
+        for (let iy = 0; iy < tex.grid; iy += 1) {
+            for (let ix = 0; ix < tex.grid; ix += 1) {
+                const nx = -1 + (2 * ix) / steps;
+                const ny = -1 + (2 * iy) / steps;
+                const hit = castViewRay(camera, right, up, forward, nx, ny, aspect, tanHalf);
+                if (!hit || hitIncidence(hit, camera) < tex.minIncidence) {
+                    continue;
+                }
+                const sample = hitLatLon(hit);
+                const indexed = tileIndex(sample.lat, sample.lon);
+                coreKeys.add(`${indexed.row},${indexed.col}`);
+            }
+        }
+        /** @type {Map<string, { row: number, col: number, core: number, distance: number }>} */
+        const pool = new Map();
+        for (const key of coreKeys) {
+            const comma = key.indexOf(',');
+            const row0 = Number(key.slice(0, comma));
+            const col0 = Number(key.slice(comma + 1));
+            for (let dRow = -tex.margin; dRow <= tex.margin; dRow += 1) {
+                for (let dCol = -tex.margin; dCol <= tex.margin; dCol += 1) {
+                    const row = row0 + dRow;
+                    if (row < 0 || row >= tex.rows) {
+                        continue;
+                    }
+                    const col = ((col0 + dCol) % tex.cols + tex.cols) % tex.cols;
+                    const id = `${row},${col}`;
+                    if (pool.has(id)) {
+                        continue;
+                    }
+                    const centerLat = 90 - (row + 0.5) * tex.tileDeg;
+                    const centerLon = wrapLon(-180 + (col + 0.5) * tex.tileDeg);
+                    const angle = distanceDegrees(lat, lon, centerLat, centerLon);
+                    pool.set(id, {
+                        row,
+                        col,
+                        core: coreKeys.has(id) ? 0 : 1,
+                        distance: Math.round(angle * 1e6) / 1e6
+                    });
+                }
+            }
+        }
+        const ranked = Array.from(pool.values());
+        ranked.sort((a, b) => {
+            if (a.core !== b.core) {
+                return a.core - b.core;
+            }
+            if (a.distance !== b.distance) {
+                return a.distance < b.distance ? -1 : 1;
+            }
+            if (a.row !== b.row) {
+                return a.row - b.row;
+            }
+            return a.col - b.col;
+        });
+        /** @type {{ row: number, col: number }[]} */
+        const selected = [];
+        const limit = ranked.length < tex.viewCap ? ranked.length : tex.viewCap;
+        for (let index = 0; index < limit; index += 1) {
+            const item = ranked[index];
+            if (!item) {
+                continue;
+            }
+            selected.push({ row: item.row, col: item.col });
+        }
+        return selected;
+    }
+
+    /**
+     * @param {number} d
+     * @param {number} hGoal
+     * @param {boolean} saveData
+     * @returns {boolean}
+     */
+    function shouldFetchTexture(d, hGoal, saveData) {
+        if (saveData) {
+            return false;
+        }
+        const dAhead = Math.min(d, 1 + hGoal);
+        return dAhead < CONFIG.PREFETCH_D.local;
     }
 
     /**
@@ -1111,6 +1434,9 @@
         crossfadeWeights,
         latLonToXYZ,
         rayUnitSphere,
+        tileIndex,
+        tilesForView,
+        shouldFetchTexture,
         splitSegment,
         densifyPoints,
         createEdgeAccumulator,
