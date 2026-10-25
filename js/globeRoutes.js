@@ -24,7 +24,7 @@ class GlobeRoutes {
             return null;
         }
 
-        const radius = 1.01;
+        const radius = 1.0025;
         const minArcAngle = THREE.MathUtils.degToRad(1.0);
         const arcMat = new THREE.LineBasicMaterial({
             color: 0xffffff,
