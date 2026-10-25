@@ -579,13 +579,6 @@ body.exposure-1 .scroll-loading p {
         transition: none;
     }
 
-    .modal-content.modal-layout-animating .modal-image-container,
-    .modal-content.modal-layout-animating .modal-info,
-    .modal-content.modal-layout-animating #modal-globe,
-    .modal-content.modal-layout-animating #modal-image {
-        transition: none;
-    }
-
     .timeline-sidebar.is-animated {
         transition: none;
     }
@@ -911,29 +904,6 @@ body.exposure-1 .scroll-loading p {
 /* Reserved frame while neither the thumbnail nor the full photo is ready. */
 #modal-image.is-placeholder {
     background: rgba(0, 0, 0, 0.07);
-}
-
-.modal-content.modal-layout-animating #modal-image {
-    transition:
-        opacity 0.18s ease,
-        width var(--dur-slow) var(--ease),
-        height var(--dur-slow) var(--ease);
-}
-
-.modal-photo-ghost {
-    position: absolute;
-    z-index: 2;
-    object-fit: contain;
-    pointer-events: none;
-    max-width: none;
-    max-height: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .modal-content.modal-layout-animating #modal-image,
-    .modal-photo-ghost {
-        transition: none;
-    }
 }
 
 .nav-btn {
@@ -2242,22 +2212,6 @@ body.exposure-1 .btn-secondary {
         margin-right: auto;
     }
 
-    .modal-content.modal-layout-animating .modal-image-container {
-        transition:
-            height var(--dur-slow) var(--ease),
-            margin-top var(--dur-slow) var(--ease);
-    }
-
-    .modal-content.modal-layout-animating .modal-info {
-        transition: width var(--dur-slow) var(--ease);
-    }
-
-    .modal-content.modal-layout-animating #modal-globe {
-        transition:
-            width var(--dur-slow) var(--ease),
-            height var(--dur-slow) var(--ease);
-    }
-    
     #modal-image {
         max-width: 100%;
         max-height: 68vh;
@@ -2305,15 +2259,16 @@ body.exposure-1 .btn-secondary {
         text-align: left;
     }
 
-    /* Match the copy block height so the globe sits beside the facts
-       instead of below them. Scoped to the photo modal, not the explorer. */
+    /* Square disc beside the facts. Stretch would keep a tall box after
+       max-width clamps the width. Scoped to the photo modal. */
     #modal-globe:not(.hidden) {
         flex: 0 0 auto;
-        align-self: stretch;
+        align-self: center;
         width: auto;
         height: auto;
         aspect-ratio: 1 / 1;
         max-width: 30%;
+        max-height: 100%;
         margin: 0;
     }
 }
