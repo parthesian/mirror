@@ -1,7 +1,16 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Group, PerspectiveCamera, Raycaster, SphereGeometry, Vector3 } from 'three';
+import * as THREE from 'three';
+import {
+    Group,
+    Mesh,
+    NormalBlending,
+    PerspectiveCamera,
+    Raycaster,
+    SphereGeometry,
+    Vector3,
+} from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { describe, expect, it } from 'vitest';
 
@@ -65,6 +74,15 @@ type GlobeDetailApi = {
     ): { x: number; y: number; z: number; t: number } | null;
 };
 
+type RoutePoint = { x: number; y: number; z: number };
+type RouteLocation = {
+    latitude: number;
+    longitude: number;
+    country?: string;
+    state?: string;
+    location?: string;
+};
+
 type GlobeRoutesCtor = new () => {
     latLonToVec3(
         lat: number,
@@ -75,6 +93,13 @@ type GlobeRoutesCtor = new () => {
             Vector3: typeof Vector3;
         },
     ): Vector3;
+    sampleArc(start: RoutePoint, end: RoutePoint): RoutePoint[];
+    buildArcs(
+        three: typeof THREE,
+        group: Group,
+        locations: RouteLocation[],
+        locationKeyFor: (loc: RouteLocation) => string,
+    ): Mesh | null;
 };
 
 function loadClassic<T>(relativePath: string, exportName: string): T {
@@ -495,6 +520,91 @@ describe('globe detail', () => {
         expect(polar).toBeGreaterThanOrEqual(controls.minPolarAngle - 1e-6);
         expect(polar).toBeLessThanOrEqual(controls.maxPolarAngle + 1e-6);
         controls.dispose();
+    });
+
+    it('keeps travel paths above the globe, including long routes north from India', () => {
+        const routes = new GlobeRoutes();
+        const place = (latitude: number, longitude: number, location: string): RouteLocation => ({
+            latitude,
+            longitude,
+            country: 'India',
+            state: location,
+            location,
+        });
+        const hops: Array<[RouteLocation, RouteLocation]> = [
+            [place(28.6139, 77.209, 'Delhi'), place(34.1526, 77.5771, 'Leh')],
+            [place(28.6139, 77.209, 'Delhi'), place(78.2232, 15.6467, 'Longyearbyen')],
+            [place(13.0827, 80.2707, 'Chennai'), place(64.8378, -147.7164, 'Fairbanks')],
+            [place(20, 78, 'India'), place(-20, -102, 'Antipode')],
+        ];
+
+        const closestRadius = (a: RoutePoint, b: RoutePoint): number => {
+            const abx = b.x - a.x;
+            const aby = b.y - a.y;
+            const abz = b.z - a.z;
+            const ab2 = abx * abx + aby * aby + abz * abz;
+            const t =
+                ab2 === 0
+                    ? 0
+                    : Math.max(0, Math.min(1, -(a.x * abx + a.y * aby + a.z * abz) / ab2));
+            return Math.hypot(a.x + abx * t, a.y + aby * t, a.z + abz * t);
+        };
+
+        for (const hop of hops) {
+            const from = hop[0];
+            const to = hop[1];
+            expect(from).toBeDefined();
+            expect(to).toBeDefined();
+            if (!from || !to) {
+                return;
+            }
+            const start = routes.latLonToVec3(from.latitude, from.longitude, 1, THREE);
+            const end = routes.latLonToVec3(to.latitude, to.longitude, 1, THREE);
+            const points = routes.sampleArc(start, end);
+            expect(points.length).toBeGreaterThan(8);
+            let lowest = Infinity;
+            for (let i = 0; i < points.length; i += 1) {
+                const point = points[i];
+                expect(point).toBeDefined();
+                if (!point) {
+                    return;
+                }
+                const radius = Math.hypot(point.x, point.y, point.z);
+                expect(radius).toBeGreaterThanOrEqual(1.0025 - 1e-6);
+                if (i > 0) {
+                    const previous = points[i - 1];
+                    expect(previous).toBeDefined();
+                    if (!previous) {
+                        return;
+                    }
+                    lowest = Math.min(lowest, closestRadius(previous, point));
+                }
+            }
+            expect(lowest).toBeGreaterThanOrEqual(1.002);
+        }
+
+        const group = new Group();
+        const mesh = routes.buildArcs(
+            THREE,
+            group,
+            [hops[2]?.[0], hops[2]?.[1]].filter((loc) => loc != null),
+            (loc) => `${loc.country}|${loc.location}`,
+        );
+        expect(mesh).toBeInstanceOf(Mesh);
+        if (!(mesh instanceof Mesh)) {
+            return;
+        }
+        expect(mesh.material).toMatchObject({
+            blending: NormalBlending,
+            depthTest: true,
+            depthWrite: false,
+            transparent: true,
+            type: 'ShaderMaterial',
+        });
+        mesh.geometry.dispose();
+        if (!Array.isArray(mesh.material)) {
+            mesh.material.dispose();
+        }
     });
 
     it('reaches 95% of a notch at 330 ms without passing the goal', () => {
