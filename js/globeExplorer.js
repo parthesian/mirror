@@ -53,11 +53,15 @@ class GlobeExplorer {
         this.lastPointerGesture = null;
         this.selectedFilterType = 'country';
         this.selectedFilterValue = '';
-        this.selectedFilters = { country: '', state: '', location: '', color: '' };
+        this.selectedFilters = { country: '', state: '', location: '', color: '', camera: '' };
         this.colorOptions = [];
         this._colorsFetchedOnce = false;
         this._colorsFilterKey = '';
         this._colorsPromise = null;
+        this.cameraOptions = [];
+        this._camerasFetchedOnce = false;
+        this._camerasFilterKey = '';
+        this._camerasPromise = null;
         this.lastManualRotateAt = 0;
         this.locationGroupByKey = new Map();
         this.hoverHighlight = { type: null, key: null };
@@ -117,7 +121,8 @@ class GlobeExplorer {
             country: 'COUNTRY',
             state: 'REGION',
             location: 'PLACE',
-            color: 'COLOR'
+            color: 'COLOR',
+            camera: 'CAMERA'
         };
         const base = `${labels[filterType] || 'FILTER'}: ${String(filterValue || '').toUpperCase()}`;
         return label ? `${base} · ${String(label).toUpperCase()}` : base;
@@ -135,7 +140,8 @@ class GlobeExplorer {
             filters.country ? this._formatFilterLabel('country', filters.country) : '',
             filters.state ? this._formatFilterLabel('state', filters.state) : '',
             filters.location ? this._formatFilterLabel('location', filters.location) : '',
-            filters.color ? this._formatFilterLabel('color', filters.color) : ''
+            filters.color ? this._formatFilterLabel('color', filters.color) : '',
+            filters.camera ? this._formatFilterLabel('camera', filters.camera) : ''
         ].filter(Boolean);
     }
 
@@ -901,6 +907,7 @@ class GlobeExplorer {
         if (includeGeo) {
             this._fetchLocations().catch(() => {});
             this._fetchColors().catch(() => {});
+            this._fetchCameras().catch(() => {});
         }
         if (includeBoundaries) {
             window.countryBoundaries?.ensureLoaded()
@@ -1039,6 +1046,19 @@ class GlobeExplorer {
             filters.country || '',
             filters.state || '',
             filters.location || '',
+            filters.camera || '',
+            this.imageService?.takenFromFilter || '',
+            this.imageService?.takenToFilter || ''
+        ].join('\u0001');
+    }
+
+    _cameraFacetKey() {
+        const filters = this.selectedFilters || {};
+        return [
+            filters.country || '',
+            filters.state || '',
+            filters.location || '',
+            filters.color || '',
             this.imageService?.takenFromFilter || '',
             this.imageService?.takenToFilter || ''
         ].join('\u0001');
@@ -1069,16 +1089,7 @@ class GlobeExplorer {
         try {
             const base = (window.CONFIG?.API_BASE_URL || '').replace(/\/$/, '');
             const url = new URL(base ? `${base}/api/photos/colors` : '/api/photos/colors', window.location.origin);
-            const filters = this.selectedFilters || {};
-            if (filters.country) url.searchParams.set('country', filters.country);
-            if (filters.state) url.searchParams.set('state', filters.state);
-            if (filters.location) url.searchParams.set('location', filters.location);
-            if (this.imageService?.takenFromFilter) {
-                url.searchParams.set('takenFrom', this.imageService.takenFromFilter);
-            }
-            if (this.imageService?.takenToFilter) {
-                url.searchParams.set('takenTo', this.imageService.takenToFilter);
-            }
+            this._appendFacetParams(url, { camera: true });
 
             const res = await fetch(url.toString());
             const data = await res.json();
@@ -1095,6 +1106,68 @@ class GlobeExplorer {
         } finally {
             if (this._colorFacetKey() === key) {
                 this._colorsFetchedOnce = true;
+                this._renderFilterMenu();
+            }
+        }
+    }
+
+    _appendFacetParams(url, include) {
+        const filters = this.selectedFilters || {};
+        if (filters.country) url.searchParams.set('country', filters.country);
+        if (filters.state) url.searchParams.set('state', filters.state);
+        if (filters.location) url.searchParams.set('location', filters.location);
+        if (include.color && filters.color) url.searchParams.set('color', filters.color);
+        if (include.camera && filters.camera) url.searchParams.set('camera', filters.camera);
+        if (this.imageService?.takenFromFilter) {
+            url.searchParams.set('takenFrom', this.imageService.takenFromFilter);
+        }
+        if (this.imageService?.takenToFilter) {
+            url.searchParams.set('takenTo', this.imageService.takenToFilter);
+        }
+    }
+
+    async _fetchCameras() {
+        const key = this._cameraFacetKey();
+        if (this._camerasFetchedOnce && this._camerasFilterKey === key && !this._camerasPromise) {
+            return;
+        }
+        if (this._camerasPromise && this._camerasFilterKey === key) {
+            return this._camerasPromise;
+        }
+
+        this._camerasFilterKey = key;
+        const request = this._fetchCamerasInternal(key);
+        this._camerasPromise = request;
+        try {
+            await request;
+        } finally {
+            if (this._camerasPromise === request) {
+                this._camerasPromise = null;
+            }
+        }
+    }
+
+    async _fetchCamerasInternal(key) {
+        try {
+            const base = (window.CONFIG?.API_BASE_URL || '').replace(/\/$/, '');
+            const url = new URL(base ? `${base}/api/photos/cameras` : '/api/photos/cameras', window.location.origin);
+            this._appendFacetParams(url, { color: true });
+
+            const res = await fetch(url.toString());
+            const data = await res.json();
+            if (this._cameraFacetKey() !== key) {
+                return;
+            }
+            this.cameraOptions = Array.isArray(data.cameras) ? data.cameras : [];
+        } catch (err) {
+            if (this._cameraFacetKey() !== key) {
+                return;
+            }
+            console.error('[GlobeExplorer] failed to fetch camera facets', err);
+            this.cameraOptions = [];
+        } finally {
+            if (this._cameraFacetKey() === key) {
+                this._camerasFetchedOnce = true;
                 this._renderFilterMenu();
             }
         }
@@ -1868,16 +1941,20 @@ class GlobeExplorer {
      * this before reading options; repeat calls are free once it has landed.
      */
     async ensureFilterData() {
-        await Promise.all([this._fetchLocations(), this._fetchColors()]);
+        await Promise.all([this._fetchLocations(), this._fetchColors(), this._fetchCameras()]);
         return this.locations;
     }
 
     get hasFilterData() {
-        return this._geoFetchedOnce || this._colorsFetchedOnce;
+        return this._geoFetchedOnce || this._colorsFetchedOnce || this._camerasFetchedOnce;
     }
 
     get hasColorFilterData() {
         return this._colorsFetchedOnce;
+    }
+
+    get hasCameraFilterData() {
+        return this._camerasFetchedOnce;
     }
 
     get hasPlaceFilterData() {
@@ -1888,12 +1965,15 @@ class GlobeExplorer {
         if (type === 'color') {
             return this.colorOptions;
         }
+        if (type === 'camera') {
+            return this.cameraOptions;
+        }
         if (!this._geoFetchedOnce) return [];
         return this._getOptionsForType(type);
     }
 
     getSelectedFilters() {
-        return { ...(this.selectedFilters || { country: '', state: '', location: '', color: '' }) };
+        return { ...this._emptyFilters(), ...(this.selectedFilters || {}) };
     }
 
     getActiveFilterLabel() {
@@ -1943,7 +2023,8 @@ class GlobeExplorer {
             { type: 'country', label: 'country' },
             { type: 'state', label: 'region' },
             { type: 'location', label: 'place' },
-            { type: 'color', label: 'color' }
+            { type: 'color', label: 'color' },
+            { type: 'camera', label: 'camera' }
         ];
         for (const kind of kinds) {
             const btn = document.createElement('button');
@@ -1986,7 +2067,8 @@ class GlobeExplorer {
                 country: 'countries',
                 state: 'regions',
                 location: 'places',
-                color: 'colors'
+                color: 'colors',
+                camera: 'cameras'
             };
             this.filterScopeTitle.textContent = titles[this.selectedFilterType] || 'options';
         }
@@ -1996,6 +2078,13 @@ class GlobeExplorer {
     }
 
     _getOptionsForType(type) {
+        if (type === 'color') {
+            return this.colorOptions || [];
+        }
+        if (type === 'camera') {
+            return this.cameraOptions || [];
+        }
+
         const filters = this.selectedFilters || {};
         const cacheKey = [
             type,
@@ -2007,9 +2096,7 @@ class GlobeExplorer {
         }
 
         let options;
-        if (type === 'color') {
-            options = this.colorOptions;
-        } else if (type === 'country') {
+        if (type === 'country') {
             options = this._buildFilterOptions(this.locations, 'country', { excludeUnknown: true });
         } else if (type === 'state') {
             options = this._buildFilterOptions(this._getLocationsForFilterScope('state'), 'state', { includeCountryContext: true });
@@ -2100,7 +2187,7 @@ class GlobeExplorer {
 
     _normalizeFilterSelections() {
         if (!this.selectedFilters) {
-            this.selectedFilters = { country: '', state: '', location: '', color: '' };
+            this.selectedFilters = this._emptyFilters();
         }
         if (this.selectedFilters.country && !this._isOptionValid('country', this.selectedFilters.country)) {
             this.selectedFilters.country = '';
@@ -2114,12 +2201,15 @@ class GlobeExplorer {
         if (this._colorsFetchedOnce && this.selectedFilters.color && !this._isOptionValid('color', this.selectedFilters.color)) {
             this.selectedFilters.color = '';
         }
+        if (this._camerasFetchedOnce && this.selectedFilters.camera && !this._isOptionValid('camera', this.selectedFilters.camera)) {
+            this.selectedFilters.camera = '';
+        }
         this._syncSelectedFilterValue();
     }
 
     _setFilterSelection(type, value, render = true) {
         if (!this.selectedFilters) {
-            this.selectedFilters = { country: '', state: '', location: '', color: '' };
+            this.selectedFilters = this._emptyFilters();
         }
         this.selectedFilters[type] = value || '';
         if (type === 'country') {
@@ -2139,10 +2229,10 @@ class GlobeExplorer {
 
     _setFilterSelectionFromOption(type, item, render = true) {
         if (!this.selectedFilters) {
-            this.selectedFilters = { country: '', state: '', location: '', color: '' };
+            this.selectedFilters = this._emptyFilters();
         }
-        if (type === 'color') {
-            this.selectedFilters.color = item?.value || '';
+        if (type === 'color' || type === 'camera') {
+            this.selectedFilters[type] = item?.value || '';
             this._syncSelectedFilterValue();
             if (render) this._renderFilterMenu();
             return;
@@ -2176,7 +2266,7 @@ class GlobeExplorer {
 
     _clearFilterSelection(type, render = true) {
         if (!this.selectedFilters) {
-            this.selectedFilters = { country: '', state: '', location: '', color: '' };
+            this.selectedFilters = this._emptyFilters();
         }
         if (type === 'country') {
             this.selectedFilters.country = '';
@@ -2189,6 +2279,8 @@ class GlobeExplorer {
             this.selectedFilters.location = '';
         } else if (type === 'color') {
             this.selectedFilters.color = '';
+        } else if (type === 'camera') {
+            this.selectedFilters.camera = '';
         }
         this._syncSelectedFilterValue();
         if (render) this._renderFilterMenu();
@@ -2200,16 +2292,17 @@ class GlobeExplorer {
         if (filters.state) return { type: 'state', value: filters.state };
         if (filters.country) return { type: 'country', value: filters.country };
         if (filters.color) return { type: 'color', value: filters.color };
+        if (filters.camera) return { type: 'camera', value: filters.camera };
         return null;
     }
 
     _hasAnySelectedFilter() {
         const filters = this.selectedFilters || {};
-        return Boolean(filters.country || filters.state || filters.location || filters.color);
+        return Boolean(filters.country || filters.state || filters.location || filters.color || filters.camera);
     }
 
     _emptyFilters() {
-        return { country: '', state: '', location: '', color: '' };
+        return { country: '', state: '', location: '', color: '', camera: '' };
     }
 
     _syncImageServiceFilters(takenFrom = null, takenTo = null) {
@@ -2218,6 +2311,7 @@ class GlobeExplorer {
         this.imageService.stateFilter = filters.state || null;
         this.imageService.locationFilter = filters.location || null;
         this.imageService.colorFilter = filters.color || null;
+        this.imageService.cameraFilter = filters.camera || null;
         this.imageService.takenFromFilter = takenFrom || null;
         this.imageService.takenToFilter = takenTo || null;
     }
@@ -2227,7 +2321,7 @@ class GlobeExplorer {
             await this.close();
         }
         this._syncImageServiceFilters(takenFrom, takenTo);
-        await this._fetchColors();
+        await Promise.all([this._fetchColors(), this._fetchCameras()]);
         this._renderFilterMenu();
         this._syncImageServiceFilters(takenFrom, takenTo);
         this._emitFilterChange();
@@ -2269,7 +2363,7 @@ class GlobeExplorer {
         this.selectedFilterValue = '';
         this.selectedFilters = this._emptyFilters();
         this._syncImageServiceFilters();
-        await this._fetchColors();
+        await Promise.all([this._fetchColors(), this._fetchCameras()]);
         this._renderFilterMenu();
         this._emitFilterChange();
         if (window.gallery) {

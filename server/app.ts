@@ -16,6 +16,7 @@ import {
     getPhotoImage,
     getPhotoMetadata,
     listGeo,
+    listPhotoCameras,
     listPhotoColors,
     listPhotos,
     listTimeline,
@@ -66,6 +67,12 @@ app.all(
     '/photos/colors',
     allow({
         GET: publicHandler('Failed to retrieve photo colors.', listPhotoColors),
+    }),
+);
+app.all(
+    '/photos/cameras',
+    allow({
+        GET: publicHandler('Failed to retrieve photo cameras.', listPhotoCameras),
     }),
 );
 app.all(

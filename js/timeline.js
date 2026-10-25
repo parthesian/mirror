@@ -381,6 +381,7 @@ class Timeline {
             state: this.imageService.stateFilter || '',
             location: this.imageService.locationFilter || '',
             color: this.imageService.colorFilter || '',
+            camera: this.imageService.cameraFilter || '',
             takenFrom: this.imageService.takenFromFilter || '',
             takenTo: this.imageService.takenToFilter || ''
         };
@@ -388,7 +389,7 @@ class Timeline {
 
     hasActiveFilters() {
         const f = this.getActiveFilters();
-        return Boolean(f.country || f.state || f.location || f.color || f.takenFrom || f.takenTo);
+        return Boolean(f.country || f.state || f.location || f.color || f.camera || f.takenFrom || f.takenTo);
     }
 
     async fetchTimelineForFilters() {
@@ -399,6 +400,7 @@ class Timeline {
         if (f.state) url.searchParams.set('state', f.state);
         if (f.location) url.searchParams.set('location', f.location);
         if (f.color) url.searchParams.set('color', f.color);
+        if (f.camera) url.searchParams.set('camera', f.camera);
         if (f.takenFrom) url.searchParams.set('takenFrom', f.takenFrom);
         if (f.takenTo) url.searchParams.set('takenTo', f.takenTo);
 

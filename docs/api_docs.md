@@ -30,6 +30,7 @@ Grid views should use `thumbnail.url`; fullscreen/modal views should use `image.
 - `limit` optional, defaults to `24`
 - `cursor` optional opaque pagination cursor from the previous response
 - `country`, `state`, `location` optional exact place filters
+- `camera` optional camera name. Matching ignores case and surrounding spaces. An unknown name returns an empty page; an empty value applies no camera filter.
 - `color` optional named palette color (`black`, `gray`, `white`, `brown`, `red`, `orange`, `yellow`, `green`, `teal`, `blue`, `purple`, `pink`). Matches photos that list that color anywhere in their stored top-color array. Any other value returns 400.
 
 **Response:**
@@ -161,9 +162,25 @@ Grid views should use `thumbnail.url`; fullscreen/modal views should use `image.
 
 **Endpoint:** `GET /api/photos/colors`
 
-**Description:** Returns the named colors currently present in stored photo metadata, in palette order, with photo counts. Used by the CONTROL filter menu. The same place and date query params as `GET /api/photos` (`country`, `state`, `location`, `takenFrom`, `takenTo`) scope those counts; the selected `color` is ignored so tiles stay faceted.
+**Description:** Returns the named colors currently present in stored photo metadata, in palette order, with photo counts. Used by the CONTROL filter menu. The same place, camera, and date query params as `GET /api/photos` (`country`, `state`, `location`, `camera`, `takenFrom`, `takenTo`) scope those counts; the selected `color` is ignored so tiles stay faceted.
 
-### 7. Backfill Photo Colors
+### 7. List Photo Cameras
+
+**Endpoint:** `GET /api/photos/cameras`
+
+**Description:** Returns the camera names stored on photos, in alphabetical order, with photo counts. Used by the CONTROL filter menu. Names that differ only by case or surrounding spaces are one entry. Blank cameras are omitted. The same place, color, and date query params as `GET /api/photos` scope those counts; the selected `camera` is ignored so the list stays faceted.
+
+**Response:**
+
+```json
+{
+  "cameras": [
+    { "value": "Canon EOS R5", "label": "Canon EOS R5", "count": 4 }
+  ]
+}
+```
+
+### 8. Backfill Photo Colors
 
 **Endpoint:** `GET|POST /api/admin/backfill-colors`
 

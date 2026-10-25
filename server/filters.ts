@@ -14,6 +14,9 @@ export function photoFilterSql(filters: PhotoFilters): SQL | undefined {
     if (filters.location) {
         parts.push(sql`LOWER(TRIM(${photos.location})) = LOWER(TRIM(${filters.location}))`);
     }
+    if (filters.camera) {
+        parts.push(sql`LOWER(TRIM(${photos.camera})) = LOWER(TRIM(${filters.camera}))`);
+    }
     if (filters.color) {
         parts.push(sql`EXISTS (
             SELECT 1 FROM json_each(

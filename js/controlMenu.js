@@ -49,8 +49,16 @@ const FILTER_TYPES = [
     { id: 'country', label: 'COUNTRY' },
     { id: 'state', label: 'REGION' },
     { id: 'location', label: 'PLACE' },
-    { id: 'color', label: 'COLOR' }
+    { id: 'color', label: 'COLOR' },
+    { id: 'camera', label: 'CAMERA' }
 ];
+
+function hasGalleryFilter(filters) {
+    if (!filters) return false;
+    return Boolean(
+        filters.country || filters.state || filters.location || filters.color || filters.camera
+    );
+}
 
 class ControlMenu {
     constructor({ gallery, viewMode, globeExplorer, imageService }) {
@@ -327,8 +335,7 @@ class ControlMenu {
 
     syncFilterState() {
         const filters = this.globeExplorer?.getSelectedFilters?.() || {};
-        const active = Boolean(filters.country || filters.state || filters.location || filters.color);
-        this.root.classList.toggle('has-filter', active);
+        this.root.classList.toggle('has-filter', hasGalleryFilter(filters));
     }
 
     // ── rendering ──
@@ -433,7 +440,7 @@ class ControlMenu {
 
     hasActiveFilter() {
         const filters = this.globeExplorer?.getSelectedFilters?.() || {};
-        return Boolean(filters.country || filters.state || filters.location || filters.color);
+        return hasGalleryFilter(filters);
     }
 
     renderSections() {
@@ -507,7 +514,7 @@ class ControlMenu {
 
         entries.forEach((entry, index) => {
             if (entry.id === 'clear') {
-                const hasFilter = Boolean(filters.country || filters.state || filters.location || filters.color);
+                const hasFilter = hasGalleryFilter(filters);
                 const node = this.node({
                     label: 'CLEAR',
                     size,
@@ -647,9 +654,12 @@ class ControlMenu {
     emptyLeafHint() {
         const hint = document.createElement('div');
         hint.className = 'cm-leaf-hint';
-        const ready = this.filterType === 'color'
-            ? this.globeExplorer?.hasColorFilterData
-            : this.globeExplorer?.hasPlaceFilterData;
+        let ready = this.globeExplorer?.hasPlaceFilterData;
+        if (this.filterType === 'color') {
+            ready = this.globeExplorer?.hasColorFilterData;
+        } else if (this.filterType === 'camera') {
+            ready = this.globeExplorer?.hasCameraFilterData;
+        }
         hint.textContent = ready ? 'NO OPTIONS' : 'LOADING';
         this.place(hint, this.geometry.ringC, 45, this.geometry.nodeC * 1.6);
         return hint;

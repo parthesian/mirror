@@ -22,6 +22,7 @@ class ImageService {
         this.stateFilter = null;
         this.locationFilter = null;
         this.colorFilter = null;
+        this.cameraFilter = null;
         this.takenFromFilter = null;
         this.takenToFilter = null;
         /** Chronological IDs from the API. Display order may differ in random view. */
@@ -307,6 +308,7 @@ class ImageService {
             this.stateFilter || '',
             this.locationFilter || '',
             this.colorFilter || '',
+            this.cameraFilter || '',
             this.takenFromFilter || '',
             this.takenToFilter || ''
         ].join('\u0001');
@@ -361,6 +363,9 @@ class ImageService {
         if (this.colorFilter) {
             url.searchParams.set('color', this.colorFilter);
         }
+        if (this.cameraFilter) {
+            url.searchParams.set('camera', this.cameraFilter);
+        }
         if (this.takenFromFilter) {
             url.searchParams.set('takenFrom', this.takenFromFilter);
         }
@@ -414,6 +419,7 @@ class ImageService {
             state: this.stateFilter || '',
             location: this.locationFilter || '',
             color: this.colorFilter || '',
+            camera: this.cameraFilter || '',
             takenFrom: this.takenFromFilter || '',
             takenTo: this.takenToFilter || ''
         };
@@ -1235,6 +1241,7 @@ class ImageService {
         this.stateFilter = null;
         this.locationFilter = null;
         this.colorFilter = null;
+        this.cameraFilter = null;
         this.takenFromFilter = null;
         this.takenToFilter = null;
         return this.fetchImages();

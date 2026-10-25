@@ -321,6 +321,13 @@ const mockCameras = new Set(MockPhotos.catalog().map((photo) => MockPhotos.metad
 assert(mockCameras.has('Rolleicord'), 'mock catalog includes Rolleicord for the TLR glyph');
 assert(mockCameras.has('iPhone 15 Pro'), 'mock catalog includes a phone camera for the mobile glyph');
 assert(mockCameras.has('Canon EOS R5'), 'mock catalog includes an SLR camera for the default glyph');
+const rollei = MockPhotos.filterPhotos(MockPhotos.catalog(), { camera: 'rolleicord' });
+assert(rollei.length > 0 && rollei.every((photo) => photo.camera === 'Rolleicord'), 'camera filter matches ignoring case');
+const cameraFacets = MockPhotos.cameras({ camera: 'Rolleicord' });
+assert(cameraFacets.length === 3, 'camera facets ignore the selected camera');
+assert(cameraFacets.some((item) => item.value === 'Rolleicord' && item.count === rollei.length), 'camera facets count Rolleicord photos');
+const cameraResponse = MockPhotos.handleRequest('http://local.test/api/photos/cameras?camera=Rolleicord');
+assert(cameraResponse.status === 200, 'mock camera handler answers /api/photos/cameras');
 
 const classSandbox = { window: {}, console, module: { exports: {} } };
 vm.createContext(classSandbox);

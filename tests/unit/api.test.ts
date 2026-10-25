@@ -20,6 +20,16 @@ const colorFacetSchema = z.object({
     ),
 });
 
+const cameraFacetSchema = z.object({
+    cameras: z.array(
+        z.object({
+            value: z.string(),
+            label: z.string(),
+            count: z.number(),
+        }),
+    ),
+});
+
 const OWNER = 'owner@example.com';
 
 function memoryBucket() {
@@ -111,6 +121,74 @@ describe('photo API', () => {
 
         const bad = await app.request('/api/photos?cursor=not-a-cursor', {}, env);
         expect(bad.status).toBe(400);
+    });
+
+    it('filters by camera and keeps camera facets open while a camera is selected', async () => {
+        const { env } = bindEnv();
+        const newer = await upload(env, {
+            location: 'Kyoto',
+            takenAt: '2020-01-01T00:00:00.000Z',
+            colors: '["blue"]',
+            camera: 'Rolleicord',
+            country: 'Japan',
+        });
+        const older = await upload(env, {
+            location: 'Osaka',
+            takenAt: '2019-05-01T00:00:00.000Z',
+            colors: '["green"]',
+            camera: 'rolleicord',
+        });
+        await upload(env, {
+            location: 'Paris',
+            takenAt: '2021-01-01T00:00:00.000Z',
+            colors: '["red"]',
+            camera: 'iPhone 15 Pro',
+            country: 'France',
+        });
+        await upload(env, {
+            location: 'Rome',
+            takenAt: '2022-01-01T00:00:00.000Z',
+            colors: '["blue"]',
+            camera: '   ',
+        });
+
+        const filtered = await app.request('/api/photos?camera=ROLLEICORD', {}, env);
+        expect(filtered.status).toBe(200);
+        const filteredBody = listSchema.parse(await filtered.json());
+        expect(filteredBody.photos.map((photo) => photo.id)).toEqual([newer, older]);
+
+        const facets = await app.request('/api/photos/cameras?camera=Rolleicord', {}, env);
+        expect(facets.status).toBe(200);
+        const facetBody = cameraFacetSchema.parse(await facets.json());
+        expect(facetBody.cameras).toEqual([
+            { value: 'iPhone 15 Pro', label: 'iPhone 15 Pro', count: 1 },
+            { value: 'Rolleicord', label: 'Rolleicord', count: 2 },
+        ]);
+
+        const japan = await app.request('/api/photos/cameras?country=Japan', {}, env);
+        const japanBody = cameraFacetSchema.parse(await japan.json());
+        expect(japanBody.cameras.map((camera) => camera.value)).toEqual(['Rolleicord']);
+
+        const colors = await app.request('/api/photos/colors?camera=Rolleicord', {}, env);
+        const colorBody = colorFacetSchema.parse(await colors.json());
+        expect(colorBody.colors.map((color) => color.value)).toEqual(['green', 'blue']);
+
+        const timelineResponse = await app.request(
+            '/api/photos/timeline?camera=Rolleicord',
+            {},
+            env,
+        );
+        const timeline = z
+            .object({
+                groups: z.array(
+                    z.object({ year: z.number(), month: z.number(), count: z.number() }),
+                ),
+            })
+            .parse(await timelineResponse.json());
+        expect(timeline.groups).toEqual([
+            { year: 2020, month: 1, count: 1 },
+            { year: 2019, month: 5, count: 1 },
+        ]);
     });
 
     it('returns color facets without applying the selected color', async () => {
@@ -270,13 +348,25 @@ describe('photo API', () => {
 
 async function upload(
     env: Bindings,
-    fields: { location: string; takenAt: string; colors: string },
+    fields: {
+        location: string;
+        takenAt: string;
+        colors: string;
+        camera?: string;
+        country?: string;
+    },
 ): Promise<string> {
     const form = new FormData();
     form.set('photo', new File([new Uint8Array([1, 2, 3])], 'photo.jpg', { type: 'image/jpeg' }));
     form.set('location', fields.location);
     form.set('takenAt', fields.takenAt);
     form.set('colors', fields.colors);
+    if (fields.camera !== undefined) {
+        form.set('camera', fields.camera);
+    }
+    if (fields.country) {
+        form.set('country', fields.country);
+    }
     const response = await app.request(
         '/api/admin/photos',
         {
