@@ -905,8 +905,29 @@ body.exposure-1 .scroll-loading p {
     max-width: 100%;
     max-height: 90vh;
     object-fit: contain;
-    touch-action: pan-y pinch-zoom;
+    /* pan-y keeps a one-finger drag scrolling the sheet. Pinch-zoom is not
+       listed, so the viewer can scale the photo without scaling the page. */
+    touch-action: pan-y;
+    transform-origin: center center;
+    cursor: zoom-in;
+    user-select: none;
+    -webkit-user-select: none;
     transition: opacity 0.18s ease;
+}
+
+#modal-image.is-zoomed {
+    touch-action: none;
+    cursor: grab;
+    will-change: transform;
+}
+
+#modal-image.is-zoomed.is-grabbing {
+    cursor: grabbing;
+}
+
+.modal-image-container:has(#modal-image.is-zoomed) {
+    overflow: visible;
+    z-index: 2;
 }
 
 /* Reserved frame while neither the thumbnail nor the full photo is ready. */

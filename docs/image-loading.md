@@ -83,30 +83,35 @@ away, and it only gets sharper after that. It never changes size or blinks.
   navigation never swaps in an image that finishes late for a photo you have
   already left.
 
-## Viewer gestures on mobile: pinch-zoom changing photos
+## Viewer gestures
 
-**Symptom.** Pinch-zooming a photo often jumped to the previous or next one.
+The viewer scales the photo. A pinch, double-tap, double-click, or mouse-wheel
+notch changes that photo's transform. The page stays at its normal size, and
+the globe explorer's altitude controller is not involved.
 
-**Cause.** The swipe handler compared the *first* finger's start point with
-whichever finger lifted *last*. In a pinch those are two different fingers, so
-the gap between them looked like a long horizontal swipe. One-finger panning
-around a zoomed photo was also read as a swipe, and a downward pan could
-dismiss the viewer.
-
-**Decisions.**
-
-- **A gesture lasts from the first finger down to the last finger up.** If a
-  second finger touches at any point, the whole gesture is a pinch and never
-  navigates or dismisses, whichever order the fingers lift in.
-- **Only one finger is tracked, by its touch identifier.** The start and end
-  points always belong to the same finger.
-- **No swipes while zoomed.** When the page is pinch-zoomed
-  (`visualViewport.scale > 1`), one-finger drags pan the photo, the same as in
-  the Photos app. Swipes work again after zooming back out.
-- **A swipe must be clearly horizontal.** Horizontal movement has to be at
-  least 1.8× the vertical, and the swipe must be either a quick flick
-  (≥ 40px, fast, under 350ms) or a deliberate drag across about 30% of the
-  screen. Slow, short, or diagonal movements do nothing.
-- **Smoothness is unchanged.** Listeners are passive and never call
-  `preventDefault`. Native pinch-zoom and scrolling run on the compositor
-  exactly as before, and the decision is made only when the fingers lift.
+- **Direct while the fingers or the wheel are moving.** Pinch and a mouse
+  notch apply on the event, anchored at the fingers or the pointer. There is
+  no trailing zoom. Double-tap, double-click, and the +/−/0 keys ease over
+  160ms, and snap instead when reduced motion is requested.
+- **Hard stops.** Scale stays between 1 and 4. Panning stops at the edges of
+  the magnified photo. Fit is scale 1 with no leftover translation.
+- **Scroll stays scroll.** A trackpad two-finger slide is a small or fractional
+  wheel delta, so it still moves the sheet and can dismiss it from the top.
+  Only a ctrl/cmd pinch, a line/page wheel, or a large integer notch zooms.
+- **The browser does not zoom the page.** At fit, `touch-action` is `pan-y`,
+  so a one-finger vertical drag scrolls on the compositor and browser
+  pinch-zoom is off. While the photo is magnified, `touch-action` is `none`
+  and one finger pans the photo. Sheet listeners stay passive. The image alone
+  has a non-passive `touchmove`, and it calls `preventDefault` only during a
+  pinch or a pan.
+- **A gesture lasts from the first finger down to the last finger up.** A
+  second finger makes the whole gesture a pinch. It never navigates or
+  dismisses, whichever order the fingers lift in. One finger is tracked, by
+  its identifier.
+- **No photo change while magnified.** Swipes work again at fit. A swipe has
+  to be clearly horizontal (at least 1.8× the vertical) and either a quick
+  flick (≥ 40px, fast, under 350ms) or a deliberate drag across about 30% of
+  the screen.
+- **The next photo starts at fit.** Changing photos or closing the viewer
+  clears the scale. A page-level pinch (`visualViewport.scale > 1`) still
+  suppresses swipes, the same as a magnified photo.
