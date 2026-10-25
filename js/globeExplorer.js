@@ -599,9 +599,10 @@ class GlobeExplorer {
 
     _applyDotHighlight() {
         const s = this.threeState;
-        if (!s?.dotColors || !s?.dotsMesh?.geometry) return;
+        const colors = s?.dotColors;
+        const mesh = s?.dotsMesh;
+        if (!colors || !mesh) return;
 
-        const colors = s.dotColors;
         const base = [1.0, 1.0, 1.0];
         const highlight = [0.3, 0.3, 0.3];
         for (const i of this.highlightedDotIndices || []) {
@@ -625,7 +626,11 @@ class GlobeExplorer {
         }
         this.highlightedDotIndices = [...indices];
 
-        const colorAttr = s.dotsMesh.geometry.getAttribute('color');
+        if (mesh.instanceColor) {
+            mesh.instanceColor.needsUpdate = true;
+            return;
+        }
+        const colorAttr = mesh.geometry?.getAttribute('color');
         if (colorAttr) {
             colorAttr.needsUpdate = true;
         }
@@ -1290,9 +1295,11 @@ class GlobeExplorer {
             );
             raycaster.setFromCamera(hoverMouse, camera);
             if (dotsMesh) {
-                const hits = raycaster.intersectObject(dotsMesh);
+                // Screen distance, not a ray against the disc. A ring lying on
+                // the sphere is edge-on near the limb, and that ray would miss it.
+                const allDots = this.locationUnitVectors.map((_, index) => ({ index }));
                 const preciseIdx = this._pickPrecisePointIndex(
-                    hits,
+                    allDots,
                     { x: e.clientX - rect.left, y: e.clientY - rect.top },
                     camera,
                     renderer,
@@ -1539,7 +1546,9 @@ class GlobeExplorer {
             canvasRect: renderer.domElement.getBoundingClientRect(),
             zoom,
             lines,
-            dotColors: dotsMesh?.geometry?.getAttribute('color')?.array || null,
+            dotColors: dotsMesh?.instanceColor?.array
+                || dotsMesh?.geometry?.getAttribute('color')?.array
+                || null,
             clickPulses: []
         };
 
@@ -1590,6 +1599,7 @@ class GlobeExplorer {
 
         this.threeState = state;
         group.updateMatrixWorld(true);
+        this._syncMarkerScale();
         this._applyDotHighlight();
         this._startWorldLines();
     }
@@ -1680,41 +1690,66 @@ class GlobeExplorer {
         });
         if (this.locationGroups.length === 0) return null;
 
-        const positions = new Float32Array(this.locationGroups.length * 3);
-        const colors = new Float32Array(this.locationGroups.length * 3);
-        this.locationGroups.forEach((entry, index) => {
-            const v = entry.unitVec.clone().multiplyScalar(radius);
-            positions[index * 3] = v.x;
-            positions[index * 3 + 1] = v.y;
-            positions[index * 3 + 2] = v.z;
-            colors[index * 3] = 1;
-            colors[index * 3 + 1] = 1;
-            colors[index * 3 + 2] = 1;
+        this.locationGroups.forEach((entry) => {
             this.locationUnitVectors.push(entry.unitVec.clone());
             this.renderedPointLocations.push(entry.sample);
             this.locationGroupByKey.set(entry.key, entry);
         });
 
-        const dotGeo = new THREE.BufferGeometry();
-        dotGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        dotGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
-        const dotMat = new THREE.PointsMaterial({
+        // CircleGeometry lies in XY, so +Z is the face normal. Each instance
+        // turns that normal out along the surface, flush with the globe.
+        const dotGeo = new THREE.CircleGeometry(0.5, 32);
+        const dotMat = new THREE.MeshBasicMaterial({
             map: this._createLocationMarkerTexture(THREE),
-            vertexColors: true,
-            size: 0.06,
-            sizeAttenuation: true,
             transparent: true,
             opacity: 1,
             alphaTest: 0.15,
-            blending: THREE.NormalBlending,
-            depthWrite: false
+            depthTest: true,
+            depthWrite: false,
+            side: THREE.FrontSide,
+            polygonOffset: true,
+            polygonOffsetFactor: -2,
+            polygonOffsetUnits: -2
         });
-
-        const dots = new THREE.Points(dotGeo, dotMat);
+        const dots = new THREE.InstancedMesh(dotGeo, dotMat, this.locationGroups.length);
+        const white = new THREE.Color(1, 1, 1);
+        for (let i = 0; i < this.locationGroups.length; i++) {
+            dots.setColorAt(i, white);
+        }
+        dots.userData.markerScale = null;
         dots.renderOrder = 2;
+        dots.frustumCulled = false;
         group.add(dots);
         return dots;
+    }
+
+    _syncMarkerScale() {
+        const state = this.threeState;
+        const mesh = state?.dotsMesh;
+        if (!mesh?.isInstancedMesh || !state.THREE) {
+            return;
+        }
+        const GD = window.GlobeDetail;
+        const scale = (GD?.CONFIG?.DOT_SIZE || 0.06) * (state.dotScale || 1);
+        if (mesh.userData.markerScale === scale) {
+            return;
+        }
+        mesh.userData.markerScale = scale;
+        const THREE = state.THREE;
+        const dummy = mesh.userData.dummy || new THREE.Object3D();
+        const zAxis = mesh.userData.zAxis || new THREE.Vector3(0, 0, 1);
+        mesh.userData.dummy = dummy;
+        mesh.userData.zAxis = zAxis;
+        const radius = this._dotRadius();
+        for (let i = 0; i < this.locationUnitVectors.length; i++) {
+            const normal = this.locationUnitVectors[i];
+            dummy.position.copy(normal).multiplyScalar(radius);
+            dummy.quaternion.setFromUnitVectors(zAxis, normal);
+            dummy.scale.setScalar(scale);
+            dummy.updateMatrix();
+            mesh.setMatrixAt(i, dummy.matrix);
+        }
+        mesh.instanceMatrix.needsUpdate = true;
     }
 
     _buildArcs(THREE, group) {
@@ -2641,9 +2676,7 @@ class GlobeExplorer {
         }
         const dot = GD.dotScale(altitude);
         state.dotScale = dot;
-        if (state.dotsMesh?.material) {
-            state.dotsMesh.material.size = GD.CONFIG.DOT_SIZE * dot;
-        }
+        this._syncMarkerScale();
         if (state.raycaster?.params?.Points) {
             state.raycaster.params.Points.threshold = GD.CONFIG.POINTS_THRESHOLD * dot;
         }
