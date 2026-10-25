@@ -2462,6 +2462,10 @@ class GlobeExplorer {
         }
     }
 
+    _prefersReducedMotion() {
+        return Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
+    }
+
     _autoRotateRamp(active, now) {
         const zoom = this.threeState?.zoom;
         const rampMs = window.GlobeDetail?.CONFIG?.AUTO_ROTATE_RAMP_MS || 600;
