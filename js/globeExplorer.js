@@ -72,6 +72,9 @@ class GlobeExplorer {
         this.filterOptionCache = new Map();
         this.pendingPick = null;
         this.backStack = (typeof window !== 'undefined' ? window.overlayBackStack : null);
+        this._zoomInputBound = false;
+        this._zoomWheelListener = null;
+        this._zoomGestureListener = null;
         this._tileSession = {
             manifest: null,
             manifestFailed: false,
@@ -753,6 +756,10 @@ class GlobeExplorer {
             if (this.lifecycle.phase === 'closed') return;
             await this._initScene();
             if (this.lifecycle.phase === 'closed') return;
+            // Photo pinch-zoom is a ctrl/meta wheel. Those listeners exist
+            // only while this overlay is open, so a closed explorer cannot
+            // cancel them.
+            this._bindZoomInput();
             if (focusLocation) {
                 this._focusLocation(focusLocation);
             }
@@ -782,6 +789,7 @@ class GlobeExplorer {
         this._hideIntersectPicker();
         this._hidePickConfirm();
         this._dropTileOverlay();
+        this._unbindZoomInput();
         this._setSceneRunning(false);
     }
 
@@ -1148,20 +1156,6 @@ class GlobeExplorer {
         this.sceneContainer.innerHTML = '';
         this.sceneContainer.appendChild(renderer.domElement);
         renderer.domElement.style.touchAction = 'none';
-        renderer.domElement.addEventListener('wheel', (e) => {
-            if (e.ctrlKey || this.isOpen) {
-                e.preventDefault();
-            }
-            if (this.pointerGesture) {
-                this.pointerGesture.hadWheel = true;
-            }
-            this._onZoomWheel(e);
-        }, { passive: false });
-        for (const gestureType of ['gesturestart', 'gesturechange', 'gestureend']) {
-            renderer.domElement.addEventListener(gestureType, (event) => {
-                this._onGesture(event);
-            }, { passive: false });
-        }
 
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 1000);
@@ -1177,7 +1171,20 @@ class GlobeExplorer {
 
         let controls = null;
         if (OrbitControls) {
-            controls = new OrbitControls(camera, renderer.domElement);
+            // Zoom is owned by _bindZoomInput. OrbitControls still registers
+            // a non-passive wheel listener when enableZoom is false, and that
+            // listener would stay on the full-screen canvas after close.
+            const canvas = renderer.domElement;
+            const addEventListener = canvas.addEventListener.bind(canvas);
+            canvas.addEventListener = (type, listener, options) => {
+                if (type === 'wheel') return;
+                addEventListener(type, listener, options);
+            };
+            try {
+                controls = new OrbitControls(camera, canvas);
+            } finally {
+                canvas.addEventListener = addEventListener;
+            }
             controls.enableDamping = true;
             controls.dampingFactor = 0.16;
             controls.enableRotate = true;
@@ -1608,6 +1615,7 @@ class GlobeExplorer {
         const s = this.threeState;
         if (!s) return;
         s.disposed = true;
+        this._unbindZoomInput();
         this._releaseTileGpu();
         this._disposeLines();
         this._clearCountryBorderHighlight();
@@ -2478,14 +2486,51 @@ class GlobeExplorer {
         this._captureZoomAnchor(event.clientX, event.clientY);
     }
 
-    _onGesture(event) {
-        if (event?.preventDefault) {
+    /**
+     * Wheel and Safari pinch listeners for the explorer canvas.
+     * Attached only while the overlay is open. Photo pinch-zoom uses the
+     * same ctrl-wheel and gesture events, and must not hit this path.
+     */
+    _bindZoomInput() {
+        const canvas = this.threeState?.renderer?.domElement;
+        if (!canvas || this._zoomInputBound) return;
+        this._zoomWheelListener = (event) => {
+            if (!this.isOpen) return;
             event.preventDefault();
+            if (this.pointerGesture) {
+                this.pointerGesture.hadWheel = true;
+            }
+            this._onZoomWheel(event);
+        };
+        this._zoomGestureListener = (event) => {
+            this._onGesture(event);
+        };
+        canvas.addEventListener('wheel', this._zoomWheelListener, { passive: false });
+        for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+            canvas.addEventListener(type, this._zoomGestureListener, { passive: false });
         }
+        this._zoomInputBound = true;
+    }
+
+    _unbindZoomInput() {
+        const canvas = this.threeState?.renderer?.domElement;
+        if (canvas && this._zoomInputBound) {
+            canvas.removeEventListener('wheel', this._zoomWheelListener);
+            for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+                canvas.removeEventListener(type, this._zoomGestureListener);
+            }
+        }
+        this._zoomInputBound = false;
+    }
+
+    _onGesture(event) {
         const state = this.threeState;
         const GD = window.GlobeDetail;
         if (!state?.zoom || !GD || !this.isOpen) {
             return;
+        }
+        if (event?.preventDefault) {
+            event.preventDefault();
         }
         state.zoom.tau = this._prefersReducedMotion() ? GD.CONFIG.TAU_REDUCED_MS : GD.CONFIG.TAU_PINCH_MS;
         if (event.type === 'gesturestart') {
