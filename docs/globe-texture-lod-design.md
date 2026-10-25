@@ -210,7 +210,7 @@ thetaStart = r * 15° in radians
 thetaLength = 15° in radians
 ```
 
-`phiStart = 0` is longitude −180, which is column 0, matching `SphereGeometry` UV and `latLonToXYZ`. `thetaStart = 0` is the north pole, which is row 0. Three.js puts `uv.y = 1` at `thetaStart`. The JPEG is stored north-up, and `Texture.flipY` stays at its default `true`, so the top of the JPEG meets latitude +90. Leave `flipY` on. Turning it off slides every coast relative to the lines.
+`phiStart = 0` is longitude −180, which is column 0, matching `SphereGeometry` UV and `latLonToXYZ`. `thetaStart = 0` is the north pole, which is row 0. Three.js puts `uv.y = 1` at `thetaStart`. The JPEG is stored north-up. The upload source is an `ImageBitmap`, and WebGL ignores `UNPACK_FLIP_Y_WEBGL` for that source, so `Texture.flipY` stays `false`. Decode with `imageOrientation: 'flipY'` (and `premultiplyAlpha: 'none'`, `colorSpaceConversion: 'none'`) so the top of the JPEG still meets the north edge. Leaving the bitmap unflipped puts the south edge of each tile on the north edge of its mesh, and neighboring tiles meet on a hard latitude line.
 
 Material, cloned per tile:
 
@@ -373,7 +373,7 @@ GET /data/globe-tiles/v1/rRR-cCC.jpg
 cache: 'force-cache'
 ```
 
-`RR` and `CC` are two digits. At most four tile fetches are in flight. When one settles, start the next queued id. Decode with `createImageBitmap(blob)` and upload on a later frame (§4.4). `createImageBitmap` is the decode path; do not decode the 10,800 × 5,400 file, and do not draw a tile onto a full-plate canvas.
+`RR` and `CC` are two digits. At most four tile fetches are in flight. When one settles, start the next queued id. Decode with `createImageBitmap(blob, { imageOrientation: 'flipY', premultiplyAlpha: 'none', colorSpaceConversion: 'none' })` and upload on a later frame (§4.4). `createImageBitmap` is the decode path; do not decode the 10,800 × 5,400 file, and do not draw a tile onto a full-plate canvas.
 
 One `fetch` per tile URL per page session. A second descent uses the blob already in the map. `cache: 'force-cache'` is what the browser uses if the blob map were ever bypassed; the set is what makes the second call not happen.
 

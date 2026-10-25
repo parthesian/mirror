@@ -3353,7 +3353,13 @@ class GlobeExplorer {
             }
             session.decodingUrl = url;
             const generation = session.gpuGeneration;
-            createImageBitmap(blob).then((bitmap) => {
+            // ImageBitmap ignores UNPACK_FLIP_Y_WEBGL, so flip during decode.
+            // Texture.flipY stays false. The north edge of the JPEG stays north.
+            createImageBitmap(blob, {
+                imageOrientation: 'flipY',
+                premultiplyAlpha: 'none',
+                colorSpaceConversion: 'none'
+            }).then((bitmap) => {
                 if (session.decodingUrl === url) {
                     session.decodingUrl = null;
                 }
@@ -3416,7 +3422,7 @@ class GlobeExplorer {
         texture.minFilter = THREE.LinearMipmapLinearFilter;
         texture.magFilter = THREE.LinearFilter;
         texture.generateMipmaps = true;
-        texture.flipY = true;
+        texture.flipY = false;
         const maxAniso = state.renderer?.capabilities?.getMaxAnisotropy?.() || 1;
         texture.anisotropy = Math.min(4, maxAniso);
         texture.needsUpdate = true;
