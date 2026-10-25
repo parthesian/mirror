@@ -2694,6 +2694,9 @@ class GlobeExplorer {
     }
 
     _stepLines(dt, now) {
+        // Boundaries arrive after the first frame. Retry until the 110m
+        // rings are in memory, then build the world mesh in idle chunks.
+        this._startWorldLines();
         const state = this.threeState;
         const GD = window.GlobeDetail;
         if (!state?.lines || !state.camera || !GD) {
@@ -2798,11 +2801,19 @@ class GlobeExplorer {
                     GD.addFeatureEdges(acc, feature, feature.runtimeId || index);
                 }
             }
+            // The first slice waits for idle. Later slices use a timeout so a
+            // continuous render loop, which never goes idle, still finishes
+            // the build in ≤4 ms pieces instead of waiting out every timeout.
+            const scheduleSlice = (fn) => {
+                state.lines.worldIdle = window.setTimeout(() => {
+                    fn({ timeRemaining: () => 4, didTimeout: true });
+                }, 0);
+            };
             if (index < features.length) {
-                state.lines.worldIdle = this._scheduleIdle(step);
+                scheduleSlice(step);
                 return;
             }
-            state.lines.worldIdle = this._scheduleIdle(() => {
+            scheduleSlice(() => {
                 if (state.disposed || state.lines.cancelled) {
                     return;
                 }
@@ -2913,10 +2924,30 @@ class GlobeExplorer {
         lines.loading[kind] = true;
         lines.rearm[kind] = false;
         const url = this._lineUrl(kind);
-        const codeToId = this._adm0RuntimeIds();
-        if (!this._postLineBuild(url, kind, codeToId)) {
-            void this._buildLinesOnMain(url, kind, codeToId);
+        const begin = () => {
+            const current = this.threeState?.lines;
+            if (!current || current.cancelled || this.threeState.disposed) {
+                return;
+            }
+            if (current.loaded[kind]) {
+                current.loading[kind] = false;
+                return;
+            }
+            const codeToId = this._adm0RuntimeIds();
+            if (!this._postLineBuild(url, kind, codeToId)) {
+                void this._buildLinesOnMain(url, kind, codeToId);
+            }
+        };
+        const boundaries = window.countryBoundaries;
+        if (
+            boundaries
+            && boundaries.features.length === 0
+            && typeof boundaries.ensureLoaded === 'function'
+        ) {
+            boundaries.ensureLoaded().then(begin, begin);
+            return;
         }
+        begin();
     }
 
     _postLineBuild(url, kind, codeToId) {

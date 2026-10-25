@@ -199,6 +199,11 @@ test('opening the explorer at the fit distance does not request globe lines', as
     await expect(page.locator('.gallery-item').first()).toBeVisible();
     await openExplorer(page);
     await page.waitForTimeout(2000);
+    await expect
+        .poll(async () => {
+            return page.evaluate(`Boolean(window.app.globeExplorer.threeState.lines.meshes.world)`);
+        })
+        .toBe(true);
 
     const texture = (await page.evaluate(`(() => {
         const image = window.app.globeExplorer.threeState
@@ -266,7 +271,7 @@ test('zooming to local detail fetches the 10m file once across reopen', async ({
     ).toEqual([200]);
 
     await page.evaluate(`window.app.globeExplorer.close()`);
-    await expect(page.locator('#globe-explorer-overlay')).toHaveClass(/hidden/);
+    await expect(page.locator('#globe-explorer')).toHaveClass(/hidden/);
     await openExplorer(page);
     await wheelNotches(page, 8, -100);
     await expect
