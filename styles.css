@@ -4,6 +4,14 @@
     padding: 0;
     box-sizing: border-box;
     scroll-padding-top: 2rem;
+    /* Android and iOS paint a blue box on tap. The click still lands. */
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* A pointer tap focuses the control and the browser draws its own ring.
+   Keyboard focus keeps the :focus-visible outlines further down. */
+:focus:not(:focus-visible) {
+    outline: none;
 }
 
 html {
