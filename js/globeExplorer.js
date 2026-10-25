@@ -30,7 +30,9 @@ class GlobeExplorer {
         this.filterApplyBtn = document.getElementById('country-filter-apply');
         this.filterClearBtn = document.getElementById('country-filter-clear');
 
-        this.isOpen = false;
+        this.lifecycle = new OverlayLifecycle(this.overlay, {
+            onClosed: () => this._onOverlayClosed()
+        });
         this.threeState = null;
         this.locations = [];
         this.locationsByCountry = {};
@@ -69,8 +71,6 @@ class GlobeExplorer {
         this.countryBorderHighlightKey = '';
         this.filterOptionCache = new Map();
         this.pendingPick = null;
-        this.isExiting = false;
-        this._exitPromise = null;
         this.backStack = (typeof window !== 'undefined' ? window.overlayBackStack : null);
 
         this._bindEvents();
@@ -717,22 +717,23 @@ class GlobeExplorer {
 
     // ── open / close ──
 
+    get isOpen() {
+        return this.lifecycle.isOpen;
+    }
+
+    get isExiting() {
+        return this.lifecycle.isClosing;
+    }
+
     async open(focusLocation = null) {
-        if (this.isExiting && this._exitPromise) {
-            await this._exitPromise;
-        }
         if (this.isOpen) {
             if (focusLocation) {
                 this._focusLocation(focusLocation);
             }
             return;
         }
-        this.isOpen = true;
-        this.isExiting = false;
         this._hidePickConfirm();
-        this.overlay.classList.remove('hidden', 'is-exiting');
-        this.overlay.classList.add('active');
-        document.body.style.overflow = 'hidden';
+        const shown = this.lifecycle.open();
         this.backStack?.claim('globe', () => this.close());
 
         try {
@@ -749,82 +750,38 @@ class GlobeExplorer {
                 this._setSceneRunning(false);
             }
             await this._fetchLocations();
+            if (this.lifecycle.phase === 'closed') return;
             await this._initScene();
+            if (this.lifecycle.phase === 'closed') return;
             if (focusLocation) {
                 this._focusLocation(focusLocation);
             }
             this.threeState?.onResize?.();
             this._fitGlobeInView();
-            this._setSceneRunning(true);
+            if (this.isOpen) this._setSceneRunning(true);
             this._syncRotateToggleUI();
         } catch (err) {
             console.error('[GlobeExplorer] failed to initialize', err);
         }
+        await shown;
     }
 
     close() {
-        if (!this.isOpen && !this.isExiting) return;
-        void this._playExit();
-    }
-
-    _playExit() {
-        this.backStack?.release('globe');
-        if (this.isExiting && this._exitPromise) {
-            return this._exitPromise;
-        }
-        if (!this.overlay || this.overlay.classList.contains('hidden')) {
-            this._finishClose();
-            return Promise.resolve();
-        }
-
-        this.isExiting = true;
-        this.isOpen = false;
+        if (this.isExiting) return this.lifecycle.close();
+        if (!this.isOpen) return Promise.resolve();
         this._hidePickConfirm();
         this._hideIntersectPicker();
         this._suppressGhostClick();
-        this.overlay.classList.remove('active');
-        this.overlay.classList.add('is-exiting');
-
-        this._exitPromise = new Promise((resolve) => {
-            let settled = false;
-            const finish = () => {
-                if (settled) return;
-                settled = true;
-                this.overlay.removeEventListener('transitionend', onEnd);
-                window.clearTimeout(fallback);
-                this._finishClose();
-                resolve();
-            };
-            const onEnd = (event) => {
-                if (event.target !== this.overlay) return;
-                if (event.propertyName && event.propertyName !== 'opacity') return;
-                finish();
-            };
-            this.overlay.addEventListener('transitionend', onEnd);
-            const fallbackMs = this._prefersReducedMotion() ? 40 : 560;
-            const fallback = window.setTimeout(finish, fallbackMs);
-        });
-        return this._exitPromise;
+        this.backStack?.release('globe');
+        return this.lifecycle.close();
     }
 
-    _finishClose() {
-        this.isExiting = false;
-        this.isOpen = false;
-        this._exitPromise = null;
+    _onOverlayClosed() {
         this._setHoverHighlight(null, null);
         this._clearCountryBorderHighlight();
         this._hideIntersectPicker();
         this._hidePickConfirm();
-        this.overlay?.classList.remove('active', 'is-exiting');
-        this.overlay?.classList.add('hidden');
-        document.body.style.overflow = '';
-        // Keep the WebGL scene, but stop the RAF loop so a closed overlay
-        // does not keep rendering 60fps behind the gallery.
         this._setSceneRunning(false);
-    }
-
-    _prefersReducedMotion() {
-        return Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
     }
 
     _focusLocation(location) {
@@ -2135,7 +2092,7 @@ class GlobeExplorer {
 
     async _applyCurrentFilters(takenFrom = null, takenTo = null) {
         if (this.isOpen || this.isExiting) {
-            await this._playExit();
+            await this.close();
         }
         this._syncImageServiceFilters(takenFrom, takenTo);
         await this._fetchColors();

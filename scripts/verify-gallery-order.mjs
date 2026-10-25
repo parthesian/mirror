@@ -324,13 +324,16 @@ assert(mockCameras.has('Canon EOS R5'), 'mock catalog includes an SLR camera for
 
 const classSandbox = { window: {}, console, module: { exports: {} } };
 vm.createContext(classSandbox);
+vm.runInContext(fs.readFileSync(path.join(repoRoot, 'js/galleryLayout.js'), 'utf8'), classSandbox);
 vm.runInContext(fs.readFileSync(path.join(repoRoot, 'js/gallery.js'), 'utf8'), classSandbox);
 vm.runInContext(fs.readFileSync(path.join(repoRoot, 'js/modal.js'), 'utf8'), classSandbox);
 const Gallery = classSandbox.window.Gallery || classSandbox.module.exports;
 const Modal = classSandbox.window.Modal;
 assert(Gallery.defaultLayoutMode({ innerWidth: 390 }) === 'masonry', 'phones default to masonry');
 assert(Gallery.defaultLayoutMode({ innerWidth: 1280 }) === 'grid', 'desktops default to grid');
-assert(Gallery.isMobileViewport({ innerWidth: 768 }) === true, '768px is still the mobile breakpoint');
+assert(Gallery.isMobileViewport({ innerWidth: 768 }) === true, '768px is still the compact breakpoint');
+assert(Gallery.isMobileViewport({ innerWidth: 769, innerHeight: 900 }) === false, 'a tall desktop is not compact');
+assert(Gallery.isMobileViewport({ innerWidth: 900, innerHeight: 400 }) === true, 'a short landscape is compact');
 assert(Modal.cameraIconKind('Rolleicord') === 'tlr', 'Rolleicord maps to the TLR icon');
 assert(Modal.cameraIconKind('Rolleicord Vb') === 'tlr', 'Rolleicord variants still use the TLR icon');
 assert(Modal.cameraIconKind('iPhone 15 Pro') === 'mobile', 'iPhone maps to the mobile icon');
@@ -363,6 +366,13 @@ assert(indexHtml.includes('js/galleryTransition.js'), 'public page loads the set
 assert(indexHtml.includes('js/overlayBackStack.js'), 'public page loads the same-URL overlay back stack');
 assert(indexHtml.includes('modal-camera-icon-tlr'), 'photo modal includes the TLR camera glyph');
 const indexCss = fs.readFileSync(path.join(repoRoot, 'styles.css'), 'utf8');
+const compactQuery = classSandbox.window.GalleryLayout.COMPACT_QUERY;
+const desktopQuery = classSandbox.window.GalleryLayout.DESKTOP_QUERY;
+const mediaPreludes = [...indexCss.matchAll(/@media[^{]+/g)].map((match) => match[0].trim());
+const compactPreludes = mediaPreludes.filter((prelude) => prelude.includes('max-height: 500px'));
+const desktopPreludes = mediaPreludes.filter((prelude) => prelude.includes('min-height: 501px'));
+assert(compactPreludes.length > 0 && compactPreludes.every((prelude) => prelude === `@media ${compactQuery}`), 'compact media queries use the shared predicate');
+assert(desktopPreludes.length > 0 && desktopPreludes.every((prelude) => prelude === `@media ${desktopQuery}`), 'non-compact media queries use the shared predicate');
 assert(indexCss.includes('.modal-camera-row.is-tlr .modal-camera-icon-wrap'), 'TLR camera row pulls the narrower glyph back to the name');
 
 const modalSrc = fs.readFileSync(path.join(repoRoot, 'js/modal.js'), 'utf8');

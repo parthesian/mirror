@@ -50,7 +50,9 @@ class Modal {
         );
         
         this.currentImageId = null;
-        this.isOpen = false;
+        this.lifecycle = new OverlayLifecycle(this.modal, {
+            onClosed: () => this._onOverlayClosed()
+        });
         this.isUploadModalOpen = false;
         this.isNavigating = false;
         this._photoLayoutReady = false;
@@ -196,8 +198,7 @@ class Modal {
     }
 
     /**
-     * Open modal with specific image. The photo is on screen in the same
-     * frame as the click; metadata fills in when it arrives.
+     * Open the photo overlay. The scrim fades in. Metadata fills in when it arrives.
      * @param {string} imageId - Image ID to display
      */
     async open(imageId) {
@@ -208,11 +209,8 @@ class Modal {
         }
 
         this.currentImageId = imageId;
-        this.isOpen = true;
-
-        this.modal.classList.remove('hidden');
-        this.modal.classList.add('active');
-        document.body.style.overflow = 'hidden';
+        this._photoLayoutReady = false;
+        const shown = this.lifecycle.open();
         this.backStack?.claim('photo', () => this.close());
 
         this.loadImageContent(image);
@@ -220,6 +218,31 @@ class Modal {
         this.updateNavigationButtons();
 
         this.modal.focus({ preventScroll: true });
+        await shown;
+    }
+
+    /**
+     * True while the scrim is entering or fully open. False during the exit fade.
+     * @returns {boolean}
+     */
+    get isOpen() {
+        return this.lifecycle.isOpen;
+    }
+
+    /** Tear down the photo only after the scrim has left the screen. */
+    _onOverlayClosed() {
+        this.currentImageId = null;
+        this.isNavigating = false;
+        this.clearPhotoPlacement();
+        this.hideModalGlobe();
+        this._removePhotoGhost();
+        this.clearPhotoMotion();
+        this._photoToken += 1;
+        this.setPhotoSource(Modal.BLANK_SRC, 'placeholder');
+    }
+
+    _removePhotoGhost() {
+        this.modalImageContainer?.querySelector('.modal-photo-ghost')?.remove();
     }
 
     /**
@@ -239,32 +262,14 @@ class Modal {
      * Close modal
      */
     close() {
+        if (this.lifecycle.isClosing) return this.lifecycle.close();
         if (!this.isOpen) {
             return;
         }
-        this.isOpen = false;
-        this.currentImageId = null;
         this.isNavigating = false;
-        this.clearPhotoPlacement();
-        this.backStack?.release('photo');
-
-        // Keep globe instance alive for reuse across modal opens, but
-        // stop the hidden 60fps loop until the next photo needs it.
-        this.hideModalGlobe();
-        
-        // Hide modal
-        this.modal.classList.remove('active');
-        this.modal.classList.add('hidden');
-        document.body.style.overflow = ''; // Restore scrolling
-        
-        // An empty src paints the broken-image glyph on the next open, so
-        // park a transparent pixel instead once the fade-out is done.
         this._photoToken += 1;
-        setTimeout(() => {
-            if (!this.isOpen) {
-                this.setPhotoSource(Modal.BLANK_SRC, 'placeholder');
-            }
-        }, 240);
+        this.backStack?.release('photo');
+        return this.lifecycle.close();
     }
 
     formatLocationWithState(image) {
@@ -404,7 +409,7 @@ class Modal {
     }
 
     shouldAnimatePhotoLayout() {
-        return this._photoLayoutReady && this.isVerticalModal() && !this.prefersReducedMotion();
+        return this._photoLayoutReady && !this.prefersReducedMotion();
     }
 
     globeIsShowing() {
@@ -506,9 +511,17 @@ class Modal {
     beginLayoutAnimation(container) {
         const from = container.getBoundingClientRect();
         const fromMargin = parseFloat(getComputedStyle(container).marginTop) || 0;
+        const image = this.modalImage;
         this.modalContent.classList.remove('modal-layout-animating');
-        container.style.height = `${Math.round(from.height)}px`;
-        container.style.marginTop = `${Math.round(fromMargin)}px`;
+        if (image) {
+            const frame = image.getBoundingClientRect();
+            image.style.width = `${Math.round(frame.width)}px`;
+            image.style.height = `${Math.round(frame.height)}px`;
+        }
+        if (this.isVerticalModal()) {
+            container.style.height = `${Math.round(from.height)}px`;
+            container.style.marginTop = `${Math.round(fromMargin)}px`;
+        }
         void container.offsetHeight;
         this.modalContent.classList.add('modal-layout-animating');
     }
@@ -526,15 +539,9 @@ class Modal {
             return;
         }
 
-        if (!this.isVerticalModal()) {
-            this.clearPhotoPlacement();
-            this.sizePhotoFrame(this.measureDesktopPhotoBox(image));
-            return;
-        }
-
-        const box = this.measurePhotoBox(image);
-        this.sizePhotoFrame(box);
-        const offset = this.computePhotoOffset(box.height);
+        const vertical = this.isVerticalModal();
+        const box = vertical ? this.measurePhotoBox(image) : this.measureDesktopPhotoBox(image);
+        const offset = vertical ? this.computePhotoOffset(box.height) : 0;
 
         if (animate) {
             this.beginLayoutAnimation(container);
@@ -542,10 +549,18 @@ class Modal {
             this.modalContent.classList.remove('modal-layout-animating');
         }
 
-        this.modalContent.classList.add('modal-photo-placed');
-        container.style.height = `${Math.round(box.height)}px`;
-        container.style.marginTop = `${offset}px`;
-        this.modalContent.style.setProperty('--modal-photo-w', `${Math.round(box.width)}px`);
+        this.sizePhotoFrame(box);
+        if (vertical) {
+            this.modalContent.classList.add('modal-photo-placed');
+            container.style.height = `${Math.round(box.height)}px`;
+            container.style.marginTop = `${Math.round(offset)}px`;
+            this.modalContent.style.setProperty('--modal-photo-w', `${Math.round(box.width)}px`);
+        } else {
+            this.modalContent.classList.remove('modal-photo-placed');
+            container.style.height = '';
+            container.style.marginTop = '';
+            this.modalContent.style.removeProperty('--modal-photo-w');
+        }
         this._photoLayoutReady = true;
 
         if (animate) {
@@ -554,14 +569,77 @@ class Modal {
     }
 
     /**
+     * The outgoing photo stays on top for one fade. The live image is free
+     * to change underneath it. A second navigation replaces the ghost.
+     * @param {'next'|'previous'} direction
+     */
+    spawnPhotoGhost(direction) {
+        const image = this.modalImage;
+        const container = this.modalImageContainer;
+        if (!image || !container || !image.getAttribute('src')) {
+            this.clearPhotoMotion();
+            return;
+        }
+        if (this.prefersReducedMotion()) {
+            this.clearPhotoMotion();
+            return;
+        }
+        this._removePhotoGhost();
+        const ghost = image.cloneNode(false);
+        ghost.removeAttribute('id');
+        ghost.className = 'modal-photo-ghost';
+        ghost.alt = '';
+        ghost.setAttribute('aria-hidden', 'true');
+        ghost.src = image.currentSrc || image.src;
+        const imageRect = image.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        this.clearPhotoMotion();
+        const travel = direction === 'previous' ? 20 : -20;
+        ghost.style.left = `${Math.round(imageRect.left - containerRect.left)}px`;
+        ghost.style.top = `${Math.round(imageRect.top - containerRect.top)}px`;
+        ghost.style.width = `${Math.round(imageRect.width)}px`;
+        ghost.style.height = `${Math.round(imageRect.height)}px`;
+        ghost.style.opacity = '1';
+        ghost.style.transform = 'translateX(0)';
+        ghost.style.transition = 'none';
+        container.appendChild(ghost);
+        void ghost.offsetWidth;
+        ghost.style.transition = 'opacity var(--dur-mid) var(--ease), transform var(--dur-mid) var(--ease)';
+        ghost.style.opacity = '0';
+        ghost.style.transform = `translateX(${travel}px)`;
+        const remove = (event) => {
+            if (event && event.target !== ghost) return;
+            if (event && event.propertyName !== 'opacity') return;
+            ghost.removeEventListener('transitionend', remove);
+            ghost.remove();
+        };
+        ghost.addEventListener('transitionend', remove);
+        window.setTimeout(remove, 280);
+    }
+
+    /**
      * Desktop mirror of the CSS caps (container width, 90vh). Photos are
      * never enlarged past their stored pixel size.
      */
     measureDesktopPhotoBox(image) {
         const aspect = this.getPhotoAspect(image);
-        const container = this.modalImageContainer;
-        const maxWidth = Math.max(1, container?.clientWidth || window.innerWidth * 0.6);
-        const maxHeight = Math.max(1, Math.min(container?.clientHeight || window.innerHeight, window.innerHeight * 0.9));
+        const content = this.modalContent;
+        const info = content?.querySelector('.modal-info');
+        const contentStyle = content ? getComputedStyle(content) : null;
+        const padX = contentStyle
+            ? (parseFloat(contentStyle.paddingLeft) || 0) + (parseFloat(contentStyle.paddingRight) || 0)
+            : 0;
+        const gap = contentStyle
+            ? (parseFloat(contentStyle.columnGap) || parseFloat(contentStyle.gap) || 0)
+            : 0;
+        const infoWidth = info ? info.getBoundingClientRect().width : 0;
+        const contentWidth = content ? content.clientWidth : window.innerWidth;
+        const padY = contentStyle
+            ? (parseFloat(contentStyle.paddingTop) || 0) + (parseFloat(contentStyle.paddingBottom) || 0)
+            : 0;
+        const contentHeight = content ? content.clientHeight - padY : window.innerHeight;
+        const maxWidth = Math.max(1, contentWidth - padX - infoWidth - gap);
+        const maxHeight = Math.max(1, Math.min(contentHeight, window.innerHeight * 0.9));
         let width = maxWidth;
         let height = width / aspect;
         if (height > maxHeight) {
@@ -693,8 +771,11 @@ class Modal {
             globe.style.height = '';
         } else {
             const height = Math.round(copy.getBoundingClientRect().height);
+            const details = this.modal?.querySelector('.modal-details');
+            const detailsWidth = details ? details.getBoundingClientRect().width : 0;
             if (height > 0) {
-                const size = Math.min(height, Math.round(window.innerWidth * 0.42));
+                const cap = detailsWidth > 0 ? detailsWidth * 0.3 : height;
+                const size = Math.round(Math.min(height, cap));
                 globe.style.width = `${size}px`;
                 globe.style.height = `${size}px`;
             }
@@ -743,7 +824,6 @@ class Modal {
         const image = this.imageService.getImageById(this.currentImageId);
         if (!image || !window.app?.globeExplorer) return;
 
-        this.close();
         await window.app.globeExplorer.open({
             id: image.id,
             latitude: image.latitude,
@@ -752,6 +832,7 @@ class Modal {
             state: image.state,
             location: image.location
         });
+        this.close();
     }
 
     /**
@@ -765,8 +846,11 @@ class Modal {
             const prevImage = await this.getAdjacentImage(this.currentImageId, 'previous');
             if (prevImage) {
                 const resolved = this.imageService.getImageById(prevImage.id) || prevImage;
+                this.spawnPhotoGhost('previous');
                 this.currentImageId = resolved.id;
                 this.loadImageContent(resolved);
+            } else {
+                this.releasePhotoDrag(true);
             }
         } finally {
             this.isNavigating = false;
@@ -785,8 +869,11 @@ class Modal {
             const nextImage = await this.getAdjacentImage(this.currentImageId, 'next');
             if (nextImage) {
                 const resolved = this.imageService.getImageById(nextImage.id) || nextImage;
+                this.spawnPhotoGhost('next');
                 this.currentImageId = resolved.id;
                 this.loadImageContent(resolved);
+            } else {
+                this.releasePhotoDrag(true);
             }
         } finally {
             this.isNavigating = false;
@@ -1120,12 +1207,66 @@ class Modal {
         this.uploadError.classList.add('hidden');
     }
 
+    trackPhotoDrag(gesture) {
+        const image = this.modalImage;
+        if (!image || !gesture?.onImage || gesture.zoomed || gesture.onGlobe) return;
+        if (gesture.multiTouch) {
+            this.releasePhotoDrag(true);
+            gesture.axis = 'cancelled';
+            return;
+        }
+        if (gesture.axis === 'cancelled' || gesture.axis === 'y') return;
+        const dx = gesture.lastX - gesture.startX;
+        const dy = gesture.lastY - gesture.startY;
+        if (!gesture.axis) {
+            if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+            gesture.axis = Math.abs(dx) > Math.abs(dy) * 1.8 ? 'x' : 'y';
+            if (gesture.axis !== 'x') return;
+        }
+        const direction = dx < 0 ? 'next' : 'previous';
+        const travel = this.peekAdjacentImage(this.currentImageId, direction) ? dx : dx * 0.35;
+        image.style.transition = 'none';
+        image.style.transform = `translateX(${travel}px)`;
+        gesture.dragged = true;
+    }
+
+    clearPhotoMotion() {
+        const image = this.modalImage;
+        if (!image) return;
+        image.style.transition = 'none';
+        image.style.transform = 'none';
+        void image.offsetWidth;
+        image.style.transition = '';
+    }
+
+    releasePhotoDrag(ease) {
+        const image = this.modalImage;
+        if (!image) return;
+        const current = image.style.transform;
+        if (!current || current === 'none' || !ease || this.prefersReducedMotion()) {
+            this.clearPhotoMotion();
+            return;
+        }
+        image.style.transition = 'transform var(--dur-mid) var(--ease)';
+        image.style.transform = 'none';
+        const done = (event) => {
+            if (event && event.target !== image) return;
+            if (event && event.propertyName && event.propertyName !== 'transform') return;
+            image.removeEventListener('transitionend', done);
+            if (image.style.transition.startsWith('transform')) {
+                image.style.transition = '';
+            }
+        };
+        image.addEventListener('transitionend', done);
+        window.setTimeout(done, 280);
+    }
+
     /**
      * One tracker for swipe-to-navigate and pull-to-dismiss. A gesture runs
      * from the first finger down until the last finger lifts, so the stray
      * finger left over from a pinch can never be read as a swipe. Listeners
-     * are passive and nothing moves until the gesture ends, so native
-     * pinch-zoom and scrolling stay untouched.
+     * are passive. A horizontal drag on the photo follows the finger.
+     * Vertical drags and pinches stay with the browser.
      */
     addSwipeSupport() {
         const surface = this.modalContent || this.modal;
@@ -1144,6 +1285,8 @@ class Modal {
             if (!this.isOpen) return;
             if (gesture) {
                 gesture.multiTouch = true;
+                this.releasePhotoDrag(true);
+                gesture.axis = 'cancelled';
                 return;
             }
             const touch = e.touches[0];
@@ -1170,13 +1313,17 @@ class Modal {
                 gesture.lastX = touch.clientX;
                 gesture.lastY = touch.clientY;
             }
+            this.trackPhotoDrag(gesture);
         }, { passive: true });
 
         const finish = (e, cancelled) => {
             if (!gesture || e.touches.length > 0) return;
             const g = gesture;
             gesture = null;
-            if (cancelled || !this.isOpen) return;
+            if (cancelled || !this.isOpen) {
+                this.releasePhotoDrag(true);
+                return;
+            }
 
             const touch = findTouch(e.changedTouches, g.id);
             const action = Modal.classifyTouchGesture({
@@ -1193,7 +1340,10 @@ class Modal {
 
             if (action === 'next') this.showNextImage();
             else if (action === 'previous') this.showPreviousImage();
-            else if (action === 'dismiss') this.close();
+            else if (action === 'dismiss') {
+                this.releasePhotoDrag(false);
+                this.close();
+            } else this.releasePhotoDrag(true);
         };
 
         surface.addEventListener('touchend', (e) => finish(e, false), { passive: true });
