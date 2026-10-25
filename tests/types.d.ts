@@ -80,6 +80,22 @@ declare module 'three' {
 
     export const NormalBlending: number;
 
+    export const AdditiveBlending: number;
+
+    export class LineSegments {
+        geometry: { dispose(): void };
+        material:
+            | {
+                  blending: number;
+                  opacity: number;
+                  depthWrite: boolean;
+                  transparent: boolean;
+                  type: string;
+                  dispose(): void;
+              }
+            | Array<{ dispose(): void }>;
+    }
+
     export class Mesh {
         geometry: { dispose(): void };
         material:

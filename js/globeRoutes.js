@@ -8,11 +8,10 @@
  * - Drop hops shorter than 1 degree so city clusters stay readable
  * - Longer hops are drawn first so short local hops sit on top
  *
- * Each hop is a great-circle ribbon lifted off the sphere. A quadratic bulge
- * used to fall through the globe past about 100 degrees, so a route crossing
- * a bright range (the Himalayas, for example) vanished into the texture when
- * the camera moved in close. The ribbon stays outside the mesh, biases its
- * depth toward the camera, and carries a dark edge so snow cannot swallow it.
+ * The stroke is the original hairline: white, additive, and nearly transparent.
+ * The path is the same quadratic bulge, except samples that would pass through
+ * the globe are lifted back onto it. That is what made a long route north from
+ * India vanish into the Himalayas when the camera moved in close.
  */
 class GlobeRoutes {
     latLonToVec3(lat, lon, radius, THREE) {
@@ -26,9 +25,9 @@ class GlobeRoutes {
     }
 
     /**
-     * Great-circle samples from `start` to `end`, including both ends.
-     * Every sample sits at least ARC_RADIUS above the origin. The peak lift
-     * tracks the old short-hop bulge and does not collapse on long hops.
+     * Quadratic bulge from `start` to `end`, including both ends.
+     * Matches the original arc. Any sample or chord that would enter the
+     * globe is lifted back to ARC_RADIUS.
      * @param {{ x: number, y: number, z: number }} start
      * @param {{ x: number, y: number, z: number }} end
      * @returns {{ x: number, y: number, z: number }[]}
@@ -45,50 +44,85 @@ class GlobeRoutes {
         const vz = end.z / bl;
         const cos = Math.min(1, Math.max(-1, ux * vx + uy * vy + uz * vz));
         const omega = Math.acos(cos);
+        const startP = { x: ux * radius, y: uy * radius, z: uz * radius };
         if (omega < 1e-4) {
-            return [{ x: ux * radius, y: uy * radius, z: uz * radius }];
+            return [startP];
         }
 
-        const dist = 2 * Math.sin(omega / 2) * radius;
-        const liftScale = Math.max(0.05, 0.148 / (1 + dist * 0.85));
-        const maxStep = (1.5 * Math.PI) / 180;
-        const segments = Math.max(8, Math.ceil(omega / maxStep));
-        const points = [];
-        const antipodal = cos < -0.999999;
-        let wx = 0;
-        let wy = 0;
-        let wz = 0;
-        if (antipodal) {
+        const endP = { x: vx * radius, y: vy * radius, z: vz * radius };
+        const dist = Math.hypot(endP.x - startP.x, endP.y - startP.y, endP.z - startP.z);
+        const midLen = Math.hypot(ux + vx, uy + vy, uz + vz);
+        let cx;
+        let cy;
+        let cz;
+        if (midLen < 1e-6) {
             const side = this._perpendicular(ux, uy, uz);
-            wx = side.x;
-            wy = side.y;
-            wz = side.z;
+            cx = side.x;
+            cy = side.y;
+            cz = side.z;
+        } else {
+            cx = (ux + vx) / midLen;
+            cy = (uy + vy) / midLen;
+            cz = (uz + vz) / midLen;
         }
-        const sinOmega = Math.sin(omega);
-
+        const controlR = radius + dist * 0.3;
+        const control = { x: cx * controlR, y: cy * controlR, z: cz * controlR };
+        const angleDeg = (omega * 180) / Math.PI;
+        const segments = Math.max(8, Math.min(32, Math.ceil(angleDeg / 4)));
+        const rough = [];
         for (let i = 0; i <= segments; i++) {
             const t = i / segments;
-            let dx;
-            let dy;
-            let dz;
-            if (antipodal) {
-                const swing = Math.PI * t;
-                dx = Math.cos(swing) * ux + Math.sin(swing) * wx;
-                dy = Math.cos(swing) * uy + Math.sin(swing) * wy;
-                dz = Math.cos(swing) * uz + Math.sin(swing) * wz;
-            } else {
-                const s0 = Math.sin((1 - t) * omega) / sinOmega;
-                const s1 = Math.sin(t * omega) / sinOmega;
-                dx = ux * s0 + vx * s1;
-                dy = uy * s0 + vy * s1;
-                dz = uz * s0 + vz * s1;
-            }
-            const mag = Math.hypot(dx, dy, dz) || 1;
-            const lift = Math.sin(Math.PI * t) * dist * liftScale;
-            const r = radius + lift;
-            points.push({ x: (dx / mag) * r, y: (dy / mag) * r, z: (dz / mag) * r });
+            const omt = 1 - t;
+            rough.push(this._liftAbove({
+                x: omt * omt * startP.x + 2 * omt * t * control.x + t * t * endP.x,
+                y: omt * omt * startP.y + 2 * omt * t * control.y + t * t * endP.y,
+                z: omt * omt * startP.z + 2 * omt * t * control.z + t * t * endP.z,
+            }, radius));
         }
-        return points;
+        return this._splitLowChords(rough, radius);
+    }
+
+    _liftAbove(point, radius) {
+        const len = Math.hypot(point.x, point.y, point.z) || 1;
+        if (len >= radius) {
+            return point;
+        }
+        const scale = radius / len;
+        return { x: point.x * scale, y: point.y * scale, z: point.z * scale };
+    }
+
+    _closestRadius(a, b) {
+        const abx = b.x - a.x;
+        const aby = b.y - a.y;
+        const abz = b.z - a.z;
+        const ab2 = abx * abx + aby * aby + abz * abz;
+        const t = ab2 === 0
+            ? 0
+            : Math.max(0, Math.min(1, -(a.x * abx + a.y * aby + a.z * abz) / ab2));
+        return Math.hypot(a.x + abx * t, a.y + aby * t, a.z + abz * t);
+    }
+
+    _splitLowChords(points, radius) {
+        const floor = 1.002;
+        const out = [points[0]];
+        for (let i = 1; i < points.length; i++) {
+            this._appendChord(out, points[i - 1], points[i], radius, floor, 0);
+        }
+        return out;
+    }
+
+    _appendChord(out, a, b, radius, floor, depth) {
+        if (depth > 8 || this._closestRadius(a, b) >= floor) {
+            out.push(b);
+            return;
+        }
+        const mid = this._liftAbove({
+            x: (a.x + b.x) / 2,
+            y: (a.y + b.y) / 2,
+            z: (a.z + b.z) / 2,
+        }, radius);
+        this._appendChord(out, a, mid, radius, floor, depth + 1);
+        this._appendChord(out, mid, b, radius, floor, depth + 1);
     }
 
     _perpendicular(x, y, z) {
@@ -103,83 +137,6 @@ class GlobeRoutes {
             mag = Math.hypot(wx, wy, wz);
         }
         return { x: wx / mag, y: wy / mag, z: wz / mag };
-    }
-
-    _createRouteMaterial(THREE) {
-        return new THREE.ShaderMaterial({
-            transparent: true,
-            depthTest: true,
-            depthWrite: false,
-            side: THREE.FrontSide,
-            toneMapped: false,
-            uniforms: {
-                uResolution: { value: new THREE.Vector2(1, 1) },
-                uHalfWidth: { value: 1.4 },
-                uDepthBias: { value: 0.01 }
-            },
-            vertexShader: [
-                'attribute vec3 aOther;',
-                'attribute float aSide;',
-                'attribute float aT;',
-                'uniform vec2 uResolution;',
-                'uniform float uHalfWidth;',
-                'uniform float uDepthBias;',
-                'varying float vSide;',
-                'varying float vFade;',
-                'varying float vKeep;',
-                'void main() {',
-                '  vec3 startPos = aT < 0.5 ? position : aOther;',
-                '  vec3 endPos = aT < 0.5 ? aOther : position;',
-                '  vec4 viewA = modelViewMatrix * vec4(startPos, 1.0);',
-                '  vec4 viewB = modelViewMatrix * vec4(endPos, 1.0);',
-                '  viewA.z += uDepthBias;',
-                '  viewB.z += uDepthBias;',
-                '  vec4 clipA = projectionMatrix * viewA;',
-                '  vec4 clipB = projectionMatrix * viewB;',
-                '  vec4 clip = aT < 0.5 ? clipA : clipB;',
-                '  vec2 resolution = max(uResolution, vec2(1.0));',
-                '  vec2 dirPx = ((clipB.xy / max(clipB.w, 1e-4)) - (clipA.xy / max(clipA.w, 1e-4))) * resolution * 0.5;',
-                '  float lenPx = length(dirPx);',
-                '  vec2 normal = lenPx < 0.001 ? vec2(0.0, 1.0) : vec2(-dirPx.y, dirPx.x) / lenPx;',
-                '  vec2 offsetNdc = (normal * aSide * uHalfWidth) / (resolution * 0.5);',
-                '  clip.xy += offsetNdc * clip.w;',
-                '  vec3 radial = normalize(mat3(modelMatrix) * position);',
-                '  float horizon = 1.0 / max(length(cameraPosition), 1.05);',
-                '  float facing = dot(radial, normalize(cameraPosition));',
-                '  float edge0 = horizon - 0.02;',
-                '  float edge1 = horizon + 0.05;',
-                '  float t = clamp((facing - edge0) / max(edge1 - edge0, 1e-4), 0.0, 1.0);',
-                '  vFade = t * t * (3.0 - 2.0 * t);',
-                '  vKeep = (clipA.w > 0.02 && clipB.w > 0.02) ? 1.0 : 0.0;',
-                '  vSide = aSide;',
-                '  gl_Position = clip;',
-                '}'
-            ].join('\n'),
-            fragmentShader: [
-                'varying float vSide;',
-                'varying float vFade;',
-                'varying float vKeep;',
-                'void main() {',
-                '  if (vKeep < 0.5) discard;',
-                '  float dist = abs(vSide);',
-                '  float core = 1.0 - smoothstep(0.34, 0.56, dist);',
-                '  float ink = 1.0 - smoothstep(0.72, 1.0, dist);',
-                '  vec3 groove = vec3(0.07, 0.07, 0.07);',
-                '  vec3 paper = vec3(0.93, 0.94, 0.95);',
-                '  float alpha = ink * mix(0.86, 0.96, core) * vFade;',
-                '  if (alpha < 0.02) discard;',
-                '  gl_FragColor = vec4(mix(groove, paper, core), alpha);',
-                '  #include <colorspace_fragment>',
-                '}'
-            ].join('\n')
-        });
-    }
-
-    _pushRouteVert(buffers, point, other, side, t) {
-        buffers.positions.push(point.x, point.y, point.z);
-        buffers.others.push(other.x, other.y, other.z);
-        buffers.sides.push(side);
-        buffers.ts.push(t);
     }
 
     buildArcs(THREE, group, locations, locationKeyFor) {
@@ -240,37 +197,35 @@ class GlobeRoutes {
             return a.sequence - b.sequence;
         });
 
-        const buffers = { positions: [], others: [], sides: [], ts: [] };
+        const segmentPoints = [];
         for (const arc of arcs) {
             const points = this.sampleArc(arc.start, arc.end);
             for (let i = 1; i < points.length; i++) {
                 const a = points[i - 1];
                 const b = points[i];
-                // Winding is reversed from the screen-space left normal so the
-                // ribbon faces the camera. Front-face culling otherwise drops it.
-                this._pushRouteVert(buffers, a, b, 1, 0);
-                this._pushRouteVert(buffers, a, b, -1, 0);
-                this._pushRouteVert(buffers, b, a, 1, 1);
-                this._pushRouteVert(buffers, a, b, 1, 0);
-                this._pushRouteVert(buffers, b, a, -1, 1);
-                this._pushRouteVert(buffers, b, a, 1, 1);
+                segmentPoints.push(
+                    new THREE.Vector3(a.x, a.y, a.z),
+                    new THREE.Vector3(b.x, b.y, b.z),
+                );
             }
         }
 
-        if (!buffers.positions.length) {
+        if (!segmentPoints.length) {
             return null;
         }
 
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.Float32BufferAttribute(buffers.positions, 3));
-        geometry.setAttribute('aOther', new THREE.Float32BufferAttribute(buffers.others, 3));
-        geometry.setAttribute('aSide', new THREE.Float32BufferAttribute(buffers.sides, 1));
-        geometry.setAttribute('aT', new THREE.Float32BufferAttribute(buffers.ts, 1));
-        const arcLines = new THREE.Mesh(geometry, this._createRouteMaterial(THREE));
+        const arcMat = new THREE.LineBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.12,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+        const arcLines = new THREE.LineSegments(
+            new THREE.BufferGeometry().setFromPoints(segmentPoints),
+            arcMat,
+        );
         arcLines.renderOrder = 1;
-        arcLines.frustumCulled = false;
-        // Screen-space triangles are not a pick target. Dots handle that.
-        arcLines.raycast = () => {};
         group.add(arcLines);
         return arcLines;
     }

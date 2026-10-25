@@ -3,9 +3,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as THREE from 'three';
 import {
+    AdditiveBlending,
     Group,
-    Mesh,
-    NormalBlending,
+    LineSegments,
     PerspectiveCamera,
     Raycaster,
     SphereGeometry,
@@ -99,7 +99,7 @@ type GlobeRoutesCtor = new () => {
         group: Group,
         locations: RouteLocation[],
         locationKeyFor: (loc: RouteLocation) => string,
-    ): Mesh | null;
+    ): LineSegments | null;
 };
 
 function loadClassic<T>(relativePath: string, exportName: string): T {
@@ -590,16 +590,16 @@ describe('globe detail', () => {
             [hops[2]?.[0], hops[2]?.[1]].filter((loc) => loc != null),
             (loc) => `${loc.country}|${loc.location}`,
         );
-        expect(mesh).toBeInstanceOf(Mesh);
-        if (!(mesh instanceof Mesh)) {
+        expect(mesh).toBeInstanceOf(LineSegments);
+        if (!(mesh instanceof LineSegments)) {
             return;
         }
         expect(mesh.material).toMatchObject({
-            blending: NormalBlending,
-            depthTest: true,
+            blending: AdditiveBlending,
+            opacity: 0.12,
             depthWrite: false,
             transparent: true,
-            type: 'ShaderMaterial',
+            type: 'LineBasicMaterial',
         });
         mesh.geometry.dispose();
         if (!Array.isArray(mesh.material)) {
