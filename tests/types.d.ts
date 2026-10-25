@@ -73,6 +73,26 @@ declare module 'three' {
         ray: { origin: Vector3; direction: Vector3 };
         setFromCamera(ndc: { x: number; y: number }, camera: PerspectiveCamera): void;
     }
+
+    export const MathUtils: {
+        degToRad(degrees: number): number;
+    };
+
+    export const NormalBlending: number;
+
+    export class Mesh {
+        geometry: { dispose(): void };
+        material:
+            | {
+                  blending: number;
+                  depthTest: boolean;
+                  depthWrite: boolean;
+                  transparent: boolean;
+                  type: string;
+                  dispose(): void;
+              }
+            | Array<{ dispose(): void }>;
+    }
 }
 
 declare module 'three/examples/jsm/controls/OrbitControls.js' {

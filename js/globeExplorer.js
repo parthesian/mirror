@@ -1580,6 +1580,7 @@ class GlobeExplorer {
                 processHoverPointer(lastHoverPointer);
             }
             this._updateClickPulses(now);
+            this._syncRouteUniforms();
             renderer.render(scene, camera);
             state.rafId = requestAnimationFrame(animate);
         };
@@ -1609,6 +1610,7 @@ class GlobeExplorer {
             s.mat?.dispose();
             s.tex?.dispose();
             s.dotsMesh?.geometry?.dispose();
+            s.dotsMesh?.material?.map?.dispose();
             s.dotsMesh?.material?.dispose();
             s.arcLines?.geometry?.dispose();
             s.arcLines?.material?.dispose();
@@ -1699,11 +1701,13 @@ class GlobeExplorer {
         dotGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
         const dotMat = new THREE.PointsMaterial({
+            map: this._createLocationMarkerTexture(THREE),
             vertexColors: true,
             size: 0.06,
             sizeAttenuation: true,
             transparent: true,
-            opacity: 0.94,
+            opacity: 1,
+            alphaTest: 0.15,
             blending: THREE.NormalBlending,
             depthWrite: false
         });
@@ -2285,6 +2289,62 @@ class GlobeExplorer {
 
     _dotRadius() {
         return window.GlobeDetail?.CONFIG?.DOT_RADIUS || 1.0025;
+    }
+
+    // Hollow ring with a centre dot. The dark rim keeps the mark readable on
+    // snow, where a white square used to disappear into the texture.
+    _createLocationMarkerTexture(THREE) {
+        const size = 64;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            return null;
+        }
+        const center = size / 2;
+        ctx.clearRect(0, 0, size, size);
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = 'rgba(12, 12, 12, 0.92)';
+        ctx.lineWidth = 7.2;
+        ctx.beginPath();
+        ctx.arc(center, center, 24, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(244, 244, 244, 0.98)';
+        ctx.lineWidth = 3.4;
+        ctx.beginPath();
+        ctx.arc(center, center, 24, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(12, 12, 12, 0.94)';
+        ctx.beginPath();
+        ctx.arc(center, center, 5.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(248, 248, 248, 0.98)';
+        ctx.beginPath();
+        ctx.arc(center, center, 2.6, 0, Math.PI * 2);
+        ctx.fill();
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.generateMipmaps = false;
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        texture.needsUpdate = true;
+        return texture;
+    }
+
+    _syncRouteUniforms() {
+        const state = this.threeState;
+        const uniforms = state?.arcLines?.material?.uniforms;
+        const renderer = state?.renderer;
+        if (!uniforms?.uResolution?.value || uniforms.uHalfWidth == null || !renderer) {
+            return;
+        }
+        const canvas = renderer.domElement;
+        const width = canvas?.width || 1;
+        const height = canvas?.height || 1;
+        uniforms.uResolution.value.set(width, height);
+        const pixelRatio = renderer.getPixelRatio?.() || 1;
+        uniforms.uHalfWidth.value = 1.4 * pixelRatio;
     }
 
     _canvasRect() {
