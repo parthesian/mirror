@@ -110,6 +110,7 @@ const MockPhotos = {
             if (query.country && !sameText(photo.country, query.country)) return false;
             if (query.state && !sameText(photo.state, query.state)) return false;
             if (query.location && !sameText(photo.location, query.location)) return false;
+            if (query.camera && !sameText(photo.camera, query.camera)) return false;
             if (query.takenFrom && photo.takenAt < query.takenFrom) return false;
             if (query.takenTo && photo.takenAt > query.takenTo) return false;
             return true;
@@ -148,6 +149,20 @@ const MockPhotos = {
             location: photo.location,
             takenAt: photo.takenAt
         }));
+    },
+
+    cameras(query = {}) {
+        const counts = new Map();
+        const scoped = { ...query, camera: '' };
+        for (const photo of this.filterPhotos(this.catalog(), scoped)) {
+            const name = String(photo.camera || '').trim();
+            if (!name) continue;
+            const key = name.toLowerCase();
+            const bucket = counts.get(key) || { value: name, label: name, count: 0 };
+            bucket.count += 1;
+            counts.set(key, bucket);
+        }
+        return [...counts.values()].sort((a, b) => a.label.localeCompare(b.label));
     },
 
     timeline(query = {}) {
@@ -214,6 +229,9 @@ const MockPhotos = {
         if (path === '/api/photos/timeline') {
             return jsonResponse({ groups: this.timeline(queryFrom(url)) });
         }
+        if (path === '/api/photos/cameras') {
+            return jsonResponse({ cameras: this.cameras(queryFrom(url)) });
+        }
         if (path === '/api/photos') {
             return jsonResponse(this.page(queryFrom(url), decodeMockCursor(url.searchParams.get('cursor')), Number(url.searchParams.get('limit')) || this.LIMIT));
         }
@@ -254,6 +272,7 @@ function queryFrom(url) {
         country: url.searchParams.get('country') || '',
         state: url.searchParams.get('state') || '',
         location: url.searchParams.get('location') || '',
+        camera: url.searchParams.get('camera') || '',
         takenFrom: url.searchParams.get('takenFrom') || '',
         takenTo: url.searchParams.get('takenTo') || ''
     };

@@ -27,6 +27,7 @@ function blankFilters(): PhotoFilters {
         state: '',
         location: '',
         color: '',
+        camera: '',
         takenFrom: '',
         takenTo: '',
     };
@@ -53,6 +54,7 @@ export function readPhotoQuery(params: URLSearchParams): QueryRead {
     filters.state = (parsed.data.state ?? '').trim();
     filters.location = (parsed.data.location ?? '').trim();
     filters.color = color && isKnownColor(color) ? color : '';
+    filters.camera = (parsed.data.camera ?? '').trim();
     filters.takenFrom = parsed.data.takenFrom ?? '';
     filters.takenTo = parsed.data.takenTo ?? '';
 

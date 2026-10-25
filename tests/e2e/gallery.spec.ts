@@ -82,3 +82,66 @@ test('a tap does not leave the mobile click box', async ({ page }) => {
     )) as string;
     expect(pointerOutline).toBe('none');
 });
+
+test('the control menu filters the gallery by camera', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/?mock=1');
+    await expect(page.locator('.gallery-item').first()).toBeVisible();
+
+    await page.locator('#cm-hub').click();
+    await page.locator('#cm-sectors .cm-node', { hasText: 'FILTER' }).click();
+    await page.locator('#cm-options .cm-node', { hasText: 'CAMERA' }).click();
+
+    const leaf = page.locator('#cm-leaf .cm-node');
+    await expect(leaf.filter({ hasText: 'ROLLEICORD' })).toBeVisible();
+    await expect(leaf.filter({ hasText: 'IPHONE 15 PRO' })).toBeVisible();
+    await expect(leaf.filter({ hasText: 'CANON EOS R5' })).toBeVisible();
+
+    const boxes = (await page.evaluate(`(() => {
+        return [...document.querySelectorAll('#cm-options .cm-node')].map((node) => {
+            const rect = node.getBoundingClientRect();
+            return {
+                text: (node.textContent || '').trim(),
+                top: rect.top,
+                left: rect.left,
+                right: rect.right,
+                bottom: rect.bottom
+            };
+        });
+    })()`)) as Array<{ text: string; top: number; left: number; right: number; bottom: number }>;
+    expect(boxes).toHaveLength(6);
+    expect(boxes.map((box) => box.text)).toEqual(
+        expect.arrayContaining(['COUNTRY', 'REGION', 'PLACE', 'COLOR', 'CAMERA', 'CLEAR']),
+    );
+    for (const box of boxes) {
+        expect(box.top).toBeGreaterThanOrEqual(0);
+        expect(box.left).toBeGreaterThanOrEqual(0);
+        expect(box.right).toBeLessThanOrEqual(1280);
+        expect(box.bottom).toBeLessThanOrEqual(900);
+    }
+
+    await leaf.filter({ hasText: 'ROLLEICORD' }).click();
+    await expect.poll(() => page.evaluate('window.imageService.cameraFilter')).toBe('Rolleicord');
+    await expect
+        .poll(() =>
+            page.evaluate(`(() => {
+        const ids = window.imageService.chronoIds || [];
+        return [...new Set(ids.map((id) => window.MockPhotos.byId(id).camera))];
+    })()`),
+        )
+        .toEqual(['Rolleicord']);
+    await expect(page.locator('#control-menu')).toHaveClass(/has-filter/);
+    await expect(leaf.filter({ hasText: 'IPHONE 15 PRO' })).toBeVisible();
+    await expect(leaf.filter({ hasText: 'CANON EOS R5' })).toBeVisible();
+
+    await page.locator('#cm-options .cm-node', { hasText: 'CLEAR' }).click();
+    await expect.poll(() => page.evaluate('window.imageService.cameraFilter')).toBe(null);
+    await expect
+        .poll(() =>
+            page.evaluate(`(() => {
+        const ids = window.imageService.chronoIds || [];
+        return new Set(ids.map((id) => window.MockPhotos.byId(id).camera)).size;
+    })()`),
+        )
+        .toBeGreaterThan(1);
+});

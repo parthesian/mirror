@@ -19,6 +19,10 @@ describe('gallery query contract', () => {
         expect(badCursor.ok).toBe(false);
         const badColor = readPhotoQuery(new URLSearchParams({ color: 'navy' }));
         expect(badColor.ok).toBe(false);
+        const camera = readPhotoQuery(new URLSearchParams({ camera: '  Rolleicord  ' }));
+        expect(camera.ok && camera.query.filters.camera).toBe('Rolleicord');
+        const unfiltered = readPhotoQuery(new URLSearchParams());
+        expect(unfiltered.ok && unfiltered.query.filters.camera).toBe('');
     });
 
     it('keeps cursor fields stable', () => {

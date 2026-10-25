@@ -10,6 +10,7 @@ export const photoQuerySchema = z.object({
     state: z.string().optional(),
     location: z.string().optional(),
     color: z.string().optional(),
+    camera: z.string().optional(),
     takenFrom: z.string().optional(),
     takenTo: z.string().optional(),
 });
@@ -19,6 +20,7 @@ export type PhotoFilters = {
     state: string;
     location: string;
     color: ColorId | '';
+    camera: string;
     takenFrom: string;
     takenTo: string;
 };

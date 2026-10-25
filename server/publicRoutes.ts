@@ -84,6 +84,41 @@ export async function listPhotoColors(c: AppContext): Promise<Response> {
     return c.json({ colors: mapColorFacets(rows) });
 }
 
+export async function listPhotoCameras(c: AppContext): Promise<Response> {
+    const read = readPhotoQuery(new URL(c.req.url).searchParams);
+    if (!read.ok) {
+        return fail(c, read.error, 400);
+    }
+
+    const filters = { ...read.query.filters, camera: '' };
+    const filterSql = photoFilterSql(filters);
+    const nonempty = sql`TRIM(COALESCE(camera, '')) != ''`;
+    const where = filterSql ? sql`${nonempty} AND ${filterSql}` : nonempty;
+
+    const db = createDb(c.env);
+    const rows = await db.all<{ camera: string; count: number }>(sql`
+        SELECT MIN(TRIM(camera)) AS camera, COUNT(*) AS count
+        FROM photos
+        WHERE ${where}
+        GROUP BY LOWER(TRIM(camera))
+    `);
+
+    const cameras = rows
+        .map((row) => {
+            const label = String(row.camera ?? '').trim();
+            return {
+                value: label,
+                label,
+                count: Number(row.count) || 0,
+            };
+        })
+        .filter((row) => row.value.length > 0 && row.count > 0)
+        .sort((left, right) => left.label.localeCompare(right.label));
+
+    cache(c, 'public, s-maxage=60, max-age=15');
+    return c.json({ cameras });
+}
+
 export async function listGeo(c: AppContext): Promise<Response> {
     const db = createDb(c.env);
     const rows = await db
