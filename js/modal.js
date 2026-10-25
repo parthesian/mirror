@@ -55,8 +55,6 @@ class Modal {
         });
         this.isUploadModalOpen = false;
         this.isNavigating = false;
-        this._photoLayoutReady = false;
-        this._layoutAnimTimer = 0;
         this._resizeTimer = 0;
         this._safeAreaTop = null;
         this._photoToken = 0;
@@ -209,7 +207,6 @@ class Modal {
         }
 
         this.currentImageId = imageId;
-        this._photoLayoutReady = false;
         const shown = this.lifecycle.open();
         this.backStack?.claim('photo', () => this.close());
 
@@ -235,14 +232,9 @@ class Modal {
         this.isNavigating = false;
         this.clearPhotoPlacement();
         this.hideModalGlobe();
-        this._removePhotoGhost();
         this.clearPhotoMotion();
         this._photoToken += 1;
         this.setPhotoSource(Modal.BLANK_SRC, 'placeholder');
-    }
-
-    _removePhotoGhost() {
-        this.modalImageContainer?.querySelector('.modal-photo-ghost')?.remove();
     }
 
     /**
@@ -300,7 +292,7 @@ class Modal {
             this.imageService.ensurePhotoDetail(image.id).then((detailed) => {
                 if (!detailed || !this.isOpen || this.currentImageId !== image.id) return;
                 if (Math.abs(this.getPhotoAspect(detailed) - this._frameAspect) > 0.02) {
-                    this.applyPhotoPlacement(detailed, { animate: this.shouldAnimatePhotoLayout() });
+                    this.applyPhotoPlacement(detailed);
                 }
                 this.renderDetails(detailed);
                 this.updateNavigationButtons();
@@ -318,7 +310,7 @@ class Modal {
      */
     showPhoto(image) {
         const token = ++this._photoToken;
-        this.applyPhotoPlacement(image, { animate: this.shouldAnimatePhotoLayout() });
+        this.applyPhotoPlacement(image);
         this.modalImage.alt = image.description || 'Photo';
 
         const fullUrl = image.url;
@@ -408,10 +400,6 @@ class Modal {
         return Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
     }
 
-    shouldAnimatePhotoLayout() {
-        return this._photoLayoutReady && !this.prefersReducedMotion();
-    }
-
     globeIsShowing() {
         return Boolean(
             this.globeContainer
@@ -426,8 +414,7 @@ class Modal {
         }
         this.globeService?.pause?.(this.globeContainer);
         this.globeContainer.classList.add('hidden');
-        this.globeContainer.style.width = '';
-        this.globeContainer.style.height = '';
+        this.clearModalGlobeBox();
     }
 
     onViewportChange() {
@@ -437,7 +424,7 @@ class Modal {
         this._safeAreaTop = null;
         const image = this.imageService.getImageById(this.currentImageId);
         if (image) {
-            this.applyPhotoPlacement(image, { animate: false });
+            this.applyPhotoPlacement(image);
         }
         this.syncModalGlobeSize();
     }
@@ -508,32 +495,7 @@ class Modal {
         return Math.max(minOffset, Math.round(anchor - padTop - photoHeight / 2));
     }
 
-    beginLayoutAnimation(container) {
-        const from = container.getBoundingClientRect();
-        const fromMargin = parseFloat(getComputedStyle(container).marginTop) || 0;
-        const image = this.modalImage;
-        this.modalContent.classList.remove('modal-layout-animating');
-        if (image) {
-            const frame = image.getBoundingClientRect();
-            image.style.width = `${Math.round(frame.width)}px`;
-            image.style.height = `${Math.round(frame.height)}px`;
-        }
-        if (this.isVerticalModal()) {
-            container.style.height = `${Math.round(from.height)}px`;
-            container.style.marginTop = `${Math.round(fromMargin)}px`;
-        }
-        void container.offsetHeight;
-        this.modalContent.classList.add('modal-layout-animating');
-    }
-
-    scheduleLayoutAnimEnd() {
-        window.clearTimeout(this._layoutAnimTimer);
-        this._layoutAnimTimer = window.setTimeout(() => {
-            this.modalContent?.classList.remove('modal-layout-animating');
-        }, 360);
-    }
-
-    applyPhotoPlacement(image, { animate = false } = {}) {
+    applyPhotoPlacement(image) {
         const container = this.modalImageContainer;
         if (!container || !this.modalContent) {
             return;
@@ -542,12 +504,6 @@ class Modal {
         const vertical = this.isVerticalModal();
         const box = vertical ? this.measurePhotoBox(image) : this.measureDesktopPhotoBox(image);
         const offset = vertical ? this.computePhotoOffset(box.height) : 0;
-
-        if (animate) {
-            this.beginLayoutAnimation(container);
-        } else {
-            this.modalContent.classList.remove('modal-layout-animating');
-        }
 
         this.sizePhotoFrame(box);
         if (vertical) {
@@ -561,60 +517,6 @@ class Modal {
             container.style.marginTop = '';
             this.modalContent.style.removeProperty('--modal-photo-w');
         }
-        this._photoLayoutReady = true;
-
-        if (animate) {
-            this.scheduleLayoutAnimEnd();
-        }
-    }
-
-    /**
-     * The outgoing photo stays on top for one fade. The live image is free
-     * to change underneath it. A second navigation replaces the ghost.
-     * @param {'next'|'previous'} direction
-     */
-    spawnPhotoGhost(direction) {
-        const image = this.modalImage;
-        const container = this.modalImageContainer;
-        if (!image || !container || !image.getAttribute('src')) {
-            this.clearPhotoMotion();
-            return;
-        }
-        if (this.prefersReducedMotion()) {
-            this.clearPhotoMotion();
-            return;
-        }
-        this._removePhotoGhost();
-        const ghost = image.cloneNode(false);
-        ghost.removeAttribute('id');
-        ghost.className = 'modal-photo-ghost';
-        ghost.alt = '';
-        ghost.setAttribute('aria-hidden', 'true');
-        ghost.src = image.currentSrc || image.src;
-        const imageRect = image.getBoundingClientRect();
-        const containerRect = container.getBoundingClientRect();
-        this.clearPhotoMotion();
-        const travel = direction === 'previous' ? 20 : -20;
-        ghost.style.left = `${Math.round(imageRect.left - containerRect.left)}px`;
-        ghost.style.top = `${Math.round(imageRect.top - containerRect.top)}px`;
-        ghost.style.width = `${Math.round(imageRect.width)}px`;
-        ghost.style.height = `${Math.round(imageRect.height)}px`;
-        ghost.style.opacity = '1';
-        ghost.style.transform = 'translateX(0)';
-        ghost.style.transition = 'none';
-        container.appendChild(ghost);
-        void ghost.offsetWidth;
-        ghost.style.transition = 'opacity var(--dur-mid) var(--ease), transform var(--dur-mid) var(--ease)';
-        ghost.style.opacity = '0';
-        ghost.style.transform = `translateX(${travel}px)`;
-        const remove = (event) => {
-            if (event && event.target !== ghost) return;
-            if (event && event.propertyName !== 'opacity') return;
-            ghost.removeEventListener('transitionend', remove);
-            ghost.remove();
-        };
-        ghost.addEventListener('transitionend', remove);
-        window.setTimeout(remove, 280);
     }
 
     /**
@@ -689,17 +591,14 @@ class Modal {
         if (matchesFrame) {
             return;
         }
-        this.applyPhotoPlacement(image, { animate: this._photoLayoutReady && !this.prefersReducedMotion() });
+        this.applyPhotoPlacement(image);
     }
 
     clearPhotoPlacement() {
-        this._photoLayoutReady = false;
-        window.clearTimeout(this._layoutAnimTimer);
-        this._layoutAnimTimer = 0;
         if (!this.modalContent || !this.modalImageContainer) {
             return;
         }
-        this.modalContent.classList.remove('modal-layout-animating', 'modal-photo-placed');
+        this.modalContent.classList.remove('modal-photo-placed');
         this.modalImageContainer.style.height = '';
         this.modalImageContainer.style.marginTop = '';
         this.modalContent.style.removeProperty('--modal-photo-w');
@@ -755,8 +654,9 @@ class Modal {
     }
 
     /**
-     * On a phone the globe sits beside the facts and matches their height.
-     * Desktop keeps the fixed 160px disc. Does not touch the explorer globe.
+     * Phone disc is a square beside the facts. The side is the copy height,
+     * capped at 30% of the current photo row. Desktop keeps the 160px rule.
+     * The explorer globe is a different element.
      */
     syncModalGlobeSize() {
         const globe = this.globeContainer;
@@ -765,23 +665,45 @@ class Modal {
             return;
         }
 
-        const beside = Boolean(window.matchMedia?.('(max-width: 768px)')?.matches);
-        if (!beside || !copy) {
-            globe.style.width = '';
-            globe.style.height = '';
+        if (!this.isVerticalModal() || !copy) {
+            this.clearModalGlobeBox();
         } else {
-            const height = Math.round(copy.getBoundingClientRect().height);
-            const details = this.modal?.querySelector('.modal-details');
-            const detailsWidth = details ? details.getBoundingClientRect().width : 0;
-            if (height > 0) {
-                const cap = detailsWidth > 0 ? detailsWidth * 0.3 : height;
-                const size = Math.round(Math.min(height, cap));
-                globe.style.width = `${size}px`;
-                globe.style.height = `${size}px`;
+            const info = this.modal?.querySelector('.modal-info');
+            const infoWidth = info ? info.clientWidth : 0;
+            const copyHeight = Math.round(copy.getBoundingClientRect().height);
+            if (copyHeight > 0 && infoWidth > 0) {
+                let size = Math.max(1, Math.round(Math.min(copyHeight, infoWidth * 0.3)));
+                this.setModalGlobeBox(size);
+                const used = Math.round(Math.min(globe.clientWidth, globe.clientHeight));
+                if (used > 0 && used < size) {
+                    size = used;
+                    this.setModalGlobeBox(size);
+                }
             }
         }
 
         this.globeService?.instances?.get(globe)?.onResize?.();
+    }
+
+    setModalGlobeBox(size) {
+        const globe = this.globeContainer;
+        if (!globe) return;
+        const px = `${size}px`;
+        globe.style.width = px;
+        globe.style.height = px;
+        globe.style.maxWidth = px;
+        globe.style.maxHeight = px;
+        globe.style.flex = `0 0 ${px}`;
+    }
+
+    clearModalGlobeBox() {
+        const globe = this.globeContainer;
+        if (!globe) return;
+        globe.style.width = '';
+        globe.style.height = '';
+        globe.style.maxWidth = '';
+        globe.style.maxHeight = '';
+        globe.style.flex = '';
     }
 
     /**
@@ -846,7 +768,7 @@ class Modal {
             const prevImage = await this.getAdjacentImage(this.currentImageId, 'previous');
             if (prevImage) {
                 const resolved = this.imageService.getImageById(prevImage.id) || prevImage;
-                this.spawnPhotoGhost('previous');
+                this.clearPhotoMotion();
                 this.currentImageId = resolved.id;
                 this.loadImageContent(resolved);
             } else {
@@ -869,7 +791,7 @@ class Modal {
             const nextImage = await this.getAdjacentImage(this.currentImageId, 'next');
             if (nextImage) {
                 const resolved = this.imageService.getImageById(nextImage.id) || nextImage;
-                this.spawnPhotoGhost('next');
+                this.clearPhotoMotion();
                 this.currentImageId = resolved.id;
                 this.loadImageContent(resolved);
             } else {

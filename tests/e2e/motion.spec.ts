@@ -184,3 +184,63 @@ test('reduced motion keeps shuffled tiles from gliding or fading', async ({ brow
     expect(motion.transition).toBe('none');
     await context.close();
 });
+
+test('changing photos keeps the globe round and does not ghost the photo', async ({ browser }) => {
+    const context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+    });
+    const page = await context.newPage();
+    await page.goto('/?mock=1');
+    await expect(page.locator('.gallery-item').first()).toBeVisible();
+    const firstId = (await page.evaluate(`window.app.imageService.images[0].id`)) as string;
+    await page.evaluate(`window.app.modal.open(${JSON.stringify(firstId)})`);
+    await page.waitForFunction(
+        `document.getElementById('modal-image') && document.getElementById('modal-image').naturalWidth > 0 && document.querySelector('#modal-globe canvas')`,
+    );
+    const wide = (await page.evaluate(`(() => {
+        const globe = document.getElementById('modal-globe').getBoundingClientRect();
+        const info = document.querySelector('.modal-info').clientWidth;
+        const copy = document.querySelector('.modal-copy').getBoundingClientRect().height;
+        return {
+            w: Math.round(globe.width),
+            h: Math.round(globe.height),
+            expected: Math.round(Math.min(copy, info * 0.3))
+        };
+    })()`)) as { w: number; h: number; expected: number };
+    expect(Math.abs(wide.w - wide.h)).toBeLessThanOrEqual(1);
+    expect(Math.abs(wide.w - wide.expected)).toBeLessThanOrEqual(1);
+
+    const changed = (await page.evaluate(`(async () => {
+        await window.app.modal.showNextImage();
+        const image = document.getElementById('modal-image');
+        const globe = document.getElementById('modal-globe').getBoundingClientRect();
+        const canvas = document.querySelector('#modal-globe canvas').getBoundingClientRect();
+        const info = document.querySelector('.modal-info').clientWidth;
+        const copy = document.querySelector('.modal-copy').getBoundingClientRect().height;
+        const sizing = image.getAnimations().some((entry) => entry.transitionProperty === 'width' || entry.transitionProperty === 'height');
+        return {
+            ghosts: document.querySelectorAll('.modal-photo-ghost').length,
+            sizing,
+            w: Math.round(globe.width),
+            h: Math.round(globe.height),
+            canvasW: Math.round(canvas.width),
+            canvasH: Math.round(canvas.height),
+            expected: Math.round(Math.min(copy, info * 0.3))
+        };
+    })()`)) as {
+        ghosts: number;
+        sizing: boolean;
+        w: number;
+        h: number;
+        canvasW: number;
+        canvasH: number;
+        expected: number;
+    };
+    expect(changed.ghosts).toBe(0);
+    expect(changed.sizing).toBe(false);
+    expect(Math.abs(changed.w - changed.h)).toBeLessThanOrEqual(1);
+    expect(Math.abs(changed.canvasW - changed.canvasH)).toBeLessThanOrEqual(1);
+    expect(Math.abs(changed.w - changed.expected)).toBeLessThanOrEqual(1);
+    await context.close();
+});
