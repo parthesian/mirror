@@ -299,52 +299,17 @@ class GlobeExplorer {
 
     _clearCountryBorderHighlight() {
         this.countryBorderHighlightKey = '';
-        const s = this.threeState;
-        if (!s?.group || !this.countryBoundaryBorder) return;
-        s.group.remove(this.countryBoundaryBorder);
-        this.countryBoundaryBorder.traverse?.((obj) => {
-            if (obj.geometry?.dispose) obj.geometry.dispose();
-            if (obj.material?.dispose) obj.material.dispose();
-        });
-        this.countryBoundaryBorder = null;
+        this._setLineHover(0);
     }
 
-    _setCountryBorderHighlight(THREE, featureRef, group) {
-        if (!featureRef || !group) {
+    _setCountryBorderHighlight(_THREE, featureRef) {
+        if (!featureRef) {
             this._clearCountryBorderHighlight();
             return;
         }
         const featureKey = this._countryFeatureKey(featureRef);
-        if (featureKey && featureKey === this.countryBorderHighlightKey && this.countryBoundaryBorder) {
-            return;
-        }
-        this._clearCountryBorderHighlight();
         this.countryBorderHighlightKey = featureKey;
-        const borderGroup = new THREE.Group();
-        const radius = 1.012;
-        const lineMaterial = new THREE.LineBasicMaterial({
-            color: 0x9ed8ff,
-            transparent: true,
-            opacity: 0.95
-        });
-        for (const polygon of featureRef.polygons) {
-            if (!Array.isArray(polygon) || !polygon.length) continue;
-            const outer = polygon[0];
-            if (!Array.isArray(outer) || outer.length < 2) continue;
-            const points = [];
-            for (const coord of outer) {
-                const lon = Number(coord[0]);
-                const lat = Number(coord[1]);
-                if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-                points.push(this._latLonToVec3(lat, lon, radius, THREE));
-            }
-            if (points.length < 2) continue;
-            const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
-            const line = new THREE.Line(lineGeo, lineMaterial.clone());
-            borderGroup.add(line);
-        }
-        group.add(borderGroup);
-        this.countryBoundaryBorder = borderGroup;
+        this._setLineHover(featureRef.runtimeId || 0);
     }
 
     _hideIntersectPicker() {
@@ -366,13 +331,14 @@ class GlobeExplorer {
             : new THREE.Vector3(1, 0, 0);
         const tangentA = new THREE.Vector3().crossVectors(axisSeed, localDir).normalize();
         const tangentB = new THREE.Vector3().crossVectors(localDir, tangentA).normalize();
+        const dotScale = s.dotScale || 1;
         const pulse = {
             startedAt: performance.now(),
             duration: 580,
             delay: 130,
-            minAngle: THREE.MathUtils.degToRad(0.4),
-            maxAngle: THREE.MathUtils.degToRad(3.7),
-            radius: 1.018,
+            minAngle: THREE.MathUtils.degToRad(0.4) * dotScale,
+            maxAngle: THREE.MathUtils.degToRad(3.7) * dotScale,
+            radius: window.GlobeDetail?.CONFIG?.PULSE_RADIUS || 1.003,
             centerDir: localDir,
             tangentA,
             tangentB,
@@ -548,7 +514,7 @@ class GlobeExplorer {
             const idx = hit.index;
             if (idx == null || idx >= this.locationUnitVectors.length) continue;
             if (!this._isLocationPointFacingCamera(idx, worldQuat, cameraDir)) continue;
-            const worldPos = this.locationUnitVectors[idx].clone().multiplyScalar(1.01).applyQuaternion(worldQuat);
+            const worldPos = this.locationUnitVectors[idx].clone().multiplyScalar(this._dotRadius()).applyQuaternion(worldQuat);
             const ndc = worldPos.clone().project(camera);
             if (ndc.z < -1 || ndc.z > 1) continue;
             const sx = (ndc.x * 0.5 + 0.5) * width;
@@ -577,7 +543,7 @@ class GlobeExplorer {
             const idx = hit.index;
             if (idx == null || idx >= this.locationUnitVectors.length) continue;
             if (!this._isLocationPointFacingCamera(idx, worldQuat, cameraDir)) continue;
-            const worldPos = this.locationUnitVectors[idx].clone().multiplyScalar(1.01).applyQuaternion(worldQuat);
+            const worldPos = this.locationUnitVectors[idx].clone().multiplyScalar(this._dotRadius()).applyQuaternion(worldQuat);
             const ndc = worldPos.clone().project(camera);
             if (ndc.z < -1 || ndc.z > 1) continue;
             const sx = (ndc.x * 0.5 + 0.5) * width;
@@ -902,6 +868,7 @@ class GlobeExplorer {
         }
         this.lastManualRotateAt = Date.now();
         this._syncRotateToggleUI();
+        this._syncZoomFromCamera();
     }
 
     _resetFocusOrbit(controls, polarAngle = Math.PI / 2) {
@@ -1193,7 +1160,16 @@ class GlobeExplorer {
             if (e.ctrlKey || this.isOpen) {
                 e.preventDefault();
             }
+            if (this.pointerGesture) {
+                this.pointerGesture.hadWheel = true;
+            }
+            this._onZoomWheel(e);
         }, { passive: false });
+        for (const gestureType of ['gesturestart', 'gesturechange', 'gestureend']) {
+            renderer.domElement.addEventListener(gestureType, (event) => {
+                this._onGesture(event);
+            }, { passive: false });
+        }
 
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 1000);
@@ -1214,22 +1190,23 @@ class GlobeExplorer {
             controls.dampingFactor = 0.16;
             controls.enableRotate = true;
             controls.enablePan = false;
-            controls.minDistance = 1.8;
+            controls.minDistance = 1.30;
             controls.maxDistance = 8;
             controls.minPolarAngle = Math.PI / 2 - THREE.MathUtils.degToRad(62);
             controls.maxPolarAngle = Math.PI / 2 + THREE.MathUtils.degToRad(62);
             controls.rotateSpeed = 0.65;
-            controls.enableZoom = true;
-            controls.autoRotate = this.autoRotateEnabled;
+            controls.enableZoom = false;
+            controls.autoRotate = false;
             controls.autoRotateSpeed = 0.85;
+            controls.touches.TWO = -1;
         }
 
         const group = new THREE.Group();
         group.rotation.y = -Math.PI / 2; // align globe texture and data points
         scene.add(group);
 
-        const segments = window.threeLoader?.sphereSegments('explorer') || 48;
-        const geo = new THREE.SphereGeometry(1, segments, segments);
+        const explorerSegments = window.threeLoader?.explorerSphereSegments?.() || [192, 96];
+        const geo = new THREE.SphereGeometry(1, explorerSegments[0], explorerSegments[1]);
         let tex = null;
         let mat = null;
         try {
@@ -1265,6 +1242,11 @@ class GlobeExplorer {
                 hadWheel: false,
                 tapHandled: false
             };
+            this._pointers = this._pointers || new Map();
+            this._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (this._pointers.size >= 2) {
+                this._beginPinch();
+            }
             const camDist = camera.position.length() || 3.2;
             drag = {
                 x: e.clientX,
@@ -1274,6 +1256,16 @@ class GlobeExplorer {
             };
         });
         renderer.domElement.addEventListener('pointermove', (e) => {
+            if (this._pointers?.has(e.pointerId)) {
+                this._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            }
+            if ((this._pointers?.size || 0) >= 2) {
+                this._updatePinch();
+                if (this.pointerGesture) {
+                    this.pointerGesture.dragged = true;
+                }
+                return;
+            }
             if (!drag) return;
             const dx = e.clientX - drag.x;
             const dy = e.clientY - drag.y;
@@ -1301,7 +1293,10 @@ class GlobeExplorer {
         let pendingHoverPointer = null;
         let hoverRafId = null;
         const processHoverPointer = (e) => {
-            const rect = renderer.domElement.getBoundingClientRect();
+            if (this._zoomBlocksHover()) {
+                return;
+            }
+            const rect = this._canvasRect();
             const hoverMouse = new THREE.Vector2(
                 ((e.clientX - rect.left) / rect.width) * 2 - 1,
                 -((e.clientY - rect.top) / rect.height) * 2 + 1
@@ -1326,23 +1321,27 @@ class GlobeExplorer {
                 }
             }
 
-            const globeHits = raycaster.intersectObject(globe);
-            if (!globeHits.length) {
+            const hit = this._hitGlobeNdc(hoverMouse, raycaster, camera);
+            if (!hit) {
                 this._setHoverHighlight(null, null);
                 this._clearCountryBorderHighlight();
                 return;
             }
             this._setHoverHighlight(null, null);
-            const hitDir = globeHits[0].point.clone().normalize();
-            const countryHit = this._findCountryFromDirection(THREE, hitDir, group);
+            const countryHit = this._findCountryFromDirection(THREE, hit.normalize(), group);
             if (countryHit?.feature) {
                 this._setCountryBorderHighlight(THREE, countryHit.feature, group);
             } else {
                 this._clearCountryBorderHighlight();
             }
         };
+        let lastHoverPointer = null;
         renderer.domElement.addEventListener('mousemove', (e) => {
-            pendingHoverPointer = { clientX: e.clientX, clientY: e.clientY };
+            lastHoverPointer = { clientX: e.clientX, clientY: e.clientY };
+            if (this._zoomBlocksHover()) {
+                return;
+            }
+            pendingHoverPointer = lastHoverPointer;
             if (hoverRafId != null) {
                 return;
             }
@@ -1355,12 +1354,17 @@ class GlobeExplorer {
                 }
             });
         });
-        renderer.domElement.addEventListener('wheel', () => {
-            if (this.pointerGesture) {
-                this.pointerGesture.hadWheel = true;
-            }
-        }, { passive: true });
         const endDrag = (e) => {
+            if (e && e.pointerId != null) {
+                const pinching = (this._pointers?.size || 0) >= 2;
+                this._pointers?.delete(e.pointerId);
+                if (pinching && this.pointerGesture) {
+                    this.pointerGesture.dragged = true;
+                }
+                if ((this._pointers?.size || 0) < 2) {
+                    this._endPinch();
+                }
+            }
             const gesture = this.pointerGesture;
             this.lastPointerGesture = gesture;
             const shouldTap = Boolean(
@@ -1393,16 +1397,15 @@ class GlobeExplorer {
 
         const handleGlobePick = (e) => {
             if (this.isExiting) return;
-            const rect = renderer.domElement.getBoundingClientRect();
+            const rect = this._canvasRect();
             mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
             mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
-            raycaster.setFromCamera(mouse, camera);
-            const globeHits = raycaster.intersectObject(globe);
-            if (!globeHits.length) {
+            const hit = this._hitGlobeNdc(mouse, raycaster, camera);
+            if (!hit) {
                 return;
             }
-            const clickDir = globeHits[0].point.clone().normalize();
+            const clickDir = hit.normalize();
             this._showClickPulse(THREE, group, clickDir);
             const countryHit = this._findCountryFromDirection(THREE, clickDir, group);
             const applyCountryChoice = () => {
@@ -1498,9 +1501,57 @@ class GlobeExplorer {
             handleGlobePick(e);
         });
 
+        const fitDistance = camera.position.length() || 3.2;
+        const zoom = {
+            h: Math.max(0.3, fitDistance - 1),
+            hGoal: Math.max(0.3, fitDistance - 1),
+            hMax: (controls?.maxDistance || 8) - 1,
+            tau: 110,
+            settled: true,
+            settledAt: performance.now(),
+            anchor: null,
+            pointerNdc: { x: 0, y: 0 },
+            pinch: null,
+            gestureH: null,
+            needsHover: false,
+            viewWidth: w,
+            viewHeight: h,
+            rampStart: 0,
+            rampOn: false
+        };
+        const lines = {
+            meshes: { world: null, regional: null, local: null },
+            level: 'world',
+            lod: 0,
+            worldIntro: 0,
+            worldIntroStart: 0,
+            worldStarted: false,
+            baseMaterial: null,
+            worker: null,
+            workerFailed: false,
+            requests: {},
+            requestSerial: 0,
+            loaded: { '50m': false, '10m': false },
+            loading: { '50m': false, '10m': false },
+            failed: { '50m': false, '10m': false },
+            warned: { '50m': false, '10m': false },
+            cooldown: { '50m': 0, '10m': 0 },
+            rearm: { '50m': false, '10m': false },
+            hoverA: { id: 0, weight: 0, from: 0, to: 0, startedAt: 0, duration: 0 },
+            hoverB: { id: 0, weight: 0, from: 0, to: 0, startedAt: 0, duration: 0 },
+            cancelled: false,
+            idleId: 0,
+            worldIdle: 0
+        };
         const state = {
             renderer, scene, camera, group, globe, controls, geo, mat, tex,
+            THREE,
             rafId: null, disposed: false, onResize: null, dotsMesh, arcLines,
+            raycaster,
+            dotScale: 1,
+            canvasRect: renderer.domElement.getBoundingClientRect(),
+            zoom,
+            lines,
             dotColors: dotsMesh?.geometry?.getAttribute('color')?.array || null,
             clickPulses: []
         };
@@ -1513,6 +1564,11 @@ class GlobeExplorer {
             renderer.setSize(nw, nh);
             camera.aspect = nw / nh;
             camera.updateProjectionMatrix();
+            state.canvasRect = renderer.domElement.getBoundingClientRect();
+            state.zoom.viewWidth = nw;
+            state.zoom.viewHeight = nh;
+            this._syncZoomFromCamera();
+            this._applyLineDprScale();
         };
         window.addEventListener('resize', state.onResize);
 
@@ -1524,11 +1580,16 @@ class GlobeExplorer {
             const now = performance.now();
             const dt = state.lastTick == null ? 16.67 : Math.min(48, now - state.lastTick);
             state.lastTick = now;
+            this._stepZoom(dt, now);
             if (controls) {
-                controls.autoRotate = this.autoRotateEnabled;
                 controls.update();
             } else if (this.autoRotateEnabled) {
                 group.rotation.y += 0.12 * (dt / 1000);
+            }
+            this._stepLines(dt, now);
+            if (state.zoom.needsHover && state.zoom.settled && lastHoverPointer) {
+                state.zoom.needsHover = false;
+                processHoverPointer(lastHoverPointer);
             }
             this._updateClickPulses(now);
             renderer.render(scene, camera);
@@ -1540,13 +1601,16 @@ class GlobeExplorer {
         state.running = false;
 
         this.threeState = state;
+        group.updateMatrixWorld(true);
         this._applyDotHighlight();
+        this._startWorldLines();
     }
 
     _destroyScene() {
         const s = this.threeState;
         if (!s) return;
         s.disposed = true;
+        this._disposeLines();
         this._clearCountryBorderHighlight();
         if (s.rafId) cancelAnimationFrame(s.rafId);
         if (s.onResize) window.removeEventListener('resize', s.onResize);
@@ -1582,7 +1646,7 @@ class GlobeExplorer {
     _buildDots(THREE, group) {
         if (this.locations.length === 0) return null;
 
-        const radius = 1.01;
+        const radius = this._dotRadius();
         this.locationUnitVectors = [];
         this.renderedPointLocations = [];
         this.locationGroups = [];
@@ -1696,11 +1760,9 @@ class GlobeExplorer {
         };
     }
 
-    _getGlobeCenterDirection(raycaster, camera, globe) {
-        raycaster.setFromCamera({ x: 0, y: 0 }, camera);
-        const hits = raycaster.intersectObject(globe);
-        if (!hits.length) return null;
-        return hits[0].point.clone().normalize();
+    _getGlobeCenterDirection(raycaster, camera) {
+        const hit = this._hitGlobeNdc({ x: 0, y: 0 }, raycaster, camera);
+        return hit ? hit.normalize() : null;
     }
 
     _resolveClusterClick(THREE, clickDir, group, preferredKey = '') {
@@ -2212,15 +2274,795 @@ class GlobeExplorer {
         const distance = GlobeExplorer.globeFitDistance(width, height, state.camera.fov);
         if (state.controls) {
             state.controls.maxDistance = Math.max(state.controls.maxDistance, distance + 0.35);
+            state.controls.minDistance = 1.30;
         }
+        if (state.zoom) {
+            state.zoom.viewWidth = width;
+            state.zoom.viewHeight = height;
+        }
+        state.canvasRect = state.renderer?.domElement?.getBoundingClientRect?.() || rect;
         const current = state.camera.position.length();
         if (current > 0.001) {
             state.camera.position.multiplyScalar(distance / current);
         } else {
             state.camera.position.set(0, 0, distance);
         }
+        state.camera.lookAt(0, 0, 0);
         state.camera.updateProjectionMatrix();
         state.controls?.update?.();
+        this._syncZoomFromCamera();
+        this._resetLineLevelToCamera();
+    }
+
+    _dotRadius() {
+        return window.GlobeDetail?.CONFIG?.DOT_RADIUS || 1.0025;
+    }
+
+    _canvasRect() {
+        const state = this.threeState;
+        if (state?.canvasRect?.width) {
+            return state.canvasRect;
+        }
+        const rect = state?.renderer?.domElement?.getBoundingClientRect?.();
+        if (state && rect) {
+            state.canvasRect = rect;
+        }
+        return rect || { left: 0, top: 0, width: 1, height: 1 };
+    }
+
+    _clientToNdc(clientX, clientY) {
+        const rect = this._canvasRect();
+        const width = rect.width || 1;
+        const height = rect.height || 1;
+        return {
+            x: ((clientX - rect.left) / width) * 2 - 1,
+            y: -((clientY - rect.top) / height) * 2 + 1
+        };
+    }
+
+    _hitGlobeNdc(ndc, raycaster = this.threeState?.raycaster, camera = this.threeState?.camera) {
+        const state = this.threeState;
+        const GD = window.GlobeDetail;
+        if (!state || !GD || !raycaster || !camera) {
+            return null;
+        }
+        raycaster.setFromCamera(ndc, camera);
+        const ray = raycaster.ray;
+        const hit = GD.rayUnitSphere(
+            ray.origin.x,
+            ray.origin.y,
+            ray.origin.z,
+            ray.direction.x,
+            ray.direction.y,
+            ray.direction.z
+        );
+        if (!hit) {
+            return null;
+        }
+        return new state.THREE.Vector3(hit.x, hit.y, hit.z);
+    }
+
+    _zoomBlocksHover() {
+        const zoom = this.threeState?.zoom;
+        if (!zoom || !(zoom.h > 0) || !(zoom.hGoal > 0)) {
+            return false;
+        }
+        return Math.abs(Math.log(zoom.h / zoom.hGoal)) > 0.002;
+    }
+
+    _syncZoomFromCamera() {
+        const state = this.threeState;
+        if (!state?.camera || !state.zoom) {
+            return;
+        }
+        const distance = state.camera.position.length();
+        const altitude = Math.max(0.3, distance - 1);
+        state.zoom.h = altitude;
+        state.zoom.hGoal = altitude;
+        state.zoom.settled = true;
+        state.zoom.settledAt = performance.now();
+        if (state.controls) {
+            state.zoom.hMax = state.controls.maxDistance - 1;
+            state.controls.minDistance = 1.30;
+            state.controls.maxDistance = state.zoom.hMax + 1;
+        }
+    }
+
+    _resetLineLevelToCamera() {
+        const state = this.threeState;
+        const GD = window.GlobeDetail;
+        if (!state?.lines || !state.camera || !GD) {
+            return;
+        }
+        const distance = state.camera.position.length();
+        const level = distance < GD.CONFIG.LEVEL_D.local
+            ? 'local'
+            : distance < GD.CONFIG.LEVEL_D.regional
+                ? 'regional'
+                : 'world';
+        state.lines.level = level;
+        const cap = state.lines.meshes.local ? 2 : state.lines.meshes.regional ? 1 : 0;
+        state.lines.lod = Math.min(GD.levelIndex(level), cap);
+    }
+
+    _onZoomWheel(event) {
+        const state = this.threeState;
+        const GD = window.GlobeDetail;
+        if (!state?.zoom || !GD || !this.isOpen) {
+            return;
+        }
+        const rect = this._canvasRect();
+        const norm = GD.normalizeWheel({
+            deltaY: event.deltaY,
+            deltaMode: event.deltaMode,
+            ctrlKey: event.ctrlKey,
+            canvasHeight: rect.height || 0
+        });
+        state.zoom.hGoal = GD.nextAltitudeGoal(
+            state.zoom.hGoal,
+            norm.px,
+            norm.k,
+            GD.CONFIG.H_MIN,
+            state.zoom.hMax
+        );
+        state.zoom.tau = this._prefersReducedMotion() ? GD.CONFIG.TAU_REDUCED_MS : norm.tau;
+        state.zoom.settled = false;
+        this._captureZoomAnchor(event.clientX, event.clientY);
+    }
+
+    _onGesture(event) {
+        if (event?.preventDefault) {
+            event.preventDefault();
+        }
+        const state = this.threeState;
+        const GD = window.GlobeDetail;
+        if (!state?.zoom || !GD || !this.isOpen) {
+            return;
+        }
+        state.zoom.tau = this._prefersReducedMotion() ? GD.CONFIG.TAU_REDUCED_MS : GD.CONFIG.TAU_PINCH_MS;
+        if (event.type === 'gesturestart') {
+            state.zoom.gestureH = state.zoom.hGoal;
+            this._captureZoomAnchor(event.clientX, event.clientY);
+            return;
+        }
+        if (event.type === 'gesturechange') {
+            const scale = Number(event.scale) || 1;
+            const base = state.zoom.gestureH || state.zoom.hGoal;
+            state.zoom.hGoal = Math.max(GD.CONFIG.H_MIN, Math.min(state.zoom.hMax, base / (scale || 1)));
+            state.zoom.settled = false;
+        }
+    }
+
+    _captureZoomAnchor(clientX, clientY) {
+        const state = this.threeState;
+        const GD = window.GlobeDetail;
+        if (!state?.zoom || !GD || !state.group) {
+            return;
+        }
+        const ndc = this._clientToNdc(clientX, clientY);
+        state.zoom.pointerNdc = ndc;
+        state.group.updateMatrixWorld(true);
+        const hit = this._hitGlobeNdc(ndc);
+        if (!hit) {
+            state.zoom.anchor = null;
+            return;
+        }
+        state.group.worldToLocal(hit);
+        hit.normalize();
+        state.zoom.anchor = hit;
+    }
+
+    _beginPinch() {
+        const state = this.threeState;
+        const GD = window.GlobeDetail;
+        const points = [...(this._pointers?.values() || [])];
+        if (!state?.zoom || points.length < 2) {
+            return;
+        }
+        const a = points[0];
+        const b = points[1];
+        const span = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+        state.zoom.pinch = { span, h: state.zoom.hGoal };
+        state.zoom.tau = this._prefersReducedMotion()
+            ? (GD?.CONFIG?.TAU_REDUCED_MS || 40)
+            : (GD?.CONFIG?.TAU_TOUCH_MS || 30);
+        this._captureZoomAnchor((a.x + b.x) / 2, (a.y + b.y) / 2);
+        if (state.controls) {
+            state.controls.enableRotate = false;
+        }
+        if (this.pointerGesture) {
+            this.pointerGesture.dragged = true;
+        }
+    }
+
+    _updatePinch() {
+        const state = this.threeState;
+        const GD = window.GlobeDetail;
+        const points = [...(this._pointers?.values() || [])];
+        if (!state?.zoom?.pinch || points.length < 2) {
+            return;
+        }
+        const a = points[0];
+        const b = points[1];
+        const span = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+        const hMin = GD?.CONFIG?.H_MIN || 0.3;
+        const next = state.zoom.pinch.h * state.zoom.pinch.span / span;
+        state.zoom.hGoal = Math.max(hMin, Math.min(state.zoom.hMax, next));
+        state.zoom.tau = this._prefersReducedMotion()
+            ? (GD?.CONFIG?.TAU_REDUCED_MS || 40)
+            : (GD?.CONFIG?.TAU_TOUCH_MS || 30);
+        state.zoom.settled = false;
+        state.zoom.pointerNdc = this._clientToNdc((a.x + b.x) / 2, (a.y + b.y) / 2);
+    }
+
+    _endPinch() {
+        const state = this.threeState;
+        if (state?.zoom) {
+            state.zoom.pinch = null;
+        }
+        if (state?.controls) {
+            state.controls.enableRotate = true;
+        }
+    }
+
+    _autoRotateRamp(active, now) {
+        const zoom = this.threeState?.zoom;
+        const rampMs = window.GlobeDetail?.CONFIG?.AUTO_ROTATE_RAMP_MS || 600;
+        if (!zoom) {
+            return active ? 1 : 0;
+        }
+        if (!active) {
+            zoom.rampOn = false;
+            zoom.rampStart = 0;
+            return 0;
+        }
+        if (!zoom.rampOn) {
+            zoom.rampOn = true;
+            zoom.rampStart = now;
+        }
+        const t = Math.min(1, (now - zoom.rampStart) / rampMs);
+        return t * t * (3 - 2 * t);
+    }
+
+    _stepZoom(dt, now) {
+        const state = this.threeState;
+        const GD = window.GlobeDetail;
+        if (!state?.zoom || !state.camera || !GD) {
+            return;
+        }
+        const zoom = state.zoom;
+        const stepped = GD.stepAltitude(zoom.h, zoom.hGoal, dt, zoom.tau);
+        const wasSettled = zoom.settled;
+        zoom.h = stepped.h;
+        zoom.settled = stepped.settled;
+        if (zoom.settled && !wasSettled) {
+            zoom.settledAt = now;
+            zoom.needsHover = true;
+        } else if (!zoom.settled) {
+            zoom.settledAt = 0;
+        }
+        const radius = 1 + zoom.h;
+        const camera = state.camera;
+        if (camera.position.length() > 0.001) {
+            camera.position.setLength(radius);
+        } else {
+            camera.position.set(0, 0, radius);
+        }
+        camera.lookAt(0, 0, 0);
+        camera.updateMatrixWorld();
+        if (!zoom.settled && zoom.anchor && state.raycaster && state.group) {
+            state.group.updateMatrixWorld(true);
+            const worldAnchor = zoom.anchor.clone().applyMatrix4(state.group.matrixWorld).normalize();
+            state.raycaster.setFromCamera(zoom.pointerNdc, camera);
+            const ray = state.raycaster.ray;
+            const hit = GD.rayUnitSphere(
+                ray.origin.x, ray.origin.y, ray.origin.z,
+                ray.direction.x, ray.direction.y, ray.direction.z
+            );
+            if (hit) {
+                const fit = GlobeExplorer.globeFitDistance(zoom.viewWidth, zoom.viewHeight, camera.fov);
+                const weight = GD.anchorWeight(
+                    worldAnchor.x, worldAnchor.y, worldAnchor.z,
+                    camera.position.x, camera.position.y, camera.position.z,
+                    fit
+                );
+                const phiMin = state.controls
+                    ? state.controls.minPolarAngle
+                    : Math.PI / 2 - (62 * Math.PI) / 180;
+                const phiMax = state.controls
+                    ? state.controls.maxPolarAngle
+                    : Math.PI / 2 + (62 * Math.PI) / 180;
+                const next = GD.adjustSpherical({
+                    x: camera.position.x,
+                    y: camera.position.y,
+                    z: camera.position.z,
+                    px: worldAnchor.x,
+                    py: worldAnchor.y,
+                    pz: worldAnchor.z,
+                    qx: hit.x,
+                    qy: hit.y,
+                    qz: hit.z,
+                    w: weight,
+                    phiMin,
+                    phiMax
+                });
+                camera.position.set(next.x, next.y, next.z);
+                camera.lookAt(0, 0, 0);
+                camera.updateMatrixWorld();
+            }
+        }
+        const distance = camera.position.length();
+        const altitude = distance - 1;
+        if (state.lines) {
+            state.lines.level = GD.stepLevel(state.lines.level, distance);
+        }
+        const clip = GD.clipPlanes(altitude, distance);
+        if (GD.clipChanged(camera.near, camera.far, clip.near, clip.far)) {
+            camera.near = clip.near;
+            camera.far = clip.far;
+            camera.updateProjectionMatrix();
+        }
+        const dot = GD.dotScale(altitude);
+        state.dotScale = dot;
+        if (state.dotsMesh?.material) {
+            state.dotsMesh.material.size = GD.CONFIG.DOT_SIZE * dot;
+        }
+        if (state.raycaster?.params?.Points) {
+            state.raycaster.params.Points.threshold = GD.CONFIG.POINTS_THRESHOLD * dot;
+        }
+        if (state.controls) {
+            state.controls.rotateSpeed = GD.CONFIG.ROTATE_SPEED * GD.rotateScale(altitude);
+            state.controls.minDistance = 1 + GD.CONFIG.H_MIN;
+            state.controls.maxDistance = zoom.hMax + 1;
+            if (this._prefersReducedMotion()) {
+                state.controls.autoRotate = this.autoRotateEnabled;
+                state.controls.autoRotateSpeed = GD.CONFIG.AUTO_ROTATE_SPEED;
+            } else {
+                const level = state.lines?.level || 'world';
+                const resume = Boolean(
+                    zoom.settled
+                    && zoom.settledAt
+                    && (now - zoom.settledAt > GD.CONFIG.AUTO_ROTATE_RESUME_MS)
+                );
+                const spinning = this.autoRotateEnabled && level === 'world' && resume;
+                state.controls.autoRotate = spinning;
+                state.controls.autoRotateSpeed = GD.CONFIG.AUTO_ROTATE_SPEED
+                    * GD.autoRotateScale(altitude)
+                    * this._autoRotateRamp(spinning, now);
+            }
+        }
+    }
+
+    _stepHoverSlots(now) {
+        const lines = this.threeState?.lines;
+        if (!lines) {
+            return;
+        }
+        for (const slot of [lines.hoverA, lines.hoverB]) {
+            const duration = slot.duration > 0 ? slot.duration : 1;
+            const t = Math.min(1, (now - slot.startedAt) / duration);
+            const eased = 1 - (1 - t) * (1 - t);
+            slot.weight = slot.from + (slot.to - slot.from) * eased;
+        }
+    }
+
+    _setLineHover(id) {
+        const lines = this.threeState?.lines;
+        const GD = window.GlobeDetail;
+        if (!lines) {
+            return;
+        }
+        const nextId = id || 0;
+        const now = performance.now();
+        const fadeIn = GD?.CONFIG?.HOVER_IN_MS || 140;
+        const fadeOut = GD?.CONFIG?.HOVER_OUT_MS || 220;
+        const slots = [lines.hoverA, lines.hoverB];
+        if (nextId && slots.some((slot) => slot.id === nextId && slot.to === 1)) {
+            for (const slot of slots) {
+                if (slot.id !== nextId && slot.to !== 0) {
+                    slot.from = slot.weight;
+                    slot.to = 0;
+                    slot.startedAt = now;
+                    slot.duration = fadeOut;
+                }
+            }
+            return;
+        }
+        if (!nextId) {
+            for (const slot of slots) {
+                if (slot.weight > 0 || slot.to !== 0) {
+                    slot.from = slot.weight;
+                    slot.to = 0;
+                    slot.startedAt = now;
+                    slot.duration = fadeOut;
+                }
+            }
+            return;
+        }
+        const slot = lines.hoverA.weight <= lines.hoverB.weight ? lines.hoverA : lines.hoverB;
+        const other = slot === lines.hoverA ? lines.hoverB : lines.hoverA;
+        slot.id = nextId;
+        slot.from = 0;
+        slot.weight = 0;
+        slot.to = 1;
+        slot.startedAt = now;
+        slot.duration = fadeIn;
+        other.from = other.weight;
+        other.to = 0;
+        other.startedAt = now;
+        other.duration = fadeOut;
+    }
+
+    _stepLines(dt, now) {
+        const state = this.threeState;
+        const GD = window.GlobeDetail;
+        if (!state?.lines || !state.camera || !GD) {
+            return;
+        }
+        const lines = state.lines;
+        const distance = state.camera.position.length();
+        const reduced = this._prefersReducedMotion();
+        const fadeMs = reduced ? GD.CONFIG.CROSSFADE_REDUCED_MS : GD.CONFIG.CROSSFADE_MS;
+        if (lines.worldIntroStart) {
+            const intro = Math.min(1, (now - lines.worldIntroStart) / fadeMs);
+            lines.worldIntro = intro;
+            if (intro >= 1) {
+                lines.worldIntroStart = 0;
+            }
+        }
+        let cap = -1;
+        if (lines.meshes.world) cap = 0;
+        if (lines.meshes.regional) cap = 1;
+        if (lines.meshes.local) cap = 2;
+        let target = GD.levelIndex(lines.level);
+        if (cap < 0) {
+            target = 0;
+        } else if (target > cap) {
+            target = cap;
+        }
+        const maxStep = fadeMs > 0 ? dt / fadeMs : 1;
+        lines.lod += Math.max(-maxStep, Math.min(maxStep, target - lines.lod));
+        if (Math.abs(lines.lod - target) < 1e-4) {
+            lines.lod = target;
+        }
+        this._stepHoverSlots(now);
+        const weights = GD.crossfadeWeights(lines.lod);
+        weights[0] *= lines.meshes.world ? lines.worldIntro : 0;
+        const names = ['world', 'regional', 'local'];
+        for (let i = 0; i < names.length; i++) {
+            const mesh = lines.meshes[names[i]];
+            if (!mesh) {
+                continue;
+            }
+            const weight = weights[i] || 0;
+            mesh.visible = weight > 0.0001;
+            const uniforms = mesh.material.uniforms;
+            uniforms.uLevelWeight.value = weight;
+            uniforms.uDistance.value = distance;
+            uniforms.uHoverIdA.value = lines.hoverA.id;
+            uniforms.uHoverWA.value = lines.hoverA.weight;
+            uniforms.uHoverIdB.value = lines.hoverB.id;
+            uniforms.uHoverWB.value = lines.hoverB.weight;
+        }
+        if (this.isOpen) {
+            this._considerLinePrefetch(distance);
+        }
+    }
+
+    _scheduleIdle(fn) {
+        if (typeof window.requestIdleCallback === 'function') {
+            return window.requestIdleCallback(fn, { timeout: 500 });
+        }
+        return window.setTimeout(() => fn({ timeRemaining: () => 4, didTimeout: true }), 0);
+    }
+
+    _cancelIdle(id) {
+        if (id == null) {
+            return;
+        }
+        if (typeof window.cancelIdleCallback === 'function') {
+            window.cancelIdleCallback(id);
+        }
+        window.clearTimeout(id);
+    }
+
+    _startWorldLines() {
+        const state = this.threeState;
+        const GD = window.GlobeDetail;
+        const features = window.countryBoundaries?.features;
+        if (!state?.lines || !GD || !features?.length || state.lines.worldStarted) {
+            return;
+        }
+        state.lines.worldStarted = true;
+        const acc = GD.createEdgeAccumulator();
+        let index = 0;
+        const step = (deadline) => {
+            if (state.disposed || state.lines.cancelled) {
+                return;
+            }
+            const start = performance.now();
+            let processed = 0;
+            while (index < features.length && processed < 20 && (performance.now() - start) < 4) {
+                if (
+                    processed > 0
+                    && deadline
+                    && typeof deadline.timeRemaining === 'function'
+                    && deadline.timeRemaining() < 1
+                ) {
+                    break;
+                }
+                const feature = features[index];
+                index += 1;
+                processed += 1;
+                if (feature) {
+                    GD.addFeatureEdges(acc, feature, feature.runtimeId || index);
+                }
+            }
+            if (index < features.length) {
+                state.lines.worldIdle = this._scheduleIdle(step);
+                return;
+            }
+            state.lines.worldIdle = this._scheduleIdle(() => {
+                if (state.disposed || state.lines.cancelled) {
+                    return;
+                }
+                this._installLineMesh('world', GD.projectWorldEdges(GD.finalizeWorldEdges(acc)));
+            });
+        };
+        state.lines.worldIdle = this._scheduleIdle(step);
+    }
+
+    _lineLevelName(kind) {
+        return kind === '10m' ? 'local' : 'regional';
+    }
+
+    _lineUrl(kind) {
+        return kind === '10m' ? '/data/globe-lines-10m.v1.json' : '/data/globe-lines-50m.v1.json';
+    }
+
+    _adm0RuntimeIds() {
+        const map = {};
+        const byCode = window.countryBoundaries?.byAdm0A3;
+        if (!byCode) {
+            return map;
+        }
+        for (const [code, index] of byCode.entries()) {
+            map[code] = index + 1;
+        }
+        return map;
+    }
+
+    _applyLineDprScale() {
+        const state = this.threeState;
+        const GD = window.GlobeDetail;
+        if (!state?.lines || !GD) {
+            return;
+        }
+        const dpr = state.renderer?.getPixelRatio?.() || window.devicePixelRatio || 1;
+        const scale = dpr < 1.5 ? GD.CONFIG.ALPHA.lowDprScale : 1;
+        for (const mesh of Object.values(state.lines.meshes)) {
+            if (mesh?.material?.uniforms?.uDprScale) {
+                mesh.material.uniforms.uDprScale.value = scale;
+            }
+        }
+    }
+
+    _installLineMesh(level, buffers) {
+        const state = this.threeState;
+        const GD = window.GlobeDetail;
+        if (!state || state.disposed || !GD || !buffers?.positions?.length) {
+            return;
+        }
+        if (!state.lines.baseMaterial) {
+            state.lines.baseMaterial = GD.createInkMaterial(state.THREE);
+        }
+        const material = state.lines.baseMaterial.clone();
+        const dpr = state.renderer?.getPixelRatio?.() || window.devicePixelRatio || 1;
+        GD.applyLevelUniforms(material, level, dpr);
+        const geometry = new state.THREE.BufferGeometry();
+        geometry.setAttribute('position', new state.THREE.BufferAttribute(buffers.positions, 3));
+        geometry.setAttribute('meta', new state.THREE.BufferAttribute(buffers.meta, 4));
+        geometry.setIndex(new state.THREE.BufferAttribute(buffers.index, 1));
+        const mesh = new state.THREE.LineSegments(geometry, material);
+        mesh.renderOrder = 0;
+        mesh.visible = false;
+        state.group.add(mesh);
+        const previous = state.lines.meshes[level];
+        if (previous) {
+            state.group.remove(previous);
+            previous.geometry?.dispose();
+            previous.material?.dispose();
+        }
+        state.lines.meshes[level] = mesh;
+        if (level === 'world') {
+            state.lines.worldIntro = 0;
+            state.lines.worldIntroStart = performance.now();
+        }
+    }
+
+    _considerLinePrefetch(distance) {
+        const state = this.threeState;
+        const GD = window.GlobeDetail;
+        if (!state?.zoom || !state.lines || !GD || !this.isOpen) {
+            return;
+        }
+        const saveData = Boolean(navigator.connection && navigator.connection.saveData);
+        for (const kind of ['50m', '10m']) {
+            if (!GD.shouldFetch(kind, distance, state.zoom.hGoal) && state.lines.failed[kind]) {
+                state.lines.rearm[kind] = true;
+            }
+        }
+        if (GD.shouldFetch('50m', distance, state.zoom.hGoal)) {
+            this._ensureLineLevel('50m');
+        }
+        if (!saveData && GD.shouldFetch('10m', distance, state.zoom.hGoal)) {
+            this._ensureLineLevel('10m');
+        }
+    }
+
+    _ensureLineLevel(kind) {
+        const lines = this.threeState?.lines;
+        if (!lines || lines.loaded[kind] || lines.loading[kind]) {
+            return;
+        }
+        if (lines.failed[kind]) {
+            if (!lines.rearm[kind] || performance.now() < (lines.cooldown[kind] || 0)) {
+                return;
+            }
+        }
+        lines.loading[kind] = true;
+        lines.rearm[kind] = false;
+        const url = this._lineUrl(kind);
+        const codeToId = this._adm0RuntimeIds();
+        if (!this._postLineBuild(url, kind, codeToId)) {
+            void this._buildLinesOnMain(url, kind, codeToId);
+        }
+    }
+
+    _postLineBuild(url, kind, codeToId) {
+        const lines = this.threeState?.lines;
+        if (!lines || lines.workerFailed || typeof Worker === 'undefined') {
+            if (lines) {
+                lines.workerFailed = true;
+            }
+            return false;
+        }
+        if (!lines.worker) {
+            try {
+                lines.worker = new Worker('/js/globeLinesWorker.js?v=20261025a');
+                lines.worker.onmessage = (event) => this._onLineWorkerMessage(event);
+                lines.worker.onerror = () => {
+                    const pending = { ...lines.requests };
+                    lines.workerFailed = true;
+                    try {
+                        lines.worker.terminate();
+                    } catch (err) {
+                        /* ignore */
+                    }
+                    lines.worker = null;
+                    lines.requests = {};
+                    for (const requestId of Object.keys(pending)) {
+                        const pendingKind = pending[requestId];
+                        if (!pendingKind || !lines.loading[pendingKind]) {
+                            continue;
+                        }
+                        lines.loading[pendingKind] = false;
+                        void this._buildLinesOnMain(this._lineUrl(pendingKind), pendingKind, this._adm0RuntimeIds());
+                    }
+                };
+            } catch (err) {
+                lines.workerFailed = true;
+                return false;
+            }
+        }
+        const id = lines.requestSerial + 1;
+        lines.requestSerial = id;
+        lines.requests[id] = kind;
+        lines.worker.postMessage({ type: 'build', id, url, codeToId });
+        return true;
+    }
+
+    _onLineWorkerMessage(event) {
+        const lines = this.threeState?.lines;
+        const data = event?.data || {};
+        if (!lines) {
+            return;
+        }
+        const kind = lines.requests[data.id];
+        delete lines.requests[data.id];
+        if (!kind) {
+            return;
+        }
+        lines.loading[kind] = false;
+        if (!data.ok) {
+            this._failLineLevel(kind, data.error);
+            return;
+        }
+        lines.loaded[kind] = true;
+        lines.failed[kind] = false;
+        this._installLineMesh(this._lineLevelName(kind), data);
+    }
+
+    _failLineLevel(kind, err) {
+        const lines = this.threeState?.lines;
+        if (!lines) {
+            return;
+        }
+        lines.loading[kind] = false;
+        lines.failed[kind] = true;
+        lines.cooldown[kind] = performance.now() + 30000;
+        lines.rearm[kind] = false;
+        if (!lines.warned[kind]) {
+            lines.warned[kind] = true;
+            console.warn('[GlobeExplorer] globe lines failed', kind, err);
+        }
+    }
+
+    async _buildLinesOnMain(url, kind, codeToId) {
+        const state = this.threeState;
+        const GD = window.GlobeDetail;
+        const lines = state?.lines;
+        if (!lines || !GD) {
+            return;
+        }
+        lines.loading[kind] = true;
+        try {
+            const res = await fetch(url, { cache: 'force-cache' });
+            if (!res.ok) {
+                throw new Error(`status ${res.status}`);
+            }
+            const doc = await res.json();
+            const build = GD.createChunkedLineBuild(doc, codeToId);
+            const step = (deadline) => {
+                if (!this.threeState || this.threeState.disposed || lines.cancelled) {
+                    return;
+                }
+                const start = performance.now();
+                let done = false;
+                do {
+                    done = GD.stepChunkedLineBuild(build, 5000);
+                    if (done) {
+                        lines.loading[kind] = false;
+                        lines.loaded[kind] = true;
+                        lines.failed[kind] = false;
+                        this._installLineMesh(this._lineLevelName(kind), GD.finishChunkedLineBuild(build));
+                        return;
+                    }
+                } while (
+                    (performance.now() - start) < 4
+                    && !(deadline && typeof deadline.timeRemaining === 'function' && deadline.timeRemaining() < 1)
+                );
+                lines.idleId = this._scheduleIdle(step);
+            };
+            lines.idleId = this._scheduleIdle(step);
+        } catch (err) {
+            this._failLineLevel(kind, err);
+        }
+    }
+
+    _disposeLines() {
+        const state = this.threeState;
+        if (!state?.lines) {
+            return;
+        }
+        const lines = state.lines;
+        lines.cancelled = true;
+        this._cancelIdle(lines.idleId);
+        this._cancelIdle(lines.worldIdle);
+        if (lines.worker) {
+            lines.worker.terminate();
+            lines.worker = null;
+        }
+        for (const mesh of Object.values(lines.meshes)) {
+            if (!mesh) {
+                continue;
+            }
+            state.group?.remove(mesh);
+            mesh.geometry?.dispose();
+            mesh.material?.dispose();
+        }
+        lines.baseMaterial?.dispose();
+        lines.baseMaterial = null;
     }
 }
 

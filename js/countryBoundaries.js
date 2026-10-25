@@ -9,6 +9,7 @@ class CountryBoundaries {
     constructor() {
         this.features = [];
         this.aliasMap = new Map();
+        this.byAdm0A3 = new Map();
         this._promise = null;
     }
 
@@ -53,10 +54,12 @@ class CountryBoundaries {
             console.warn('[CountryBoundaries] country boundaries unavailable');
             this.features = [];
             this.aliasMap = new Map();
+            this.byAdm0A3 = new Map();
             return;
         }
 
         const aliases = new Map();
+        const byAdm0A3 = new Map();
         const features = [];
         const normalizeLon = (lon) => {
             const out = ((Number(lon) + 540) % 360) - 180;
@@ -146,14 +149,20 @@ class CountryBoundaries {
                 continue;
             }
 
+            const adm0a3 = cleanName(props.ADM0_A3);
             const featureRef = {
                 name: primaryName,
                 names,
                 iso2: cleanName(props.ISO_A2),
                 iso3: cleanName(props.ISO_A3),
+                adm0a3,
+                runtimeId: features.length + 1,
                 polygons,
                 bbox
             };
+            if (adm0a3 && !byAdm0A3.has(adm0a3)) {
+                byAdm0A3.set(adm0a3, features.length);
+            }
             features.push(featureRef);
             for (const name of names) {
                 addAlias(name, featureRef);
@@ -162,6 +171,7 @@ class CountryBoundaries {
 
         this.features = features;
         this.aliasMap = aliases;
+        this.byAdm0A3 = byAdm0A3;
     }
 
     pointInRing(lon, lat, ring) {

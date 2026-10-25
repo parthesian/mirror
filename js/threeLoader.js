@@ -92,6 +92,15 @@ class ThreeLoader {
         return 48;
     }
 
+    /**
+     * The full-screen explorer keeps a fixed tessellation so coast lines
+     * stay within a fraction of a pixel of the JPEG. The modal globe does
+     * not use this.
+     */
+    explorerSphereSegments() {
+        return [192, 96];
+    }
+
     prefetchSceneGraph() {
         return this.loadThree()
             .then(() => Promise.all([

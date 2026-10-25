@@ -14,5 +14,5 @@
         "noUncheckedIndexedAccess": true,
         "types": []
     },
-    "include": ["js/galleryOrder.js", "js/cjs-module.d.ts", "shared/browser.ts"]
+    "include": ["js/galleryOrder.js", "js/globeDetail.js", "js/cjs-module.d.ts", "shared/browser.ts"]
 }

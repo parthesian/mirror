@@ -1,6 +1,6 @@
 # Globe explorer: zoom, detail levels, and borders
 
-Status: design spec, not implemented.
+Status: implemented.
 Scope: the full-screen `GlobeExplorer` overlay only. The 160 px modal globe (`js/globeService.js`) does not change and must never load anything described here.
 
 This document is meant to be implemented as written. Every number below is a starting value that has been checked against the current code, the earth texture, and the Natural Earth files. If a number has to move during implementation, change it here too.

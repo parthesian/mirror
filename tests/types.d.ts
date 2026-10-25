@@ -29,22 +29,49 @@ declare module 'three' {
         clone(): Vector3;
         normalize(): this;
         dot(v: Vector3): number;
+        angleTo(v: Vector3): number;
         applyQuaternion(q: Quaternion): this;
+        applyMatrix4(m: Matrix4): this;
+        project(camera: PerspectiveCamera): this;
         toArray(): number[];
     }
 
     export class Quaternion {}
+
+    export class Matrix4 {}
 
     export class PerspectiveCamera {
         constructor(fov: number, aspect: number, near: number, far: number);
         position: Vector3;
         up: Vector3;
         lookAt(x: number, y: number, z: number): void;
+        updateMatrixWorld(force?: boolean): void;
     }
 
     export class Group {
         rotation: { x: number; y: number; z: number };
         quaternion: Quaternion;
+        matrixWorld: Matrix4;
+        updateMatrixWorld(force?: boolean): void;
+        worldToLocal(v: Vector3): Vector3;
+    }
+
+    export class BufferAttribute {
+        count: number;
+        getX(index: number): number;
+        getY(index: number): number;
+        getZ(index: number): number;
+    }
+
+    export class SphereGeometry {
+        constructor(radius?: number, widthSegments?: number, heightSegments?: number);
+        getAttribute(name: string): BufferAttribute;
+        dispose(): void;
+    }
+
+    export class Raycaster {
+        ray: { origin: Vector3; direction: Vector3 };
+        setFromCamera(ndc: { x: number; y: number }, camera: PerspectiveCamera): void;
     }
 }
 
@@ -57,6 +84,10 @@ declare module 'three/examples/jsm/controls/OrbitControls.js' {
         dampingFactor: number;
         autoRotate: boolean;
         autoRotateSpeed: number;
+        enableZoom: boolean;
+        enablePan: boolean;
+        minDistance: number;
+        maxDistance: number;
         minPolarAngle: number;
         maxPolarAngle: number;
         minAzimuthAngle: number;
@@ -65,6 +96,7 @@ declare module 'three/examples/jsm/controls/OrbitControls.js' {
         saveState(): void;
         update(): boolean;
         reset(): void;
+        dispose(): void;
         getAzimuthalAngle(): number;
         getPolarAngle(): number;
     }

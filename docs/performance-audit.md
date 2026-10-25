@@ -48,6 +48,7 @@ exist for readiness were left alone.
 | Modal open | Prev/next full images | 2 | None |
 | Flipboard shuffle | Destination thumbs | up to 8 | Lands anyway after 4 s |
 | Globe button hover/focus | Three + geo + borders | — | Deduped promises |
+| Explorer zoom below d 2.35 / 1.80 | globe-lines 50m / 10m, parsed in worker, cached | 1 | Once per page session |
 | Idle (~3.5 s / `requestIdleCallback`) | Geo JSON + earth JPEG | — | Intentionally delayed so first thumbs win |
 | First gallery load idle | Hidden 160 px WebGL globe | — | Now shared + paused until the modal needs it |
 
