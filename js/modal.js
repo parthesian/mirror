@@ -1133,7 +1133,9 @@ class Modal {
         const image = this.modalImage;
         if (!image || !gesture?.onImage || gesture.zoomed || gesture.onGlobe) return;
         if (gesture.multiTouch) {
-            this.releasePhotoDrag(true);
+            // A second finger is a pinch. The touchstart that saw it already
+            // released any drag. Doing it again on each move forces layout
+            // and fights the browser's pinch-zoom.
             gesture.axis = 'cancelled';
             return;
         }
@@ -1155,9 +1157,14 @@ class Modal {
     clearPhotoMotion() {
         const image = this.modalImage;
         if (!image) return;
+        const transform = image.style.transform;
+        const transition = image.style.transition;
+        if ((!transform || transform === 'none') && !transition) return;
         image.style.transition = 'none';
         image.style.transform = 'none';
-        void image.offsetWidth;
+        if (transform && transform !== 'none') {
+            void image.offsetWidth;
+        }
         image.style.transition = '';
     }
 
@@ -1322,8 +1329,19 @@ class Modal {
     }
 
     /**
+     * Trackpad pinch and ctrl/cmd+wheel are the browser zooming the photo.
+     * The globe explorer has its own altitude controller and is not asked.
+     * @param {{ ctrlKey?: boolean, metaKey?: boolean } | null | undefined} event
+     * @returns {boolean}
+     */
+    static isBrowserZoomWheel(event) {
+        return Boolean(event && (event.ctrlKey || event.metaKey));
+    }
+
+    /**
      * Pull down past the top of the overlay (trackpad or wheel) to return to
      * the gallery. Touch pulls are handled by the shared gesture tracker.
+     * A ctrl/meta wheel is the browser zooming the photo, so it is ignored.
      */
     addDismissGesture() {
         const scroller = this.modalContent || this.modal;
@@ -1332,7 +1350,7 @@ class Modal {
         let wheelPull = 0;
 
         scroller.addEventListener('wheel', (e) => {
-            if (!this.isOpen) return;
+            if (!this.isOpen || Modal.isBrowserZoomWheel(e)) return;
             const atTop = (scroller.scrollTop || 0) <= 0;
             if (atTop && e.deltaY < 0) {
                 wheelPull += -e.deltaY;
