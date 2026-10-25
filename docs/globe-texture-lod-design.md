@@ -1,6 +1,6 @@
 # Globe explorer: texture level of detail
 
-Status: design. Not implemented.
+Status: implemented.
 Scope: the full-screen `GlobeExplorer` overlay only. The 160 px modal globe (`js/globeService.js`) keeps `/earth_atmos_2048.jpg` and must not load anything described here.
 
 This document is meant to be implemented as written. Distances use the units already implemented from `docs/globe-zoom-design.md`:

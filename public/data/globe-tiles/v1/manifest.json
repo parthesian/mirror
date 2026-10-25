@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "source": "NE1_50M_SR",
+  "sourceVersion": "3.2.0",
+  "width": 10800,
+  "height": 5400,
+  "tileSize": 450,
+  "cols": 24,
+  "rows": 12,
+  "tileDeg": 15,
+  "jpegQuality": 80,
+  "maxTileBytes": 80000
+}

@@ -72,6 +72,35 @@ class GlobeExplorer {
         this.filterOptionCache = new Map();
         this.pendingPick = null;
         this.backStack = (typeof window !== 'undefined' ? window.overlayBackStack : null);
+        this._tileSession = {
+            manifest: null,
+            manifestFailed: false,
+            manifestLoading: false,
+            warnedManifest: false,
+            warnedTile: false,
+            tileFailures: 0,
+            requested: new Set(),
+            blobs: new Map(),
+            bitmaps: new Map(),
+            decodeFailed: new Set(),
+            inflight: 0,
+            queue: [],
+            abort: new AbortController(),
+            levelOpacity: 0,
+            lastD: null,
+            lastDir: null,
+            wanted: [],
+            entries: new Map(),
+            lru: [],
+            lruProtect: new Set(),
+            decodingUrl: null,
+            gpuLive: false,
+            gpuGeneration: 0
+        };
+        this._onTilePageHide = () => {
+            this._tileSession?.abort?.abort();
+        };
+        window.addEventListener('pagehide', this._onTilePageHide);
 
         this._bindEvents();
         this._setFilterPanelExpanded(false);
@@ -747,6 +776,7 @@ class GlobeExplorer {
         this._clearCountryBorderHighlight();
         this._hideIntersectPicker();
         this._hidePickConfirm();
+        this._dropTileOverlay();
         this._setSceneRunning(false);
     }
 
@@ -1544,6 +1574,7 @@ class GlobeExplorer {
                 group.rotation.y += 0.12 * (dt / 1000);
             }
             this._stepLines(dt, now);
+            this._stepTiles(dt, now);
             if (state.zoom.needsHover && state.zoom.settled && lastHoverPointer) {
                 state.zoom.needsHover = false;
                 processHoverPointer(lastHoverPointer);
@@ -1567,6 +1598,7 @@ class GlobeExplorer {
         const s = this.threeState;
         if (!s) return;
         s.disposed = true;
+        this._releaseTileGpu();
         this._disposeLines();
         this._clearCountryBorderHighlight();
         if (s.rafId) cancelAnimationFrame(s.rafId);
@@ -3055,6 +3087,582 @@ class GlobeExplorer {
         }
         lines.baseMaterial?.dispose();
         lines.baseMaterial = null;
+    }
+
+    _stepTiles(dt) {
+        if (!this.isOpen) {
+            return;
+        }
+        const state = this.threeState;
+        const GD = window.GlobeDetail;
+        const session = this._tileSession;
+        if (!state?.camera || !state.zoom || !state.group || !GD?.CONFIG?.TEXTURE || !session) {
+            return;
+        }
+        const viewWidth = state.zoom.viewWidth;
+        const viewHeight = state.zoom.viewHeight;
+        if (!(viewWidth > 0) || !(viewHeight > 0)) {
+            return;
+        }
+        const saveData = Boolean(navigator.connection && navigator.connection.saveData);
+        const distance = state.camera.position.length();
+        const hGoal = state.zoom.hGoal;
+        const allowFetch = GD.shouldFetchTexture(distance, hGoal, saveData);
+        const manifestReady = Boolean(session.manifest) && !session.manifestFailed;
+        const level = state.lines?.level || 'world';
+        const target = level === 'local' && !saveData && manifestReady ? 1 : 0;
+        const fadeMs = this._prefersReducedMotion()
+            ? GD.CONFIG.CROSSFADE_REDUCED_MS
+            : GD.CONFIG.CROSSFADE_MS;
+        const step = fadeMs > 0 ? dt / fadeMs : 1;
+        const delta = Math.max(-step, Math.min(step, target - session.levelOpacity));
+        session.levelOpacity += delta;
+        if (session.levelOpacity < 0) {
+            session.levelOpacity = 0;
+        }
+        if (session.levelOpacity > 1) {
+            session.levelOpacity = 1;
+        }
+        if (target === 0 && session.levelOpacity <= 1e-6) {
+            session.levelOpacity = 0;
+        }
+        if (target === 1 && session.levelOpacity >= 1 - 1e-6) {
+            session.levelOpacity = 1;
+        }
+        if (allowFetch && !session.manifest && !session.manifestFailed) {
+            this._loadTileManifest();
+        }
+        if (allowFetch && manifestReady) {
+            this._refreshTileWanted(distance, hGoal, viewWidth / viewHeight);
+            this._pumpTileFetches();
+        }
+        const showGpu = target === 1 || session.levelOpacity > 0;
+        if (showGpu && manifestReady) {
+            this._pumpTileDecode();
+            this._touchTileLru();
+            this._pumpTileUpload();
+            this._updateTileUniforms(step);
+        }
+        if (session.levelOpacity === 0) {
+            this._releaseTileGpu();
+        }
+    }
+
+    _loadTileManifest() {
+        const session = this._tileSession;
+        const GD = window.GlobeDetail;
+        if (!session || !GD || session.manifestLoading || session.manifest || session.manifestFailed) {
+            return;
+        }
+        session.manifestLoading = true;
+        const url = GD.CONFIG.TEXTURE.manifest;
+        fetch(url, { cache: 'force-cache', signal: session.abort.signal })
+            .then((res) => {
+                if (!res.ok) {
+                    throw new Error(`status ${res.status}`);
+                }
+                return res.json();
+            })
+            .then((doc) => {
+                if (!this._tileManifestValid(doc)) {
+                    throw new Error('manifest mismatch');
+                }
+                session.manifest = doc;
+            })
+            .catch((err) => {
+                if (err && err.name === 'AbortError') {
+                    return;
+                }
+                session.manifestFailed = true;
+                if (!session.warnedManifest) {
+                    session.warnedManifest = true;
+                    console.warn('[GlobeExplorer] globe tile manifest unavailable');
+                }
+            })
+            .finally(() => {
+                session.manifestLoading = false;
+            });
+    }
+
+    _tileManifestValid(doc) {
+        const tex = window.GlobeDetail?.CONFIG?.TEXTURE;
+        if (!tex || !doc || typeof doc !== 'object') {
+            return false;
+        }
+        return doc.width === 10800
+            && doc.height === 5400
+            && doc.tileSize === tex.tileSize
+            && doc.cols === tex.cols
+            && doc.rows === tex.rows
+            && doc.tileDeg === tex.tileDeg;
+    }
+
+    _groupLocalAim() {
+        const state = this.threeState;
+        if (!state?.camera || !state.group) {
+            return null;
+        }
+        state.group.updateMatrixWorld(true);
+        const local = state.camera.position.clone();
+        state.group.worldToLocal(local);
+        const len = Math.hypot(local.x, local.y, local.z);
+        if (!(len > 0)) {
+            return null;
+        }
+        const dir = { x: local.x / len, y: local.y / len, z: local.z / len };
+        const lat = Math.asin(Math.max(-1, Math.min(1, dir.y))) * 180 / Math.PI;
+        let lon = 0;
+        if (Math.hypot(local.x, local.z) >= 1e-8) {
+            const degrees = Math.atan2(local.z, -local.x) * 180 / Math.PI - 180;
+            lon = ((degrees + 180) % 360 + 360) % 360 - 180;
+        }
+        return { lat, lon, dir };
+    }
+
+    _refreshTileWanted(distance, hGoal, aspect) {
+        const session = this._tileSession;
+        const state = this.threeState;
+        const GD = window.GlobeDetail;
+        if (!session || !state?.camera || !GD) {
+            return;
+        }
+        const aim = this._groupLocalAim();
+        if (!aim) {
+            return;
+        }
+        const cosAim = Math.cos(0.5 * Math.PI / 180);
+        let aimDot = 1;
+        if (session.lastDir) {
+            aimDot = session.lastDir.x * aim.dir.x
+                + session.lastDir.y * aim.dir.y
+                + session.lastDir.z * aim.dir.z;
+        }
+        const moved = session.lastD == null
+            || Math.abs(distance - session.lastD) > 0.01
+            || aimDot < cosAim;
+        if (!moved) {
+            return;
+        }
+        const dAhead = Math.min(distance, 1 + hGoal);
+        const dSelect = Math.max(
+            1 + GD.CONFIG.H_MIN,
+            Math.min(GD.CONFIG.LEVEL_D.local, dAhead)
+        );
+        session.wanted = GD.tilesForView({
+            lat: aim.lat,
+            lon: aim.lon,
+            d: dSelect,
+            aspect,
+            fovDeg: state.camera.fov || 45
+        });
+        session.lastD = distance;
+        session.lastDir = aim.dir;
+        const nextQueue = [];
+        for (let i = 0; i < session.wanted.length; i += 1) {
+            const id = session.wanted[i];
+            if (!id) {
+                continue;
+            }
+            const url = this._tileUrl(id.row, id.col);
+            if (session.requested.has(url) || session.blobs.has(url)) {
+                continue;
+            }
+            nextQueue.push(id);
+        }
+        session.queue = nextQueue;
+    }
+
+    _pumpTileFetches() {
+        const session = this._tileSession;
+        const state = this.threeState;
+        const GD = window.GlobeDetail;
+        if (!this.isOpen || !session || !state?.camera || !state.zoom || !GD) {
+            return;
+        }
+        if (!session.manifest || session.manifestFailed) {
+            return;
+        }
+        const saveData = Boolean(navigator.connection && navigator.connection.saveData);
+        const distance = state.camera.position.length();
+        if (!GD.shouldFetchTexture(distance, state.zoom.hGoal, saveData)) {
+            return;
+        }
+        const cap = GD.CONFIG.TEXTURE.inflight;
+        while (session.inflight < cap && session.queue.length > 0) {
+            const id = session.queue.shift();
+            if (!id) {
+                continue;
+            }
+            const url = this._tileUrl(id.row, id.col);
+            if (session.requested.has(url) || session.blobs.has(url)) {
+                continue;
+            }
+            session.requested.add(url);
+            session.inflight += 1;
+            this._startTileFetch(url);
+        }
+    }
+
+    _startTileFetch(url) {
+        const session = this._tileSession;
+        if (!session) {
+            return;
+        }
+        fetch(url, { cache: 'force-cache', signal: session.abort.signal })
+            .then((res) => {
+                if (!res.ok) {
+                    throw new Error(`status ${res.status}`);
+                }
+                return res.blob();
+            })
+            .then((blob) => {
+                session.blobs.set(url, blob);
+            })
+            .catch((err) => {
+                if (err && err.name === 'AbortError') {
+                    return;
+                }
+                this._warnTileFailure();
+            })
+            .finally(() => {
+                session.inflight = Math.max(0, session.inflight - 1);
+                this._pumpTileFetches();
+            });
+    }
+
+    _pumpTileDecode() {
+        const session = this._tileSession;
+        if (!session || session.decodingUrl || typeof createImageBitmap !== 'function') {
+            return;
+        }
+        for (let i = 0; i < session.wanted.length; i += 1) {
+            const id = session.wanted[i];
+            if (!id) {
+                continue;
+            }
+            const url = this._tileUrl(id.row, id.col);
+            if (session.decodeFailed.has(url) || session.bitmaps.has(url)) {
+                continue;
+            }
+            if (session.entries.has(this._tileKey(id.row, id.col))) {
+                continue;
+            }
+            const blob = session.blobs.get(url);
+            if (!blob) {
+                continue;
+            }
+            session.decodingUrl = url;
+            const generation = session.gpuGeneration;
+            createImageBitmap(blob).then((bitmap) => {
+                if (session.decodingUrl === url) {
+                    session.decodingUrl = null;
+                }
+                if (generation !== session.gpuGeneration) {
+                    if (bitmap && typeof bitmap.close === 'function') {
+                        bitmap.close();
+                    }
+                    return;
+                }
+                session.bitmaps.set(url, bitmap);
+            }, () => {
+                if (session.decodingUrl === url) {
+                    session.decodingUrl = null;
+                }
+                session.decodeFailed.add(url);
+                this._warnTileFailure();
+            });
+            return;
+        }
+    }
+
+    _pumpTileUpload() {
+        const session = this._tileSession;
+        if (!session) {
+            return;
+        }
+        for (let i = 0; i < session.wanted.length; i += 1) {
+            const id = session.wanted[i];
+            if (!id) {
+                continue;
+            }
+            const key = this._tileKey(id.row, id.col);
+            if (session.entries.has(key)) {
+                continue;
+            }
+            const url = this._tileUrl(id.row, id.col);
+            const bitmap = session.bitmaps.get(url);
+            if (!bitmap) {
+                continue;
+            }
+            this._uploadTile(id.row, id.col, url, bitmap);
+            return;
+        }
+    }
+
+    _uploadTile(row, col, url, bitmap) {
+        const session = this._tileSession;
+        const state = this.threeState;
+        const GD = window.GlobeDetail;
+        if (!session || !state?.THREE || !state.group || !GD) {
+            return;
+        }
+        const THREE = state.THREE;
+        const tex = GD.CONFIG.TEXTURE;
+        const key = this._tileKey(row, col);
+        const texture = new THREE.Texture(bitmap);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.wrapS = THREE.ClampToEdgeWrapping;
+        texture.wrapT = THREE.ClampToEdgeWrapping;
+        texture.minFilter = THREE.LinearMipmapLinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        texture.generateMipmaps = true;
+        texture.flipY = true;
+        const maxAniso = state.renderer?.capabilities?.getMaxAnisotropy?.() || 1;
+        texture.anisotropy = Math.min(4, maxAniso);
+        texture.needsUpdate = true;
+        const radians = tex.tileDeg * Math.PI / 180;
+        const geometry = new THREE.SphereGeometry(
+            tex.radius,
+            8,
+            8,
+            col * radians,
+            radians,
+            row * radians,
+            radians
+        );
+        const uniforms = {
+            uMissing: { value: new THREE.Vector4(1, 1, 1, 1) },
+            uLevelOpacity: { value: session.levelOpacity },
+            uTileOpacity: { value: 0 }
+        };
+        const material = new THREE.MeshPhongMaterial({
+            map: texture,
+            color: 0xcccccc,
+            shininess: 1,
+            transparent: true,
+            // Phong's opacity stays 1. The fragment fades by levelOpacity * tileOpacity * edge,
+            // and each tile's opacity uniform starts at 0.
+            opacity: 1,
+            depthWrite: false,
+            depthTest: true,
+            side: THREE.FrontSide
+        });
+        material.onBeforeCompile = (shader) => {
+            this._prepareTileShader(shader, uniforms);
+        };
+        material.customProgramCacheKey = () => 'globe-tile-feather';
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.renderOrder = -1;
+        state.group.add(mesh);
+        session.entries.set(key, {
+            row,
+            col,
+            url,
+            opacity: 0,
+            mesh,
+            geometry,
+            material,
+            texture,
+            uniforms
+        });
+        session.lru.push(key);
+        session.gpuLive = true;
+        this._evictTileLru(key);
+    }
+
+    _prepareTileShader(shader, uniforms) {
+        const tex = window.GlobeDetail?.CONFIG?.TEXTURE;
+        const featherTexels = tex?.featherTexels || 8;
+        const tileSize = tex?.tileSize || 450;
+        shader.uniforms.uMissing = uniforms.uMissing;
+        shader.uniforms.uLevelOpacity = uniforms.uLevelOpacity;
+        shader.uniforms.uTileOpacity = uniforms.uTileOpacity;
+        if (shader.fragmentShader.includes('uLevelOpacity')) {
+            return;
+        }
+        shader.fragmentShader = shader.fragmentShader
+            .replace(
+                '#include <common>',
+                '#include <common>\nuniform vec4 uMissing;\nuniform float uLevelOpacity;\nuniform float uTileOpacity;'
+            )
+            .replace(
+                '#include <opaque_fragment>',
+                `float feather = ${featherTexels}.0 / ${tileSize}.0;\n`
+                + 'float edge = 1.0;\n'
+                + 'if (uMissing.x > 0.5) edge = min(edge, smoothstep(0.0, feather, 1.0 - vMapUv.y));\n'
+                + 'if (uMissing.y > 0.5) edge = min(edge, smoothstep(0.0, feather, 1.0 - vMapUv.x));\n'
+                + 'if (uMissing.z > 0.5) edge = min(edge, smoothstep(0.0, feather, vMapUv.y));\n'
+                + 'if (uMissing.w > 0.5) edge = min(edge, smoothstep(0.0, feather, vMapUv.x));\n'
+                + 'diffuseColor.a *= uLevelOpacity * uTileOpacity * edge;\n'
+                + '#include <opaque_fragment>'
+            );
+    }
+
+    _touchTileLru() {
+        const session = this._tileSession;
+        if (!session) {
+            return;
+        }
+        const protect = new Set();
+        for (let i = 0; i < session.wanted.length; i += 1) {
+            const id = session.wanted[i];
+            if (!id) {
+                continue;
+            }
+            const key = this._tileKey(id.row, id.col);
+            if (!session.entries.has(key)) {
+                continue;
+            }
+            protect.add(key);
+            const index = session.lru.indexOf(key);
+            if (index >= 0) {
+                session.lru.splice(index, 1);
+            }
+            session.lru.push(key);
+        }
+        session.lruProtect = protect;
+    }
+
+    _evictTileLru(keepKey) {
+        const session = this._tileSession;
+        const cap = window.GlobeDetail?.CONFIG?.TEXTURE?.lru || 16;
+        if (!session) {
+            return;
+        }
+        const protect = session.lruProtect || new Set();
+        while (session.lru.length > cap) {
+            let index = -1;
+            for (let i = 0; i < session.lru.length; i += 1) {
+                const key = session.lru[i];
+                if (!key || key === keepKey || protect.has(key)) {
+                    continue;
+                }
+                index = i;
+                break;
+            }
+            if (index < 0) {
+                for (let i = 0; i < session.lru.length; i += 1) {
+                    if (session.lru[i] !== keepKey) {
+                        index = i;
+                        break;
+                    }
+                }
+            }
+            if (index < 0) {
+                break;
+            }
+            const removed = session.lru.splice(index, 1);
+            const key = removed[0];
+            if (key) {
+                this._disposeTileEntry(key);
+            }
+        }
+    }
+
+    _updateTileUniforms(step) {
+        const session = this._tileSession;
+        if (!session) {
+            return;
+        }
+        for (const entry of session.entries.values()) {
+            const delta = Math.max(-step, Math.min(step, 1 - entry.opacity));
+            entry.opacity += delta;
+            if (entry.opacity > 1) {
+                entry.opacity = 1;
+            }
+            const missing = this._tileMissing(entry.row, entry.col);
+            entry.uniforms.uLevelOpacity.value = session.levelOpacity;
+            entry.uniforms.uTileOpacity.value = entry.opacity;
+            entry.uniforms.uMissing.value.set(missing.north, missing.east, missing.south, missing.west);
+        }
+    }
+
+    _tileMissing(row, col) {
+        const session = this._tileSession;
+        const tex = window.GlobeDetail?.CONFIG?.TEXTURE;
+        const rows = tex?.rows || 12;
+        const cols = tex?.cols || 24;
+        const has = (r, c) => Boolean(session?.entries.has(`${r},${c}`));
+        return {
+            north: row > 0 && !has(row - 1, col) ? 1 : 0,
+            east: has(row, (col + 1) % cols) ? 0 : 1,
+            south: row < rows - 1 && !has(row + 1, col) ? 1 : 0,
+            west: has(row, (col + cols - 1) % cols) ? 0 : 1
+        };
+    }
+
+    _disposeTileEntry(key) {
+        const session = this._tileSession;
+        const state = this.threeState;
+        const entry = session?.entries.get(key);
+        if (!session || !entry) {
+            return;
+        }
+        session.entries.delete(key);
+        if (entry.mesh && state?.group) {
+            state.group.remove(entry.mesh);
+        }
+        entry.geometry?.dispose();
+        entry.material?.dispose();
+        entry.texture?.dispose();
+    }
+
+    _releaseTileGpu() {
+        const session = this._tileSession;
+        if (!session) {
+            return;
+        }
+        if (!session.gpuLive && session.entries.size === 0 && session.bitmaps.size === 0) {
+            return;
+        }
+        session.gpuGeneration += 1;
+        session.gpuLive = false;
+        for (const key of Array.from(session.entries.keys())) {
+            this._disposeTileEntry(key);
+        }
+        session.lru = [];
+        session.lruProtect = new Set();
+        for (const bitmap of session.bitmaps.values()) {
+            if (bitmap && typeof bitmap.close === 'function') {
+                bitmap.close();
+            }
+        }
+        session.bitmaps.clear();
+    }
+
+    _dropTileOverlay() {
+        const session = this._tileSession;
+        this._releaseTileGpu();
+        if (!session) {
+            return;
+        }
+        session.levelOpacity = 0;
+        session.queue = [];
+        session.wanted = [];
+        session.lastD = null;
+        session.lastDir = null;
+    }
+
+    _warnTileFailure() {
+        const session = this._tileSession;
+        if (!session) {
+            return;
+        }
+        session.tileFailures += 1;
+        if (!session.warnedTile) {
+            session.warnedTile = true;
+            console.warn('[GlobeExplorer] globe tile failed');
+        }
+    }
+
+    _tileKey(row, col) {
+        return `${row},${col}`;
+    }
+
+    _tileUrl(row, col) {
+        const rr = String(row).padStart(2, '0');
+        const cc = String(col).padStart(2, '0');
+        return `/data/globe-tiles/v1/r${rr}-c${cc}.jpg`;
     }
 }
 

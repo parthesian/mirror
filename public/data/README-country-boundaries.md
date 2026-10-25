@@ -46,3 +46,18 @@ Byte caps, not to be raised here: 50m raw 440 KB and gzip 175 KB; 10m raw 1,080 
 ```bash
 node scripts/build-globe-lines.mjs --src <dir-with-the-geojson>
 ```
+
+## Shaded-relief texture tiles
+
+The full-screen explorer fades in 15° JPEG tiles when the camera enters the local zoom band. They are cut from Natural Earth I with Shaded Relief at 1:50m, page label 3.2.0. The source zip is `https://naciscdn.org/naturalearth/50m/raster/NE1_50M_SR.zip`. Its world file places the upper-left pixel center at longitude −179.98333333333333 and latitude 89.98333333333333, with a pixel size of 1/30 degree, so the raster edges are longitude −180 and latitude +90.
+
+Nothing downloads that zip during `npm run build`. The operator installs `sharp` once with `npm install --no-save sharp` and runs:
+
+```bash
+node scripts/build-globe-tiles.mjs \
+  --src /tmp/NE1_50M_SR/NE1_50M_SR.tif \
+  --tfw /tmp/NE1_50M_SR/NE1_50M_SR.tfw \
+  --out public/data/globe-tiles/v1
+```
+
+Each tile must be at most 80,000 bytes. The 288-tile tree must be at most 20,000,000 bytes.
