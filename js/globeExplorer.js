@@ -1580,7 +1580,6 @@ class GlobeExplorer {
                 processHoverPointer(lastHoverPointer);
             }
             this._updateClickPulses(now);
-            this._syncRouteUniforms();
             renderer.render(scene, camera);
             state.rafId = requestAnimationFrame(animate);
         };
@@ -2330,21 +2329,6 @@ class GlobeExplorer {
         texture.magFilter = THREE.LinearFilter;
         texture.needsUpdate = true;
         return texture;
-    }
-
-    _syncRouteUniforms() {
-        const state = this.threeState;
-        const uniforms = state?.arcLines?.material?.uniforms;
-        const renderer = state?.renderer;
-        if (!uniforms?.uResolution?.value || uniforms.uHalfWidth == null || !renderer) {
-            return;
-        }
-        const canvas = renderer.domElement;
-        const width = canvas?.width || 1;
-        const height = canvas?.height || 1;
-        uniforms.uResolution.value.set(width, height);
-        const pixelRatio = renderer.getPixelRatio?.() || 1;
-        uniforms.uHalfWidth.value = 1.4 * pixelRatio;
     }
 
     _canvasRect() {
