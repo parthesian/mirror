@@ -60,6 +60,11 @@ class Modal {
         this._photoToken = 0;
         this._photoStage = 'placeholder';
         this._frameAspect = 0;
+        this.photoZoom = { scale: 1, x: 0, y: 0 };
+        this._photoGesture = null;
+        this._pinch = null;
+        this._mousePan = null;
+        this._lastPhotoTap = 0;
         
         // Globe integration — share the gallery preload instance so the
         // hidden warmup actually transfers into the modal.
@@ -77,6 +82,7 @@ class Modal {
         this.setPhotoSource(Modal.BLANK_SRC, 'placeholder');
         this.bindEvents();
         this.addSwipeSupport();
+        this.addPhotoZoom();
         this.addDismissGesture();
     }
 
@@ -166,10 +172,23 @@ class Modal {
                     e.preventDefault();
                     this.showNextImage();
                     break;
+                case '+':
+                case '=':
+                    e.preventDefault();
+                    this.stepPhotoZoom(-1);
+                    break;
+                case '-':
+                case '_':
+                    e.preventDefault();
+                    this.stepPhotoZoom(1);
+                    break;
+                case '0':
+                    e.preventDefault();
+                    this.commitPhotoZoom(this.photoZoomApi()?.fit() || { scale: 1, x: 0, y: 0 }, true);
+                    break;
                 case ' ':
                 case 'Enter':
                     e.preventDefault();
-                    // Optional: Could toggle play/pause or other functionality
                     break;
             }
         });
@@ -427,6 +446,7 @@ class Modal {
             this.applyPhotoPlacement(image);
         }
         this.syncModalGlobeSize();
+        this.reclampPhotoZoom();
     }
 
     getPhotoAspect(image) {
@@ -1129,19 +1149,354 @@ class Modal {
         this.uploadError.classList.add('hidden');
     }
 
-    trackPhotoDrag(gesture) {
+    photoZoomApi() {
+        return typeof window !== 'undefined' ? window.PhotoZoom : null;
+    }
+
+    isPhotoZoomed() {
+        const api = this.photoZoomApi();
+        return Boolean(api && api.isZoomed(this.photoZoom));
+    }
+
+    resetPhotoZoomState() {
+        this.photoZoom = { scale: 1, x: 0, y: 0 };
+        this._pinch = null;
+        this._mousePan = null;
+        this._gestureZoom = null;
+        this._zoomSettle = (this._zoomSettle || 0) + 1;
+        this.modalImage?.classList.remove('is-zoomed', 'is-grabbing');
+    }
+
+    photoLayout() {
+        const api = this.photoZoomApi();
         const image = this.modalImage;
-        if (!image || !gesture?.onImage || gesture.zoomed || gesture.onGlobe) return;
+        if (!api || !image) {
+            return { width: 0, height: 0, cx: 0, cy: 0 };
+        }
+        const box = image.getBoundingClientRect();
+        return api.layoutBox(
+            { left: box.left, top: box.top, width: box.width, height: box.height },
+            this.photoZoom
+        );
+    }
+
+    /**
+     * @param {{ scale: number, x: number, y: number }} next
+     * @param {boolean} animate
+     */
+    commitPhotoZoom(next, animate) {
+        const image = this.modalImage;
+        const api = this.photoZoomApi();
+        if (!image || !api || !next) return;
+
+        const settled = next.scale <= 1.001 ? api.fit() : next;
+        this.photoZoom = { scale: settled.scale, x: settled.x, y: settled.y };
+        const zoomed = api.isZoomed(this.photoZoom);
+        const motion = Boolean(animate) && !this.prefersReducedMotion();
+        if (zoomed || motion) image.classList.add('is-zoomed');
+        else image.classList.remove('is-zoomed');
+
+        const value = api.transform(this.photoZoom);
+        const generation = (this._zoomSettle = (this._zoomSettle || 0) + 1);
+
+        if (!motion) {
+            if (image.style.transition) {
+                image.style.transition = 'none';
+                image.style.transform = value;
+                image.style.transition = '';
+            } else {
+                image.style.transform = value;
+            }
+            if (!zoomed) image.classList.remove('is-zoomed');
+            return;
+        }
+
+        if (!image.style.transform || image.style.transform === 'none') {
+            image.style.transition = 'none';
+            image.style.transform = 'translate(0px, 0px) scale(1)';
+            void image.offsetWidth;
+        }
+        image.style.transition = 'transform 160ms var(--ease)';
+        image.style.transform = zoomed ? value : 'translate(0px, 0px) scale(1)';
+
+        const done = (event) => {
+            if (event && event.target !== image) return;
+            if (event && event.propertyName && event.propertyName !== 'transform') return;
+            image.removeEventListener('transitionend', done);
+            if (generation !== this._zoomSettle) return;
+            if (!image.style.transition.startsWith('transform')) return;
+            image.style.transition = '';
+            if (!api.isZoomed(this.photoZoom)) {
+                image.style.transform = 'none';
+                image.classList.remove('is-zoomed');
+            }
+        };
+        image.addEventListener('transitionend', done);
+        window.setTimeout(done, 220);
+    }
+
+    capturePhotoPinch(event) {
+        if (this._pinch || !event.touches || event.touches.length < 2) return;
+        const api = this.photoZoomApi();
+        const first = event.touches[0];
+        const second = event.touches[1];
+        const span = Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY) || 1;
+        const midX = (first.clientX + second.clientX) / 2;
+        const midY = (first.clientY + second.clientY) / 2;
+        const layout = this.photoLayout();
+        const point = api ? api.focal(midX, midY, layout) : { x: 0, y: 0 };
+        this._pinch = {
+            start: { scale: this.photoZoom.scale, x: this.photoZoom.x, y: this.photoZoom.y },
+            span,
+            midX,
+            midY,
+            focalX: point.x,
+            focalY: point.y,
+            viewW: layout.width,
+            viewH: layout.height
+        };
+    }
+
+    applyPhotoPinch(event) {
+        this.capturePhotoPinch(event);
+        const pinch = this._pinch;
+        const api = this.photoZoomApi();
+        if (!pinch || !api || !event.touches || event.touches.length < 2) return;
+        const first = event.touches[0];
+        const second = event.touches[1];
+        const span = Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY) || 1;
+        const midX = (first.clientX + second.clientX) / 2;
+        const midY = (first.clientY + second.clientY) / 2;
+        this.commitPhotoZoom(
+            api.pinch(
+                pinch.start,
+                pinch.span,
+                span,
+                midX - pinch.midX,
+                midY - pinch.midY,
+                pinch.focalX,
+                pinch.focalY,
+                pinch.viewW,
+                pinch.viewH
+            ),
+            false
+        );
+    }
+
+    /**
+     * @param {{ onImage?: boolean, multiTouch?: boolean, onGlobe?: boolean, lastX: number, lastY: number }} gesture
+     * @param {number} dx
+     * @param {number} dy
+     * @returns {boolean}
+     */
+    takePhotoDoubleTap(gesture, dx, dy) {
+        if (!gesture.onImage || gesture.multiTouch || gesture.onGlobe) return false;
+        if (Math.hypot(dx, dy) >= 18) {
+            this._lastPhotoTap = 0;
+            return false;
+        }
+        const now = performance.now();
+        if (now - this._lastPhotoTap < 280) {
+            this._lastPhotoTap = 0;
+            this._photoTapZoomAt = now;
+            this.togglePhotoZoom(gesture.lastX, gesture.lastY, true);
+            return true;
+        }
+        this._lastPhotoTap = now;
+        return false;
+    }
+
+    /**
+     * @param {number} clientX
+     * @param {number} clientY
+     * @param {boolean} animate
+     */
+    togglePhotoZoom(clientX, clientY, animate) {
+        const api = this.photoZoomApi();
+        const layout = this.photoLayout();
+        if (!api || layout.width <= 0 || layout.height <= 0) return;
+        const point = api.focal(clientX, clientY, layout);
+        this.commitPhotoZoom(
+            api.toggle(this.photoZoom, point.x, point.y, layout.width, layout.height),
+            animate
+        );
+    }
+
+    /**
+     * @param {number} direction Positive zooms out, the same sign as deltaY.
+     */
+    stepPhotoZoom(direction) {
+        const api = this.photoZoomApi();
+        const layout = this.photoLayout();
+        if (!api || layout.width <= 0 || layout.height <= 0) return;
+        const nextScale = api.wheelScale(this.photoZoom.scale, direction > 0 ? 100 : -100, 'notch');
+        this.commitPhotoZoom(
+            api.zoomAt(this.photoZoom, nextScale, 0, 0, layout.width, layout.height),
+            true
+        );
+    }
+
+    reclampPhotoZoom() {
+        if (!this.isPhotoZoomed()) return;
+        const api = this.photoZoomApi();
+        const layout = this.photoLayout();
+        if (!api || layout.width <= 0 || layout.height <= 0) return;
+        const pan = api.clampPan(
+            this.photoZoom.x,
+            this.photoZoom.y,
+            this.photoZoom.scale,
+            layout.width,
+            layout.height
+        );
+        this.commitPhotoZoom(
+            { scale: this.photoZoom.scale, x: pan.x, y: pan.y },
+            false
+        );
+    }
+
+    addPhotoZoom() {
+        const image = this.modalImage;
+        if (!image) return;
+
+        image.addEventListener('wheel', (event) => {
+            if (!this.isOpen) return;
+            const api = this.photoZoomApi();
+            if (!api) return;
+            const kind = api.wheelKind(event);
+            if (kind === 'scroll') return;
+            event.preventDefault();
+            event.stopPropagation();
+            const layout = this.photoLayout();
+            if (layout.width <= 0 || layout.height <= 0) return;
+            const point = api.focal(event.clientX, event.clientY, layout);
+            const nextScale = api.wheelScale(this.photoZoom.scale, event.deltaY, kind);
+            this.commitPhotoZoom(
+                api.zoomAt(this.photoZoom, nextScale, point.x, point.y, layout.width, layout.height),
+                false
+            );
+        }, { passive: false });
+
+        image.addEventListener('dblclick', (event) => {
+            if (!this.isOpen) return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (this._photoTapZoomAt && performance.now() - this._photoTapZoomAt < 500) return;
+            this.togglePhotoZoom(event.clientX, event.clientY, true);
+        });
+
+        image.addEventListener('pointerdown', (event) => {
+            if (!this.isOpen || event.pointerType === 'touch' || event.button !== 0) return;
+            if (!this.isPhotoZoomed()) return;
+            this._mousePan = { id: event.pointerId, x: event.clientX, y: event.clientY };
+            image.classList.add('is-grabbing');
+            if (image.setPointerCapture) {
+                try {
+                    image.setPointerCapture(event.pointerId);
+                } catch {
+                    /* A synthetic pointer is not always active. */
+                }
+            }
+        });
+
+        image.addEventListener('pointermove', (event) => {
+            const pan = this._mousePan;
+            if (!pan || pan.id !== event.pointerId || event.pointerType === 'touch') return;
+            const api = this.photoZoomApi();
+            const layout = this.photoLayout();
+            if (!api || layout.width <= 0 || layout.height <= 0) return;
+            this.commitPhotoZoom(
+                api.pan(this.photoZoom, event.clientX - pan.x, event.clientY - pan.y, layout.width, layout.height),
+                false
+            );
+            pan.x = event.clientX;
+            pan.y = event.clientY;
+        });
+
+        const endPan = (event) => {
+            image.classList.remove('is-grabbing');
+            if (!this._mousePan || this._mousePan.id !== event.pointerId) return;
+            this._mousePan = null;
+            if (image.hasPointerCapture?.(event.pointerId)) {
+                try {
+                    image.releasePointerCapture(event.pointerId);
+                } catch {
+                    /* Capture may already have been released. */
+                }
+            }
+        };
+        image.addEventListener('pointerup', endPan);
+        image.addEventListener('pointercancel', endPan);
+
+        image.addEventListener('dragstart', (event) => {
+            event.preventDefault();
+        });
+
+        image.addEventListener('gesturestart', (event) => {
+            if (!this.isOpen) return;
+            event.preventDefault();
+            if (this._pinch) return;
+            const api = this.photoZoomApi();
+            const layout = this.photoLayout();
+            const point = api
+                ? api.focal(event.clientX || 0, event.clientY || 0, layout)
+                : { x: 0, y: 0 };
+            this._gestureZoom = {
+                start: { scale: this.photoZoom.scale, x: this.photoZoom.x, y: this.photoZoom.y },
+                focalX: point.x,
+                focalY: point.y,
+                viewW: layout.width,
+                viewH: layout.height
+            };
+        }, { passive: false });
+
+        image.addEventListener('gesturechange', (event) => {
+            if (!this.isOpen) return;
+            event.preventDefault();
+            const gesture = this._gestureZoom;
+            const api = this.photoZoomApi();
+            if (this._pinch || !gesture || !api) return;
+            this.commitPhotoZoom(
+                api.zoomAt(
+                    gesture.start,
+                    gesture.start.scale * (Number(event.scale) || 1),
+                    gesture.focalX,
+                    gesture.focalY,
+                    gesture.viewW,
+                    gesture.viewH
+                ),
+                false
+            );
+        }, { passive: false });
+
+        image.addEventListener('gestureend', (event) => {
+            event.preventDefault();
+            this._gestureZoom = null;
+        }, { passive: false });
+    }
+
+    trackPhotoDrag(gesture, x, y) {
+        const image = this.modalImage;
+        if (!image || !gesture?.onImage || gesture.onGlobe) return;
         if (gesture.multiTouch) {
-            // A second finger is a pinch. The touchstart that saw it already
-            // released any drag. Doing it again on each move forces layout
-            // and fights the browser's pinch-zoom.
             gesture.axis = 'cancelled';
             return;
         }
-        if (gesture.axis === 'cancelled' || gesture.axis === 'y') return;
-        const dx = gesture.lastX - gesture.startX;
-        const dy = gesture.lastY - gesture.startY;
+        if (this.isPhotoZoomed()) {
+            const PhotoZoom = this.photoZoomApi();
+            const layout = this.photoLayout();
+            if (PhotoZoom && layout.width > 0 && layout.height > 0) {
+                this.commitPhotoZoom(
+                    PhotoZoom.pan(this.photoZoom, x - gesture.lastX, y - gesture.lastY, layout.width, layout.height),
+                    false
+                );
+            }
+            gesture.axis = 'cancelled';
+            gesture.dragged = true;
+            return;
+        }
+        if (gesture.zoomed || gesture.axis === 'cancelled' || gesture.axis === 'y') return;
+        const dx = x - gesture.startX;
+        const dy = y - gesture.startY;
         if (!gesture.axis) {
             if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
             gesture.axis = Math.abs(dx) > Math.abs(dy) * 1.8 ? 'x' : 'y';
@@ -1155,6 +1510,7 @@ class Modal {
     }
 
     clearPhotoMotion() {
+        this.resetPhotoZoomState();
         const image = this.modalImage;
         if (!image) return;
         const transform = image.style.transform;
@@ -1170,7 +1526,7 @@ class Modal {
 
     releasePhotoDrag(ease) {
         const image = this.modalImage;
-        if (!image) return;
+        if (!image || this.isPhotoZoomed()) return;
         const current = image.style.transform;
         if (!current || current === 'none' || !ease || this.prefersReducedMotion()) {
             this.clearPhotoMotion();
@@ -1193,9 +1549,9 @@ class Modal {
     /**
      * One tracker for swipe-to-navigate and pull-to-dismiss. A gesture runs
      * from the first finger down until the last finger lifts, so the stray
-     * finger left over from a pinch can never be read as a swipe. Listeners
-     * are passive. A horizontal drag on the photo follows the finger.
-     * Vertical drags and pinches stay with the browser.
+     * finger left over from a pinch can never be read as a swipe. The surface
+     * listeners stay passive so a vertical drag can scroll. Pinch and pan of
+     * a zoomed photo are cancelled on the image itself.
      */
     addSwipeSupport() {
         const surface = this.modalContent || this.modal;
@@ -1214,8 +1570,9 @@ class Modal {
             if (!this.isOpen) return;
             if (gesture) {
                 gesture.multiTouch = true;
-                this.releasePhotoDrag(true);
                 gesture.axis = 'cancelled';
+                if (!this.isPhotoZoomed()) this.clearPhotoMotion();
+                this.capturePhotoPinch(e);
                 return;
             }
             const touch = e.touches[0];
@@ -1227,40 +1584,58 @@ class Modal {
                 lastY: touch.clientY,
                 startTime: performance.now(),
                 multiTouch: e.touches.length > 1,
-                zoomed: Modal.isPageZoomed(),
+                zoomed: Modal.isPageZoomed() || this.isPhotoZoomed(),
                 onImage: Boolean(e.target.closest?.('#modal-image')),
                 onGlobe: Boolean(e.target.closest?.('#modal-globe')),
                 startScroll: surface.scrollTop || 0
             };
+            this._photoGesture = gesture;
+            if (e.touches.length > 1) this.capturePhotoPinch(e);
         }, { passive: true });
 
         surface.addEventListener('touchmove', (e) => {
             if (!gesture) return;
-            if (e.touches.length > 1) gesture.multiTouch = true;
-            const touch = findTouch(e.touches, gesture.id);
-            if (touch) {
-                gesture.lastX = touch.clientX;
-                gesture.lastY = touch.clientY;
+            if (e.touches.length > 1) {
+                gesture.multiTouch = true;
+                gesture.axis = 'cancelled';
+                this.applyPhotoPinch(e);
+                return;
             }
-            this.trackPhotoDrag(gesture);
+            const touch = findTouch(e.touches, gesture.id);
+            const x = touch ? touch.clientX : gesture.lastX;
+            const y = touch ? touch.clientY : gesture.lastY;
+            this.trackPhotoDrag(gesture, x, y);
+            gesture.lastX = x;
+            gesture.lastY = y;
         }, { passive: true });
 
         const finish = (e, cancelled) => {
+            if (e.touches.length < 2) this._pinch = null;
+            if (gesture && e.touches.length === 1) {
+                gesture.lastX = e.touches[0].clientX;
+                gesture.lastY = e.touches[0].clientY;
+                gesture.id = e.touches[0].identifier;
+            }
             if (!gesture || e.touches.length > 0) return;
             const g = gesture;
             gesture = null;
+            this._photoGesture = null;
             if (cancelled || !this.isOpen) {
                 this.releasePhotoDrag(true);
                 return;
             }
 
             const touch = findTouch(e.changedTouches, g.id);
+            const dx = (touch ? touch.clientX : g.lastX) - g.startX;
+            const dy = (touch ? touch.clientY : g.lastY) - g.startY;
+            if (this.takePhotoDoubleTap(g, dx, dy)) return;
+
             const action = Modal.classifyTouchGesture({
-                dx: (touch ? touch.clientX : g.lastX) - g.startX,
-                dy: (touch ? touch.clientY : g.lastY) - g.startY,
+                dx,
+                dy,
                 duration: performance.now() - g.startTime,
                 multiTouch: g.multiTouch,
-                zoomed: g.zoomed || Modal.isPageZoomed(),
+                zoomed: g.zoomed || Modal.isPageZoomed() || this.isPhotoZoomed(),
                 onImage: g.onImage,
                 onGlobe: g.onGlobe,
                 atTop: g.startScroll <= 1 && (surface.scrollTop || 0) <= 1,
@@ -1277,6 +1652,14 @@ class Modal {
 
         surface.addEventListener('touchend', (e) => finish(e, false), { passive: true });
         surface.addEventListener('touchcancel', (e) => finish(e, true), { passive: true });
+
+        this.modalImage?.addEventListener('touchmove', (e) => {
+            const active = this._photoGesture;
+            if (!this.isOpen || !active) return;
+            const pinching = e.touches.length >= 2;
+            const panning = this.isPhotoZoomed() && active.onImage && !active.multiTouch;
+            if ((pinching || panning) && e.cancelable) e.preventDefault();
+        }, { passive: false });
     }
 
     /**
@@ -1329,8 +1712,8 @@ class Modal {
     }
 
     /**
-     * Trackpad pinch and ctrl/cmd+wheel are the browser zooming the photo.
-     * The globe explorer has its own altitude controller and is not asked.
+     * Ctrl/cmd+wheel is a pinch. The photo viewer handles it, and the globe
+     * explorer keeps its own altitude controller.
      * @param {{ ctrlKey?: boolean, metaKey?: boolean } | null | undefined} event
      * @returns {boolean}
      */
@@ -1341,7 +1724,7 @@ class Modal {
     /**
      * Pull down past the top of the overlay (trackpad or wheel) to return to
      * the gallery. Touch pulls are handled by the shared gesture tracker.
-     * A ctrl/meta wheel is the browser zooming the photo, so it is ignored.
+     * A ctrl/meta wheel zooms the photo, so it is ignored here.
      */
     addDismissGesture() {
         const scroller = this.modalContent || this.modal;
