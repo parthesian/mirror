@@ -301,13 +301,10 @@ class Modal {
     }
 
     /**
-     * Load image content into modal
-     * @param {Object} image - Image object
-     */
-    /**
      * List rows only carry the date, so the facts stay hidden until the detail
      * record lands and are then rendered in one pass. A failed lookup falls
      * back to the list row rather than leaving the panel blank.
+     * @param {Object} image - Image object
      */
     loadImageContent(image) {
         this.showPhoto(image);
