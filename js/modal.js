@@ -19,6 +19,7 @@ class Modal {
         this.modalTimestamp = document.getElementById('modal-timestamp');
         this.globeContainer = document.getElementById('modal-globe');
         this.modalCopy = this.modal?.querySelector('.modal-copy');
+        this.modalDetails = this.modal?.querySelector('.modal-details');
         this.modalContent = this.modal?.querySelector('.modal-content');
         this.modalImageContainer = this.modal?.querySelector('.modal-image-container');
         this.prevBtn = document.getElementById('prev-btn');
@@ -215,7 +216,8 @@ class Modal {
     }
 
     /**
-     * Open the photo overlay. The scrim fades in. Metadata fills in when it arrives.
+     * Open the photo overlay. The scrim fades in. Metadata appears in one piece
+     * once the detail record is known.
      * @param {string} imageId - Image ID to display
      */
     async open(imageId) {
@@ -302,23 +304,34 @@ class Modal {
      * Load image content into modal
      * @param {Object} image - Image object
      */
+    /**
+     * List rows only carry the date, so the facts stay hidden until the detail
+     * record lands and are then rendered in one pass. A failed lookup falls
+     * back to the list row rather than leaving the panel blank.
+     */
     loadImageContent(image) {
         this.showPhoto(image);
-        this.renderDetails(image);
         this.prefetchAdjacentImages(image.id);
 
-        if (!image.detailLoaded && typeof this.imageService.ensurePhotoDetail === 'function') {
-            this.imageService.ensurePhotoDetail(image.id).then((detailed) => {
-                if (!detailed || !this.isOpen || this.currentImageId !== image.id) return;
-                if (Math.abs(this.getPhotoAspect(detailed) - this._frameAspect) > 0.02) {
+        if (image.detailLoaded || typeof this.imageService.ensurePhotoDetail !== 'function') {
+            this.renderDetails(image);
+            return;
+        }
+
+        this.modalDetails?.classList.add('is-pending');
+        this.imageService.ensurePhotoDetail(image.id)
+            .catch((err) => {
+                console.error('Modal: failed to load photo metadata', err);
+                return null;
+            })
+            .then((detailed) => {
+                if (!this.isOpen || this.currentImageId !== image.id) return;
+                if (detailed && Math.abs(this.getPhotoAspect(detailed) - this._frameAspect) > 0.02) {
                     this.applyPhotoPlacement(detailed);
                 }
-                this.renderDetails(detailed);
+                this.renderDetails(detailed || image);
                 this.updateNavigationButtons();
-            }).catch((err) => {
-                console.error('Modal: failed to load photo metadata', err);
             });
-        }
     }
 
     /**
@@ -398,9 +411,9 @@ class Modal {
             this.modalCameraRow.classList.remove('is-tlr');
         }
 
+        this.modalDetails?.classList.remove('is-pending');
         this.syncModalGlobeSize();
-        // List rows carry no coordinates; wait for the detail record rather
-        // than spinning the globe to nowhere and back.
+        // List rows carry no coordinates, so the previous photo's globe must not linger.
         if (image.detailLoaded) {
             this.updateGlobe({
                 latitude: image.latitude,
@@ -408,6 +421,8 @@ class Modal {
                 country: image.country,
                 location: image.location
             });
+        } else {
+            this.hideModalGlobe();
         }
     }
 

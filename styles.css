@@ -984,6 +984,7 @@ body.exposure-1 .scroll-loading p {
     flex-direction: column;
     gap: 1.25rem;
     min-width: 0;
+    transition: opacity var(--dur-fast) var(--ease);
 }
 
 .modal-copy {
@@ -1003,6 +1004,14 @@ body.exposure-1 .scroll-loading p {
     text-align: left;
     max-width: 100%;
     overflow-wrap: anywhere;
+}
+
+/* Hidden, not removed, so the panel keeps its box until the whole record
+   swaps in at once. */
+.modal-details.is-pending {
+    visibility: hidden;
+    opacity: 0;
+    transition: none;
 }
 
 .modal-error {
@@ -2898,7 +2907,8 @@ body.exposure-1 { --leak-opacity: 0.35; }
     .modal,
     .modal.active,
     .globe-explorer,
-    .globe-explorer.active {
+    .globe-explorer.active,
+    .modal-details {
         transition: none;
     }
 }
