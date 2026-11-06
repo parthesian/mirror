@@ -246,3 +246,122 @@ test('the control menu filters the gallery by camera', async ({ page }) => {
         )
         .toBeGreaterThan(1);
 });
+
+const gateMetadata = `(() => {
+    const base = window.fetch;
+    const gates = new Map();
+    window.metadataGate = {
+        pending: (id) => gates.has(id),
+        release: (id, ok = true) => {
+            const open = gates.get(id);
+            gates.delete(id);
+            open(ok);
+        }
+    };
+    window.fetch = (input, init) => {
+        const url = typeof input === 'string' ? input : input.url;
+        const match = url.match(/\\/api\\/photos\\/([^/]+)\\/metadata/);
+        if (!match) return base(input, init);
+        return new Promise((open) => gates.set(decodeURIComponent(match[1]), open))
+            .then((ok) => (ok ? base(input, init) : new Response('{}', { status: 500 })));
+    };
+    window.revealedDetails = [];
+    new MutationObserver(() => {
+        if (document.querySelector('.modal-details').classList.contains('is-pending')) return;
+        window.revealedDetails.push({
+            id: window.modal.currentImageId,
+            location: document.getElementById('modal-location').textContent,
+            country: document.getElementById('modal-country').textContent,
+            camera: document.getElementById('modal-camera-name').textContent,
+            date: document.getElementById('modal-timestamp').textContent
+        });
+    }).observe(document.querySelector('.modal-details'), { attributes: true, attributeFilter: ['class'] });
+})()`;
+
+test('photo metadata appears in one piece, even while switching photos', async ({ page }) => {
+    await page.goto('/?mock=1');
+    await expect(page.locator('.gallery-item').first()).toBeVisible();
+    await page.evaluate(gateMetadata);
+    const details = page.locator('#modal .modal-details');
+
+    const first = (await page.evaluate('window.app.imageService.images[6].id')) as string;
+    await page.evaluate(`window.modal.open(${JSON.stringify(first)})`);
+    await expect(details).toHaveClass(/is-pending/);
+    await expect(details).toHaveCSS('visibility', 'hidden');
+
+    await page.evaluate('window.modal.showNextImage()');
+    const second = (await page.evaluate('window.modal.currentImageId')) as string;
+    expect(second).not.toBe(first);
+    await expect
+        .poll(() => page.evaluate(`window.metadataGate.pending(${JSON.stringify(second)})`))
+        .toBe(true);
+
+    await page.evaluate(`window.metadataGate.release(${JSON.stringify(first)})`);
+    await page.evaluate('new Promise((done) => setTimeout(done, 50))');
+    await expect(details).toHaveClass(/is-pending/);
+
+    await page.evaluate(`window.metadataGate.release(${JSON.stringify(second)})`);
+    await expect(details).not.toHaveClass(/is-pending/);
+    await expect(details).toHaveCSS('visibility', 'visible');
+
+    const photo = (await page.evaluate(`window.MockPhotos.byId(${JSON.stringify(second)})`)) as {
+        location: string;
+        country: string;
+        camera: string;
+    };
+    const revealed = (await page.evaluate('window.revealedDetails')) as Array<
+        Record<string, string>
+    >;
+    expect(revealed).toHaveLength(1);
+    expect(revealed[0]?.id).toBe(second);
+    expect(revealed[0]?.location).toContain(photo.location);
+    expect(revealed[0]?.country).toBe(photo.country);
+    expect(revealed[0]?.camera).toBe(photo.camera);
+    expect(revealed[0]?.date).not.toBe('');
+
+    await page.evaluate('window.modal.showPreviousImage()');
+    await expect.poll(() => page.evaluate('window.modal.currentImageId')).toBe(first);
+    await expect(details).not.toHaveClass(/is-pending/);
+    expect(await page.evaluate('window.revealedDetails.at(-1).id')).toBe(first);
+});
+
+test('a failed metadata lookup shows the date without the last photo globe', async ({ page }) => {
+    await page.goto('/?mock=1');
+    await expect(page.locator('.gallery-item').first()).toBeVisible();
+    const cached = (await page.evaluate('window.app.imageService.images[0].id')) as string;
+    await page.evaluate(`window.modal.open(${JSON.stringify(cached)})`);
+    await expect(page.locator('#modal-globe canvas')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#modal.active')).toHaveCount(0);
+
+    await page.evaluate(gateMetadata);
+    const missing = (await page.evaluate('window.app.imageService.images[12].id')) as string;
+    await page.evaluate(`window.modal.open(${JSON.stringify(missing)})`);
+    await expect
+        .poll(() => page.evaluate(`window.metadataGate.pending(${JSON.stringify(missing)})`))
+        .toBe(true);
+    await page.evaluate(`window.metadataGate.release(${JSON.stringify(missing)}, false)`);
+
+    await expect(page.locator('#modal .modal-details')).not.toHaveClass(/is-pending/);
+    await expect(page.locator('#modal-timestamp')).not.toBeEmpty();
+    await expect(page.locator('#modal-location')).toBeHidden();
+    await expect(page.locator('#modal-globe')).toBeHidden();
+});
+
+test('the viewer shows the place, not the stored caption', async ({ page }) => {
+    await page.goto('/?mock=1');
+    await expect(page.locator('.gallery-item').first()).toBeVisible();
+    const id = (await page.evaluate('window.app.imageService.images[0].id')) as string;
+    await page.evaluate(`window.modal.open(${JSON.stringify(id)})`);
+    await expect(page.locator('#modal .modal-details')).not.toHaveClass(/is-pending/);
+
+    const photo = (await page.evaluate(`window.MockPhotos.byId(${JSON.stringify(id)})`)) as {
+        location: string;
+        description: string;
+    };
+    await expect(page.locator('#modal-description')).toHaveCount(0);
+    await expect(page.locator('#modal .modal-info')).not.toContainText(photo.description);
+    await expect(page.locator('#modal-location')).toHaveClass(/modal-place/);
+    await expect(page.locator('#modal-location')).toContainText(photo.location);
+    await expect(page.locator('#modal-image')).toHaveAttribute('alt', photo.description);
+});

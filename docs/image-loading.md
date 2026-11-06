@@ -59,11 +59,16 @@ away, and it only gets sharper after that. It never changes size or blinks.
 
 **Decisions.**
 
-- **Open immediately; fill metadata in afterwards.** The date is known from the
-  list data. Place, camera, and the globe fill in when the detail record
-  arrives. The gallery also prefetches details on hover (the same 250ms hover
-  that prefetches the full image), and the viewer prefetches details for its
-  neighbours. So in practice the text is usually already there.
+- **Open immediately; show metadata in one piece.** The photo opens on the
+  click, but list rows only carry the date. Painting that date first and the
+  place, camera, and globe later made the panel build up line by line, and the
+  globe kept the previous photo's location in between. The facts panel now
+  stays hidden (its box kept, so nothing shifts) until the detail record
+  arrives, then everything renders in one pass. A response for a photo you have
+  already left is ignored. If the lookup fails, the panel shows the date from
+  the list row and hides the globe. The gallery prefetches details on hover
+  (the same 250ms hover that prefetches the full image), and the viewer
+  prefetches details for its neighbours, so the panel is usually ready at once.
 - **Reserve the final frame first.** The `<img>` gets an explicit pixel width
   and height from the photo's aspect ratio and the space available. This is
   done on desktop as well as mobile, and photos are never enlarged past their

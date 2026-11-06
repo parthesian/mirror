@@ -984,6 +984,7 @@ body.exposure-1 .scroll-loading p {
     flex-direction: column;
     gap: 1.25rem;
     min-width: 0;
+    transition: opacity var(--dur-fast) var(--ease);
 }
 
 .modal-copy {
@@ -993,7 +994,8 @@ body.exposure-1 .scroll-loading p {
     min-width: 0;
 }
 
-#modal-description {
+/* The place is the headline beside the photo. Captions are stored but not shown. */
+.modal-place {
     font-size: 1.22rem;
     font-weight: 300;
     color: var(--ink, #333);
@@ -1004,7 +1006,22 @@ body.exposure-1 .scroll-loading p {
     overflow-wrap: anywhere;
 }
 
-#modal-description:empty {
+/* Hidden, not removed, so the panel keeps its box until the whole record
+   swaps in at once. */
+.modal-details.is-pending {
+    visibility: hidden;
+    opacity: 0;
+    transition: none;
+}
+
+.modal-error {
+    font-size: 0.78rem;
+    line-height: 1.35;
+    color: #e74c3c;
+    overflow-wrap: anywhere;
+}
+
+.modal-error:empty {
     display: none;
 }
 
@@ -2273,11 +2290,6 @@ body.exposure-1 .btn-secondary {
         justify-content: center;
     }
 
-    #modal-description {
-        font-size: 1.2rem;
-        padding-right: 0;
-    }
-
     #modal .modal-metadata {
         align-items: flex-start;
         font-size: 0.78rem;
@@ -2895,7 +2907,8 @@ body.exposure-1 { --leak-opacity: 0.35; }
     .modal,
     .modal.active,
     .globe-explorer,
-    .globe-explorer.active {
+    .globe-explorer.active,
+    .modal-details {
         transition: none;
     }
 }

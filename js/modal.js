@@ -8,7 +8,7 @@ class Modal {
         // View modal elements
         this.modal = document.getElementById('modal');
         this.modalImage = document.getElementById('modal-image');
-        this.modalDescription = document.getElementById('modal-description');
+        this.modalError = document.getElementById('modal-error');
         this.modalLocation = document.getElementById('modal-location');
         this.modalCountry = document.getElementById('modal-country');
         this.modalCameraRow = document.getElementById('modal-camera-row');
@@ -19,6 +19,7 @@ class Modal {
         this.modalTimestamp = document.getElementById('modal-timestamp');
         this.globeContainer = document.getElementById('modal-globe');
         this.modalCopy = this.modal?.querySelector('.modal-copy');
+        this.modalDetails = this.modal?.querySelector('.modal-details');
         this.modalContent = this.modal?.querySelector('.modal-content');
         this.modalImageContainer = this.modal?.querySelector('.modal-image-container');
         this.prevBtn = document.getElementById('prev-btn');
@@ -215,7 +216,8 @@ class Modal {
     }
 
     /**
-     * Open the photo overlay. The scrim fades in. Metadata fills in when it arrives.
+     * Open the photo overlay. The scrim fades in. Metadata appears in one piece
+     * once the detail record is known.
      * @param {string} imageId - Image ID to display
      */
     async open(imageId) {
@@ -299,26 +301,34 @@ class Modal {
     }
 
     /**
-     * Load image content into modal
+     * List rows only carry the date, so the facts stay hidden until the detail
+     * record lands and are then rendered in one pass. A failed lookup falls
+     * back to the list row rather than leaving the panel blank.
      * @param {Object} image - Image object
      */
     loadImageContent(image) {
         this.showPhoto(image);
-        this.renderDetails(image);
         this.prefetchAdjacentImages(image.id);
 
-        if (!image.detailLoaded && typeof this.imageService.ensurePhotoDetail === 'function') {
-            this.imageService.ensurePhotoDetail(image.id).then((detailed) => {
-                if (!detailed || !this.isOpen || this.currentImageId !== image.id) return;
-                if (Math.abs(this.getPhotoAspect(detailed) - this._frameAspect) > 0.02) {
+        if (image.detailLoaded || typeof this.imageService.ensurePhotoDetail !== 'function') {
+            this.renderDetails(image);
+            return;
+        }
+
+        this.modalDetails?.classList.add('is-pending');
+        this.imageService.ensurePhotoDetail(image.id)
+            .catch((err) => {
+                console.error('Modal: failed to load photo metadata', err);
+                return null;
+            })
+            .then((detailed) => {
+                if (!this.isOpen || this.currentImageId !== image.id) return;
+                if (detailed && Math.abs(this.getPhotoAspect(detailed) - this._frameAspect) > 0.02) {
                     this.applyPhotoPlacement(detailed);
                 }
-                this.renderDetails(detailed);
+                this.renderDetails(detailed || image);
                 this.updateNavigationButtons();
-            }).catch((err) => {
-                console.error('Modal: failed to load photo metadata', err);
             });
-        }
     }
 
     /**
@@ -331,6 +341,7 @@ class Modal {
         const token = ++this._photoToken;
         this.applyPhotoPlacement(image);
         this.modalImage.alt = image.description || 'Photo';
+        if (this.modalError) this.modalError.textContent = '';
 
         const fullUrl = image.url;
         const thumbUrl = image.thumbnailUrl && image.thumbnailUrl !== fullUrl ? image.thumbnailUrl : null;
@@ -373,7 +384,6 @@ class Modal {
 
     renderDetails(image) {
         this.modalImage.alt = image.description || 'Photo';
-        this.modalDescription.textContent = image.description || '';
         const place = this.formatLocationWithState(image);
         this.modalLocation.textContent = place;
         this.modalLocation.classList.toggle('hidden', !place);
@@ -398,9 +408,9 @@ class Modal {
             this.modalCameraRow.classList.remove('is-tlr');
         }
 
+        this.modalDetails?.classList.remove('is-pending');
         this.syncModalGlobeSize();
-        // List rows carry no coordinates; wait for the detail record rather
-        // than spinning the globe to nowhere and back.
+        // List rows carry no coordinates, so the previous photo's globe must not linger.
         if (image.detailLoaded) {
             this.updateGlobe({
                 latitude: image.latitude,
@@ -408,6 +418,8 @@ class Modal {
                 country: image.country,
                 location: image.location
             });
+        } else {
+            this.hideModalGlobe();
         }
     }
 
@@ -884,13 +896,9 @@ class Modal {
         this.setPhotoSource(Modal.BLANK_SRC, 'error');
         this.modalImage.classList.remove('is-placeholder');
         this.modalImage.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAwIiBoZWlnaHQ9IjYwMCIgdmlld0JveD0iMCAwIDgwMCA2MDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI4MDAiIGhlaWdodD0iNjAwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0zNzUgMjc1SDQyNVYzMjVIMzc1VjI3NVoiIGZpbGw9IiM5Q0EzQUYiLz4KPHA+SW1hZ2UgTm90IEZvdW5kPC9wPgo8L3N2Zz4K';
-        
-        // Show error message in description
-        this.modalDescription.innerHTML = `
-            <span style="color: #e74c3c;">
-                <strong>Error:</strong> Failed to load image. The image may be unavailable or the URL may be incorrect.
-            </span>
-        `;
+        if (this.modalError) {
+            this.modalError.textContent = 'Failed to load image. The image may be unavailable or the URL may be incorrect.';
+        }
     }
 
     /**
