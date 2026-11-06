@@ -246,3 +246,21 @@ test('the control menu filters the gallery by camera', async ({ page }) => {
         )
         .toBeGreaterThan(1);
 });
+
+test('the viewer shows the place, not the stored caption', async ({ page }) => {
+    await page.goto('/?mock=1');
+    await expect(page.locator('.gallery-item').first()).toBeVisible();
+    const id = (await page.evaluate('window.app.imageService.images[0].id')) as string;
+    await page.evaluate(`window.modal.open(${JSON.stringify(id)})`);
+    await expect(page.locator('#modal-location')).not.toBeEmpty();
+
+    const photo = (await page.evaluate(`window.MockPhotos.byId(${JSON.stringify(id)})`)) as {
+        location: string;
+        description: string;
+    };
+    await expect(page.locator('#modal-description')).toHaveCount(0);
+    await expect(page.locator('#modal .modal-info')).not.toContainText(photo.description);
+    await expect(page.locator('#modal-location')).toHaveClass(/modal-place/);
+    await expect(page.locator('#modal-location')).toContainText(photo.location);
+    await expect(page.locator('#modal-image')).toHaveAttribute('alt', photo.description);
+});

@@ -993,7 +993,8 @@ body.exposure-1 .scroll-loading p {
     min-width: 0;
 }
 
-#modal-description {
+/* The place is the headline beside the photo. Captions are stored but not shown. */
+.modal-place {
     font-size: 1.22rem;
     font-weight: 300;
     color: var(--ink, #333);
@@ -1004,7 +1005,14 @@ body.exposure-1 .scroll-loading p {
     overflow-wrap: anywhere;
 }
 
-#modal-description:empty {
+.modal-error {
+    font-size: 0.78rem;
+    line-height: 1.35;
+    color: #e74c3c;
+    overflow-wrap: anywhere;
+}
+
+.modal-error:empty {
     display: none;
 }
 
@@ -2271,11 +2279,6 @@ body.exposure-1 .btn-secondary {
         flex: 1 1 auto;
         min-width: 0;
         justify-content: center;
-    }
-
-    #modal-description {
-        font-size: 1.2rem;
-        padding-right: 0;
     }
 
     #modal .modal-metadata {

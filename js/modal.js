@@ -8,7 +8,7 @@ class Modal {
         // View modal elements
         this.modal = document.getElementById('modal');
         this.modalImage = document.getElementById('modal-image');
-        this.modalDescription = document.getElementById('modal-description');
+        this.modalError = document.getElementById('modal-error');
         this.modalLocation = document.getElementById('modal-location');
         this.modalCountry = document.getElementById('modal-country');
         this.modalCameraRow = document.getElementById('modal-camera-row');
@@ -331,6 +331,7 @@ class Modal {
         const token = ++this._photoToken;
         this.applyPhotoPlacement(image);
         this.modalImage.alt = image.description || 'Photo';
+        if (this.modalError) this.modalError.textContent = '';
 
         const fullUrl = image.url;
         const thumbUrl = image.thumbnailUrl && image.thumbnailUrl !== fullUrl ? image.thumbnailUrl : null;
@@ -373,7 +374,6 @@ class Modal {
 
     renderDetails(image) {
         this.modalImage.alt = image.description || 'Photo';
-        this.modalDescription.textContent = image.description || '';
         const place = this.formatLocationWithState(image);
         this.modalLocation.textContent = place;
         this.modalLocation.classList.toggle('hidden', !place);
@@ -884,13 +884,9 @@ class Modal {
         this.setPhotoSource(Modal.BLANK_SRC, 'error');
         this.modalImage.classList.remove('is-placeholder');
         this.modalImage.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAwIiBoZWlnaHQ9IjYwMCIgdmlld0JveD0iMCAwIDgwMCA2MDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI4MDAiIGhlaWdodD0iNjAwIiBmaWxsPSIjRjNGNEY2Ii8+CjxwYXRoIGQ9Ik0zNzUgMjc1SDQyNVYzMjVIMzc1VjI3NVoiIGZpbGw9IiM5Q0EzQUYiLz4KPHA+SW1hZ2UgTm90IEZvdW5kPC9wPgo8L3N2Zz4K';
-        
-        // Show error message in description
-        this.modalDescription.innerHTML = `
-            <span style="color: #e74c3c;">
-                <strong>Error:</strong> Failed to load image. The image may be unavailable or the URL may be incorrect.
-            </span>
-        `;
+        if (this.modalError) {
+            this.modalError.textContent = 'Failed to load image. The image may be unavailable or the URL may be incorrect.';
+        }
     }
 
     /**
