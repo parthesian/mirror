@@ -6,7 +6,11 @@ import { beforeAll, describe, expect, it } from 'vitest';
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../..');
 
 type Vec3 = [number, number, number];
-type Place = { key: string; count: number; point: Vec3; screen: { x: number; y: number } };
+type Place = { key: string; lng: number; lat: number; count: number };
+type Level = { clusters: { keys: string[] }[]; of: Int32Array; keys: string[] };
+type MarkState = { dir: Vec3; kind: number; alpha: number };
+type Mark = { keys: string[]; start: MarkState; end: MarkState };
+type Moves = { marks: Mark[]; markOf: Int32Array };
 type StyleLayer = { id: string; type: string; source?: string; minzoom?: number };
 type Style = { sources: Record<string, { type: string; tiles?: string[] }>; layers: StyleLayer[] };
 type Feature = { name: string; adm0a3: string };
@@ -20,6 +24,9 @@ interface GlobeWindow {
         lngLat(x: number, y: number, z: number): { lng: number; lat: number };
         invert(m: number[]): number[];
         occluded(camera: { position: Vec3 }, point: Vec3): boolean;
+        surfaceLift(altitude: number): number;
+        liftHeight(height: number, lift: number, altitude: number): number;
+        SURFACE: { full: number; ground: number };
     };
     GlobeMap: {
         MAPLIBRE_VERSION: string;
@@ -33,8 +40,11 @@ interface GlobeWindow {
         BANDS: { imagery: { in: number[] }; tiles: number };
     };
     GlobeMarkerLayer: {
-        cluster(visible: Place[], diameterPx: (place: Place) => number): Place[][];
         markerSize(altitude: number): number;
+        clusterLevels(places: Place[]): Map<number, Level>;
+        levelFor(altitude: number, current: number | null): number;
+        retarget(previous: Moves | null, level: Level, t: number): Moves;
+        drawnAt(mark: Mark, t: number): MarkState;
     };
     GlobeRouteLayer: {
         pulseFrame(elapsed: number, scale: number): { angle: number; opacity: number }[] | null;
@@ -192,37 +202,117 @@ describe('globe style', () => {
 });
 
 describe('globe markers and pulses', () => {
-    const place = (key: string, x: number, count = 1): Place => ({
+    const { GlobeGl, GlobeMarkerLayer } = globe;
+    const place = (key: string, lng: number, lat: number, count = 1): Place => ({
         key,
+        lng,
+        lat,
         count,
-        point: [0, 0, 1],
-        screen: { x, y: 100 },
     });
+    const places = [
+        place('rome', 12.5, 41.9, 3),
+        place('florence', 11.25, 43.77),
+        place('tivoli', 12.8, 41.96),
+        place('nuuk', -51.7, 64.18),
+    ];
+    const levels = GlobeMarkerLayer.clusterLevels(places);
+    const groupsAt = (altitude: number) =>
+        levels.get(GlobeMarkerLayer.levelFor(altitude, null))?.clusters.map((c) => c.keys);
 
     it('holds the old marker size at the fit view and a constant pixel size closer in', () => {
-        expect(globe.GlobeMarkerLayer.markerSize(2.09)).toBeCloseTo(0.06);
-        expect(globe.GlobeMarkerLayer.markerSize(0.8) / 0.8).toBeCloseTo(
-            globe.GlobeMarkerLayer.markerSize(0.01) / 0.01,
+        expect(GlobeMarkerLayer.markerSize(2.09)).toBeCloseTo(0.06);
+        expect(GlobeMarkerLayer.markerSize(0.8) / 0.8).toBeCloseTo(
+            GlobeMarkerLayer.markerSize(0.01) / 0.01,
         );
     });
 
-    it('merges overlapping markers and leaves separate ones alone', () => {
-        const groups = globe.GlobeMarkerLayer.cluster(
-            [place('rome', 100, 3), place('florence', 110), place('nuuk', 400)],
-            () => 24,
-        );
-        expect(groups.map((members) => members.map((m) => m.key))).toEqual([
-            ['rome', 'florence'],
+    it('keeps full height in the far view and eases onto the surface close in', () => {
+        expect(GlobeGl.surfaceLift(2.09)).toBe(1);
+        expect(GlobeGl.surfaceLift(GlobeGl.SURFACE.full)).toBe(1);
+        expect(GlobeGl.surfaceLift(GlobeGl.SURFACE.ground)).toBe(0);
+        const sweep = Array.from({ length: 60 }, (_, i) => GlobeGl.surfaceLift(0.3 * 0.95 ** i));
+        expect(sweep.every((lift, i) => i === 0 || lift <= (sweep[i - 1] ?? 1))).toBe(true);
+        const steps = sweep.slice(1).map((lift, i) => (sweep[i] ?? 0) - lift);
+        expect(Math.max(...steps)).toBeLessThan(0.08);
+    });
+
+    it('never lifts anything to the camera and leaves far-view arcs alone', () => {
+        expect(GlobeGl.liftHeight(0.3025, 1, 1.6)).toBe(0.3025);
+        for (const altitude of [0.0008, 0.005, 0.02, 0.05, 0.2, 0.5, 1.6]) {
+            const lift = GlobeGl.surfaceLift(altitude);
+            for (const height of [0, 0.0025, 0.01, 0.1, 0.3025]) {
+                const lifted = GlobeGl.liftHeight(height, lift, altitude);
+                expect(lifted).toBeGreaterThanOrEqual(0);
+                expect(lifted).toBeLessThanOrEqual(altitude / 2);
+            }
+        }
+        expect(GlobeGl.liftHeight(0.0025, GlobeGl.surfaceLift(0.01), 0.01)).toBe(0);
+    });
+
+    it('merges nearby places far out and splits them closer in', () => {
+        expect(groupsAt(2.09)).toEqual([['rome', 'tivoli', 'florence'], ['nuuk']]);
+        expect(groupsAt(0.2)).toEqual([['rome', 'tivoli'], ['florence'], ['nuuk']]);
+        expect(groupsAt(0.002)).toEqual([['rome'], ['florence'], ['nuuk'], ['tivoli']]);
+    });
+
+    it('only merges whole clusters as the camera pulls back', () => {
+        const sorted = [...levels.keys()].sort((a, b) => a - b);
+        for (const [coarse, fine] of sorted
+            .slice(0, -1)
+            .map((level, i) => [level, sorted[i + 1]])) {
+            const outer = levels.get(coarse as number) as Level;
+            const inner = levels.get(fine as number) as Level;
+            for (const cluster of inner.clusters) {
+                const parents = new Set(
+                    cluster.keys.map((key) => outer.of[outer.keys.indexOf(key)]),
+                );
+                expect(parents.size).toBe(1);
+            }
+        }
+    });
+
+    it('holds a level until the camera is clearly past its edge', () => {
+        const level = GlobeMarkerLayer.levelFor(0.1, null);
+        const edge = 2 ** -((level + 1) * 0.25);
+        expect(GlobeMarkerLayer.levelFor(edge * 0.97, level)).toBe(level);
+        expect(GlobeMarkerLayer.levelFor(edge * 0.97, null)).toBe(level + 1);
+        expect(GlobeMarkerLayer.levelFor(edge * 0.93, level)).toBe(level + 1);
+    });
+
+    it('slides marks between clusters and fades the extras', () => {
+        const far = levels.get(GlobeMarkerLayer.levelFor(2.09, null)) as Level;
+        const near = levels.get(GlobeMarkerLayer.levelFor(0.002, null)) as Level;
+        const visible = (moves: Moves, t: number) =>
+            moves.marks.filter((mark) => GlobeMarkerLayer.drawnAt(mark, t).alpha > 0).length;
+        const still = GlobeMarkerLayer.retarget(null, far, 0);
+        const split = GlobeMarkerLayer.retarget(still, near, 1);
+        expect(split.marks.map((mark) => mark.keys)).toEqual([
+            ['rome'],
+            ['florence'],
+            ['tivoli'],
             ['nuuk'],
         ]);
+        expect([visible(split, 0), visible(split, 1)]).toEqual([2, 4]);
+        const merge = GlobeMarkerLayer.retarget(GlobeMarkerLayer.retarget(null, near, 0), far, 1);
+        expect([visible(merge, 0), visible(merge, 1)]).toEqual([4, 2]);
+        expect(GlobeMarkerLayer.drawnAt(merge.marks[2] as Mark, 1).dir).toEqual(
+            GlobeMarkerLayer.drawnAt(merge.marks[0] as Mark, 1).dir,
+        );
     });
 
-    it('lets a larger place claim its neighbours first', () => {
-        const groups = globe.GlobeMarkerLayer.cluster(
-            [place('a', 100), place('b', 118, 5), place('c', 136)],
-            () => 24,
-        );
-        expect(groups[0]?.map((m) => m.key)).toEqual(['b', 'a', 'c']);
+    it('starts a new move from wherever an interrupted one left the marks', () => {
+        const far = levels.get(GlobeMarkerLayer.levelFor(2.09, null)) as Level;
+        const near = levels.get(GlobeMarkerLayer.levelFor(0.002, null)) as Level;
+        const split = GlobeMarkerLayer.retarget(GlobeMarkerLayer.retarget(null, far, 0), near, 1);
+        const back = GlobeMarkerLayer.retarget(split, far, 0.4);
+        split.marks.forEach((mark, index) => {
+            const now = GlobeMarkerLayer.drawnAt(mark, 0.4);
+            const next = GlobeMarkerLayer.drawnAt(back.marks[index] as Mark, 0);
+            for (const [axis, v] of next.dir.entries()) {
+                expect(v).toBeCloseTo(now.dir[axis] ?? 0, 12);
+            }
+            expect(next.alpha).toBeCloseTo(now.alpha, 12);
+        });
     });
 
     it('runs the click pulse for three staggered rings, then stops', () => {

@@ -109,14 +109,60 @@
     }
 
     /**
+     * Markers, arcs and pulses float above the surface in the far view and
+     * ease down onto it between these camera altitudes, in Earth radii.
+     * Smoothstep runs over log2 altitude, about 3.3 zoom levels.
+     */
+    const SURFACE = { full: 0.2, ground: 0.02 };
+
+    /** 1 when overlays keep their full height, 0 once they lie on the surface. */
+    function surfaceLift(altitude) {
+        const from = Math.log2(SURFACE.ground);
+        const t = (Math.log2(Math.max(altitude, 1e-9)) - from) / (Math.log2(SURFACE.full) - from);
+        const c = Math.min(Math.max(t, 0), 1);
+        return c * c * (3 - 2 * c);
+    }
+
+    /**
+     * A height above the surface scaled by `lift`, then softly capped at half
+     * the camera's altitude so a long arc can never reach the camera. The cap
+     * blends over its top quarter, which leaves the far view untouched.
+     * LIFT_GLSL is the same function.
+     */
+    function liftHeight(height, lift, altitude) {
+        const h = Math.max(height, 0) * lift;
+        const ceiling = altitude / 2;
+        const k = ceiling / 4;
+        const d = Math.max(k - Math.abs(h - ceiling), 0) / k;
+        return Math.min(h, ceiling) - d * d * k / 4;
+    }
+
+    const LIFT_GLSL = `
+uniform float u_lift;
+uniform float u_altitude;
+vec3 lifted(vec3 p) {
+    float r = length(p);
+    float h = max(r - 1.0, 0.0) * u_lift;
+    float ceiling = u_altitude * 0.5;
+    float k = ceiling * 0.25;
+    float d = max(k - abs(h - ceiling), 0.0) / k;
+    h = min(h, ceiling) - d * d * k * 0.25;
+    return p / r * (1.0 + h);
+}
+`;
+
+    /**
      * True when the straight line from the camera to `point` enters the
-     * unit sphere first. Matches the fragment test in the layer shaders.
+     * unit sphere first. A point below the surface, such as the middle of a
+     * chord between two surface points, is tested where it meets the surface.
+     * Matches the fragment test in the layer shaders.
      */
     function occluded(cam, point) {
         const [cx, cy, cz] = cam.position;
-        const dx = point[0] - cx;
-        const dy = point[1] - cy;
-        const dz = point[2] - cz;
+        const up = Math.max(1, 1 / (Math.hypot(point[0], point[1], point[2]) || 1));
+        const dx = point[0] * up - cx;
+        const dy = point[1] * up - cy;
+        const dz = point[2] * up - cz;
         const a = dx * dx + dy * dy + dz * dz;
         const b = cx * dx + cy * dy + cz * dz;
         const c = cx * cx + cy * cy + cz * cz - 1;
@@ -137,7 +183,7 @@
 
     const OCCLUSION_GLSL = `
 float globeHidden(vec3 cam, vec3 point) {
-    vec3 d = point - cam;
+    vec3 d = point * max(1.0, 1.0 / length(point)) - cam;
     float a = dot(d, d);
     float b = dot(cam, d);
     float c = dot(cam, cam) - 1.0;
@@ -218,7 +264,11 @@ float globeHidden(vec3 cam, vec3 point) {
 
     const GlobeGl = {
         DEG,
+        SURFACE,
         OCCLUSION_GLSL,
+        LIFT_GLSL,
+        surfaceLift,
+        liftHeight,
         sphere,
         lngLat,
         invert,
