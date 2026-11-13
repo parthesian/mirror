@@ -4,6 +4,8 @@
  * Both keep the old Three.js look: one-pixel white lines with additive
  * blending, arcs at 0.12 and pulse rings fading out from 0.52. A fragment
  * behind the sphere is dropped, which stands in for the old depth test.
+ * Close in, their height eases to zero with the markers' (GlobeGl.surfaceLift),
+ * so arcs end where the markers sit.
  *
  * Classic script. Sets window.GlobeRouteLayer.
  */
@@ -12,9 +14,10 @@
 attribute vec3 a_pos;
 uniform mat4 u_matrix;
 varying vec3 v_pos;
+${root.GlobeGl.LIFT_GLSL}
 void main() {
-    v_pos = a_pos;
-    vec4 clip = u_matrix * vec4(a_pos, 1.0);
+    v_pos = lifted(a_pos);
+    vec4 clip = u_matrix * vec4(v_pos, 1.0);
     gl_Position = vec4(clip.xy, 0.0, clip.w);
 }`;
 
@@ -119,7 +122,7 @@ void main() {
                     vertex: VERTEX,
                     fragment: FRAGMENT,
                     attributes: ['a_pos'],
-                    uniforms: ['u_matrix', 'u_camera', 'u_opacity']
+                    uniforms: ['u_matrix', 'u_camera', 'u_opacity', 'u_lift', 'u_altitude']
                 });
                 state.arcs = gl.createBuffer();
                 state.ring = gl.createBuffer();
@@ -138,6 +141,8 @@ void main() {
                 gl.useProgram(program.handle);
                 gl.uniformMatrix4fv(program.uniforms.u_matrix, false, new Float32Array(matrix));
                 gl.uniform3fv(program.uniforms.u_camera, cam.position);
+                gl.uniform1f(program.uniforms.u_lift, root.GlobeGl.surfaceLift(cam.altitude));
+                gl.uniform1f(program.uniforms.u_altitude, cam.altitude);
                 gl.enable(gl.BLEND);
                 gl.blendFunc(gl.ONE, gl.ONE);
                 gl.disable(gl.DEPTH_TEST);
