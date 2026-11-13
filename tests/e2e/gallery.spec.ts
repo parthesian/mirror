@@ -127,11 +127,11 @@ test('photo zoom stays on the image', async ({ page }) => {
         .poll(() => page.evaluate(`document.getElementById('modal-image').style.transform`))
         .toBe('none');
 
-    await page.locator('#modal-image').dblclick();
+    await page.locator('#modal-image').click();
     await expect
         .poll(() => page.evaluate(`document.getElementById('modal-image').style.transform`))
         .toContain('scale(2.5)');
-    await page.locator('#modal-image').dblclick();
+    await page.locator('#modal-image').click();
     await expect
         .poll(() => page.evaluate(`document.getElementById('modal-image').style.transform`))
         .toBe('none');
@@ -147,6 +147,29 @@ test('photo zoom stays on the image', async ({ page }) => {
         .poll(() => page.evaluate(`document.getElementById('modal-image').style.transform`))
         .toBe('none');
     expect(await page.evaluate('window.app.globeExplorer._zoomInputBound === true')).toBe(false);
+});
+
+test('a touch photo zooms on double-tap, not on a single tap', async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+    const page = await context.newPage();
+    await page.goto('/?mock=1');
+    await page.locator('.gallery-item').first().tap();
+    await expect(page.locator('#modal.active')).toBeVisible();
+    await page.waitForFunction(`document.getElementById('modal-image').naturalWidth > 1`);
+    const box = await page.locator('#modal-image').boundingBox();
+    if (!box) throw new Error('photo has no box');
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    const transform = () => page.evaluate(`document.getElementById('modal-image').style.transform || 'none'`);
+
+    await page.touchscreen.tap(x, y);
+    await page.waitForTimeout(350);
+    expect(await transform()).toBe('none');
+
+    await page.touchscreen.tap(x, y);
+    await page.touchscreen.tap(x, y);
+    await expect.poll(transform).toContain('scale(2.5)');
+    await context.close();
 });
 
 test('mock gallery mounts tiles from the classic scripts', async ({ page }) => {

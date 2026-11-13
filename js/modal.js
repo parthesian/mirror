@@ -1317,15 +1317,24 @@ class Modal {
             );
         }, { passive: false });
 
+        image.addEventListener('click', (event) => {
+            const press = this._photoPress;
+            if (!this.isOpen || !press || press.type !== 'mouse') return;
+            if (Math.hypot(event.clientX - press.x, event.clientY - press.y) > 6) return;
+            this.togglePhotoZoom(event.clientX, event.clientY, true);
+        });
+
         image.addEventListener('dblclick', (event) => {
             if (!this.isOpen) return;
             event.preventDefault();
             event.stopPropagation();
+            if (this._photoPress?.type === 'mouse') return;
             if (this._photoTapZoomAt && performance.now() - this._photoTapZoomAt < 500) return;
             this.togglePhotoZoom(event.clientX, event.clientY, true);
         });
 
         image.addEventListener('pointerdown', (event) => {
+            this._photoPress = { type: event.pointerType, x: event.clientX, y: event.clientY };
             if (!this.isOpen || event.pointerType === 'touch' || event.button !== 0) return;
             if (!this.isPhotoZoomed()) return;
             this._mousePan = { id: event.pointerId, x: event.clientX, y: event.clientY };
