@@ -18,6 +18,8 @@ interface PageGlobe {
     spinning: boolean;
     setSpin(enabled: boolean): void;
     focus(lng: number, lat: number): void;
+    markerHits(x: number, y: number, radius: number): { keys: string[] }[];
+    markers: { clusters: { level: number; groups: string[][] } };
 }
 interface PageWindow {
     app: {
@@ -192,6 +194,49 @@ test('a drag turns the globe north-up and stops the idle spin', async ({ page })
     expect(after.pitch).toBe(0);
     expect(after.spinning).toBe(false);
     expect(after.paused).toBe(true);
+});
+
+test('panning at a fixed zoom never regroups the markers', async ({ page }) => {
+    await page.goto('/?mock=1');
+    await expect(page.locator('.gallery-item').first()).toBeVisible();
+    await openExplorer(page);
+    await page.evaluate(() => {
+        const globe = window.app.globeExplorer.globeMap;
+        globe.setSpin(false);
+        globe.map.jumpTo({ center: [0, 40], zoom: 1.6 });
+    });
+    await page.waitForTimeout(300);
+    const read = () =>
+        page.evaluate(() => {
+            const globe = window.app.globeExplorer.globeMap;
+            return {
+                clusters: globe.markers.clusters,
+                drawn: globe.markerHits(0, 0, 1e9).map((hit) => [...hit.keys].sort().join('\n')),
+            };
+        });
+    const before = await read();
+    expect(before.clusters.groups.some((keys) => keys.length > 1)).toBe(true);
+    const groupOf = new Map(
+        before.clusters.groups.flatMap((keys) =>
+            keys.map((key) => [key, [...keys].sort().join('\n')]),
+        ),
+    );
+
+    for (const [dx, dy] of [
+        [260, 0],
+        [0, 180],
+    ] as const) {
+        await page.mouse.move(640, 360);
+        await page.mouse.down();
+        await page.mouse.move(640 + dx, 360 + dy, { steps: 4 });
+        await page.mouse.up();
+        await page.waitForTimeout(200);
+        const after = await read();
+        expect(after.clusters).toEqual(before.clusters);
+        for (const mark of after.drawn) {
+            expect(groupOf.get(mark.split('\n')[0] ?? '')).toBe(mark);
+        }
+    }
 });
 
 test('wheel zoom moves in steps and the camera can reach street level', async ({ page }) => {
