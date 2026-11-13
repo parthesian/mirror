@@ -47,10 +47,10 @@ exist for readiness were left alone.
 | Tile hover 250 ms | Full-size URL | 1 | Timer cleared on leave |
 | Modal open | Prev/next full images | 2 | None |
 | Flipboard shuffle | Destination thumbs | up to 8 | Lands anyway after 4 s |
-| Globe button hover/focus | Three + geo + borders | — | Deduped promises |
-| Explorer zoom below d 2.35 / 1.80 | globe-lines 50m / 10m, parsed in worker, cached | 1 | Once per page session |
-| Explorer zoom below d 1.80 | globe tile manifest and up to 16 JPEG tiles, `force-cache`, 4 in flight, once per tile per session. None at the fit distance. `saveData` skips them. | 4 | Once per tile per session |
-| Idle (~3.5 s / `requestIdleCallback`) | Geo JSON + earth JPEG | — | Intentionally delayed so first thumbs win |
+| Globe button hover/focus | Geo JSON + country TopoJSON + earth JPEG | — | Deduped promises |
+| Explorer open | MapLibre GL JS from `/vendor/`, once | 1 | Kept for the page session |
+| Explorer zoom 3 and closer | NASA GIBS imagery tiles, then VersaTiles vector tiles from zoom 3.5. None at the fit zoom. `saveData` skips the imagery and caps zoom at 7. | MapLibre's queue | MapLibre tile cache |
+| Idle (~3.5 s / `requestIdleCallback`) | Geo JSON | — | Intentionally delayed so first thumbs win |
 | First gallery load idle | Hidden 160 px WebGL globe | — | Now shared + paused until the modal needs it |
 
 Results live in `ImagePreloader.loadedImages` / `loadingPromises`. `clearCache()`
