@@ -911,14 +911,6 @@ class ImageService {
     }
 
     /**
-     * Check whether modal navigation should be available.
-     * @returns {boolean} Whether at least one neighbor can exist
-     */
-    hasNavigableImages() {
-        return this.images.length > 1 || this.hasMore;
-    }
-
-    /**
      * Upload a new photo to the API.
      * @param {File} file - Image file to upload
      * @param {string} location - Required location information

@@ -22,8 +22,6 @@ class Modal {
         this.modalDetails = this.modal?.querySelector('.modal-details');
         this.modalContent = this.modal?.querySelector('.modal-content');
         this.modalImageContainer = this.modal?.querySelector('.modal-image-container');
-        this.prevBtn = document.getElementById('prev-btn');
-        this.nextBtn = document.getElementById('next-btn');
         
         // Upload modal elements
         this.uploadModal = document.getElementById('upload-modal');
@@ -91,16 +89,6 @@ class Modal {
      * Bind event listeners
      */
     bindEvents() {
-        this.prevBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.showPreviousImage();
-        });
-
-        this.nextBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.showNextImage();
-        });
-
         this.modal.addEventListener('click', (e) => {
             if (!this.isOpen) return;
             if (this.isKeepOpenTarget(e.target)) return;
@@ -233,8 +221,6 @@ class Modal {
 
         this.loadImageContent(image);
 
-        this.updateNavigationButtons();
-
         this.modal.focus({ preventScroll: true });
         await shown;
     }
@@ -266,8 +252,7 @@ class Modal {
         if (!target || !target.closest) return false;
         return Boolean(
             target.closest('#modal-image') ||
-            target.closest('#modal-globe') ||
-            target.closest('.nav-btn')
+            target.closest('#modal-globe')
         );
     }
 
@@ -327,7 +312,6 @@ class Modal {
                     this.applyPhotoPlacement(detailed);
                 }
                 this.renderDetails(detailed || image);
-                this.updateNavigationButtons();
             });
     }
 
@@ -637,19 +621,6 @@ class Modal {
     }
 
     /**
-     * Resolve whether navigation is available even if an older cached ImageService is loaded.
-     * @returns {boolean} Whether navigation controls should be shown
-     */
-    hasNavigableImages() {
-        if (typeof this.imageService.hasNavigableImages === 'function') {
-            return this.imageService.hasNavigableImages();
-        }
-
-        const images = Array.isArray(this.imageService.images) ? this.imageService.images : [];
-        return images.length > 1 || Boolean(this.imageService.hasMore);
-    }
-
-    /**
      * Peek at an adjacent image with compatibility fallback for older ImageService instances.
      * @param {string} imageId - Current image ID
      * @param {'previous'|'next'} direction - Navigation direction
@@ -808,7 +779,6 @@ class Modal {
             }
         } finally {
             this.isNavigating = false;
-            this.updateNavigationButtons();
         }
     }
 
@@ -831,42 +801,6 @@ class Modal {
             }
         } finally {
             this.isNavigating = false;
-            this.updateNavigationButtons();
-        }
-    }
-
-    /**
-     * Update navigation button states
-     */
-    updateNavigationButtons() {
-        if (!this.hasNavigableImages()) {
-            this.prevBtn.style.display = 'none';
-            this.nextBtn.style.display = 'none';
-        } else {
-            this.prevBtn.style.display = 'block';
-            this.nextBtn.style.display = 'block';
-        }
-
-        this.prevBtn.disabled = this.isNavigating;
-        this.nextBtn.disabled = this.isNavigating;
-        
-        // Update button accessibility labels
-        const currentImage = this.imageService.getImageById(this.currentImageId);
-        if (currentImage) {
-            const prevImage = this.peekAdjacentImage(this.currentImageId, 'previous');
-            const nextImage = this.peekAdjacentImage(this.currentImageId, 'next');
-
-            const label = (img) => {
-                if (!img) return 'image';
-                if (img.description) return img.description;
-                if (img.timestamp) return this.imageService.formatTimestamp(img.timestamp);
-                return 'image';
-            };
-
-            this.prevBtn.setAttribute('aria-label',
-                prevImage ? `Previous image: ${label(prevImage)}` : 'Previous image');
-            this.nextBtn.setAttribute('aria-label',
-                nextImage ? `Next image: ${label(nextImage)}` : 'Next image');
         }
     }
 
@@ -928,7 +862,6 @@ class Modal {
                 const resolved = this.imageService.getImageById(imageId) || image;
                 this.currentImageId = imageId;
                 this.loadImageContent(resolved);
-                this.updateNavigationButtons();
             }
         } else {
             await this.open(imageId);
