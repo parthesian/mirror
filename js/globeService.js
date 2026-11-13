@@ -177,7 +177,7 @@ class GlobeService {
     scene.add(group);
 
     // Sphere (Earth) — 160px modal/preload globes do not need a 64-segment mesh.
-    const segments = window.threeLoader?.sphereSegments('modal') || 32;
+    const segments = window.threeLoader?.sphereSegments() || 32;
     const geometry = new THREE.SphereGeometry(1, segments, segments);
     let texture;
     if (window.threeLoader) {

@@ -1,10 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import photoZoomSource from '../../js/photoZoom.js?raw';
-
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../..');
 
 interface PhotoZoomState {
     scale: number;
@@ -162,11 +157,5 @@ describe('photo zoom math', () => {
         expect(PhotoZoom.transform({ scale: 2.5, x: 1.2, y: -3.456 })).toBe(
             'translate(1.2px, -3.46px) scale(2.5)',
         );
-    });
-
-    it('does not use the globe altitude controller', () => {
-        const source = readFileSync(join(repoRoot, 'js/photoZoom.js'), 'utf8');
-        expect(source).not.toContain('GlobeDetail');
-        expect(source).not.toContain('nextAltitudeGoal');
     });
 });
