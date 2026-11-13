@@ -3,8 +3,8 @@
  *
  * The viewer scales the photo. It does not zoom the page, and it does not
  * use the globe explorer's altitude controller. Pinch and a mouse wheel
- * step the photo directly. A double-tap eases to a fixed magnification
- * because that jump has no stream of events to follow.
+ * step the photo directly. A mouse click or a double-tap eases to a fixed
+ * magnification because that jump has no stream of events to follow.
  *
  * Classic script. Sets window.PhotoZoom.
  *

@@ -10,10 +10,10 @@
 /styles.css
   Cache-Control: public, max-age=31536000, immutable
 
-/data/globe-lines-*
+/data/globe-countries-*
   Cache-Control: public, max-age=31536000, immutable
 
-/data/globe-tiles/*
+/vendor/*
   Cache-Control: public, max-age=31536000, immutable
 
 /admin/*

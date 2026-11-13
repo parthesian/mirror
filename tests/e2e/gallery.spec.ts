@@ -1,6 +1,22 @@
 import { expect, test } from '@playwright/test';
 
-test('pinching a photo does not dismiss it or arm globe zoom', async ({ page }) => {
+const pinchPhoto = (deltaY: number) => `(() => {
+    const image = document.getElementById('modal-image');
+    const rect = image.getBoundingClientRect();
+    image.dispatchEvent(new WheelEvent('wheel', {
+        deltaY: ${deltaY},
+        ctrlKey: true,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+        bubbles: true,
+        cancelable: true
+    }));
+    return image.style.transform;
+})()`;
+
+test('pinching a photo zooms the photo, and the globe wheel zooms only the globe', async ({
+    page,
+}) => {
     await page.goto('/?mock=1');
     await expect(page.locator('.gallery-item').first()).toBeVisible();
     await page.locator('.gallery-item').first().click();
@@ -10,56 +26,28 @@ test('pinching a photo does not dismiss it or arm globe zoom', async ({ page }) 
         const box = image && image.getBoundingClientRect();
         return Boolean(image && image.naturalWidth > 1 && box.width > 40 && box.height > 40);
     })()`);
-    expect(await page.evaluate('window.app.globeExplorer._zoomInputBound === true')).toBe(false);
 
-    const pinched = (await page.evaluate(`(() => {
-        const image = document.getElementById('modal-image');
-        const rect = image.getBoundingClientRect();
-        image.dispatchEvent(new WheelEvent('wheel', {
-            deltaY: -480,
-            ctrlKey: true,
-            clientX: rect.left + rect.width / 2,
-            clientY: rect.top + rect.height / 2,
-            bubbles: true,
-            cancelable: true
-        }));
-        return {
-            transform: image.style.transform,
-            zoomBound: window.app.globeExplorer._zoomInputBound === true
-        };
-    })()`)) as { transform: string; zoomBound: boolean };
-    expect(pinched.transform).toContain('scale(4)');
-    expect(pinched.zoomBound).toBe(false);
+    expect(await page.evaluate(pinchPhoto(-480))).toContain('scale(4)');
     await expect(page.locator('#modal.active')).toBeVisible();
 
     await page.evaluate('window.app.globeExplorer.open()');
-    await expect(page.locator('#globe-explorer-scene canvas')).toBeVisible();
+    const before = (await page.evaluate(
+        'window.app.globeExplorer.globeMap.map.getZoom()',
+    )) as number;
+    await page.evaluate(`document.querySelector('#globe-explorer-scene canvas').dispatchEvent(new WheelEvent('wheel', {
+        deltaY: -100,
+        bubbles: true,
+        cancelable: true
+    }))`);
     await expect
-        .poll(() => page.evaluate('window.app.globeExplorer._zoomInputBound === true'))
-        .toBe(true);
-
-    const zoomed = (await page.evaluate(`(() => {
-        const explorer = window.app.globeExplorer;
-        const beforeDistance = explorer.threeState.camera.position.length();
-        const canvas = document.querySelector('#globe-explorer-scene canvas');
-        canvas.dispatchEvent(new WheelEvent('wheel', {
-            deltaY: -100,
-            bubbles: true,
-            cancelable: true
-        }));
-        return {
-            beforeDistance,
-            goal: explorer.threeState.zoom.hGoal,
-            open: explorer.isOpen
-        };
-    })()`)) as { beforeDistance: number; goal: number; open: boolean };
-    expect(zoomed.open).toBe(true);
-    expect(zoomed.goal).toBeLessThan(zoomed.beforeDistance - 1);
+        .poll(() => page.evaluate('window.app.globeExplorer.globeMap.map.getZoom()'))
+        .toBeGreaterThan(before + 0.1);
+    expect(await page.evaluate('window.app.globeExplorer.isOpen')).toBe(true);
 
     await page.evaluate('window.app.globeExplorer.close()');
-    await expect
-        .poll(() => page.evaluate('window.app.globeExplorer._zoomInputBound === true'))
-        .toBe(false);
+    await expect.poll(() => page.evaluate('window.app.globeExplorer.isOpen')).toBe(false);
+    expect(await page.evaluate(pinchPhoto(480))).not.toContain('scale(4)');
+    await expect(page.locator('#modal.active')).toBeVisible();
 });
 
 test('photo zoom stays on the image', async ({ page }) => {
@@ -127,11 +115,11 @@ test('photo zoom stays on the image', async ({ page }) => {
         .poll(() => page.evaluate(`document.getElementById('modal-image').style.transform`))
         .toBe('none');
 
-    await page.locator('#modal-image').dblclick();
+    await page.locator('#modal-image').click();
     await expect
         .poll(() => page.evaluate(`document.getElementById('modal-image').style.transform`))
         .toContain('scale(2.5)');
-    await page.locator('#modal-image').dblclick();
+    await page.locator('#modal-image').click();
     await expect
         .poll(() => page.evaluate(`document.getElementById('modal-image').style.transform`))
         .toBe('none');
@@ -146,7 +134,35 @@ test('photo zoom stays on the image', async ({ page }) => {
     await expect
         .poll(() => page.evaluate(`document.getElementById('modal-image').style.transform`))
         .toBe('none');
-    expect(await page.evaluate('window.app.globeExplorer._zoomInputBound === true')).toBe(false);
+});
+
+test('a touch photo zooms on double-tap, not on a single tap', async ({ browser }) => {
+    const context = await browser.newContext({
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+        isMobile: true,
+    });
+    const page = await context.newPage();
+    await page.goto('/?mock=1');
+    await page.locator('.gallery-item').first().tap();
+    await expect(page.locator('#modal.active')).toBeVisible();
+    await page.waitForFunction(`document.getElementById('modal-image').naturalWidth > 1`);
+    const box = await page.locator('#modal-image').boundingBox();
+    if (!box) throw new Error('photo has no box');
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    const transform = () =>
+        page.evaluate(`document.getElementById('modal-image').style.transform || 'none'`);
+
+    await page.touchscreen.tap(x, y);
+    // Past the browser's double-click interval, so the next tap starts a new pair.
+    await page.waitForTimeout(700);
+    expect(await transform()).toBe('none');
+
+    await page.touchscreen.tap(x, y);
+    await page.touchscreen.tap(x, y);
+    await expect.poll(transform).toContain('scale(2.5)');
+    await context.close();
 });
 
 test('mock gallery mounts tiles from the classic scripts', async ({ page }) => {

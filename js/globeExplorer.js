@@ -1,6 +1,7 @@
 /**
- * GlobeExplorer - Interactive Three.js globe with photo location dots,
- * travel-path arcs, and country-click filtering.
+ * GlobeExplorer - the full-screen globe of photo places, routes and
+ * country filters. GlobeMap draws it; this class owns the data, the pick
+ * dialogs and the filter menu.
  */
 class GlobeExplorer {
     constructor(imageService) {
@@ -15,7 +16,6 @@ class GlobeExplorer {
         this.pickConfirmCopy = document.getElementById('globe-pick-confirm-copy');
         this.pickConfirmApply = document.getElementById('globe-pick-confirm-apply');
         this.pickConfirmCancel = document.getElementById('globe-pick-confirm-cancel');
-        this.hint = this.overlay?.querySelector('.globe-explorer-hint');
         this.openBtn = document.getElementById('globe-btn'); // optional; CONTROL menu opens the globe now
         this.closeBtn = document.getElementById('globe-explorer-close');
         this.rotateToggleBtn = document.getElementById('globe-rotate-toggle');
@@ -33,24 +33,17 @@ class GlobeExplorer {
         this.lifecycle = new OverlayLifecycle(this.overlay, {
             onClosed: () => this._onOverlayClosed()
         });
-        this.threeState = null;
+        this.globeMap = null;
+        this._globePromise = null;
         this.locations = [];
         this.locationsByCountry = {};
         this.locationsByState = {};
         this.locationsByStateKey = {};
         this.locationsByPlace = {};
         this.locationsByPlaceKey = {};
-        this.orbitControls = null;
-        this._threePromise = null;
-        this._orbitPromise = null;
         this._geoPromise = null;
         this._geoFetchedOnce = false;
-        this.autoRotateEnabled = true;
-        this.locationUnitVectors = [];
-        this.renderedPointLocations = [];
-        this.locationGroups = [];
-        this.pointerGesture = null;
-        this.lastPointerGesture = null;
+        this.locationGroupByKey = new Map();
         this.selectedFilterType = 'country';
         this.selectedFilterValue = '';
         this.selectedFilters = { country: '', state: '', location: '', color: '', camera: '' };
@@ -62,52 +55,12 @@ class GlobeExplorer {
         this._camerasFetchedOnce = false;
         this._camerasFilterKey = '';
         this._camerasPromise = null;
-        this.lastManualRotateAt = 0;
-        this.locationGroupByKey = new Map();
-        this.hoverHighlight = { type: null, key: null };
-        this.highlightedDotIndices = [];
+        this.hoveredCountryKey = '';
         this.isFilterPanelExpanded = false;
-        this._countryBoundaryPromise = null;
-        this.countryBoundaryFeatures = [];
-        this.countryBoundaryAliasMap = new Map();
         this.countryFilterAliasMap = new Map();
-        this.countryBoundaryBorder = null;
-        this.countryBorderHighlightKey = '';
         this.filterOptionCache = new Map();
         this.pendingPick = null;
         this.backStack = (typeof window !== 'undefined' ? window.overlayBackStack : null);
-        this._zoomInputBound = false;
-        this._zoomWheelListener = null;
-        this._zoomGestureListener = null;
-        this._tileSession = {
-            manifest: null,
-            manifestFailed: false,
-            manifestLoading: false,
-            warnedManifest: false,
-            warnedTile: false,
-            tileFailures: 0,
-            requested: new Set(),
-            blobs: new Map(),
-            bitmaps: new Map(),
-            decodeFailed: new Set(),
-            inflight: 0,
-            queue: [],
-            abort: new AbortController(),
-            levelOpacity: 0,
-            lastD: null,
-            lastDir: null,
-            wanted: [],
-            entries: new Map(),
-            lru: [],
-            lruProtect: new Set(),
-            decodingUrl: null,
-            gpuLive: false,
-            gpuGeneration: 0
-        };
-        this._onTilePageHide = () => {
-            this._tileSession?.abort?.abort();
-        };
-        window.addEventListener('pagehide', this._onTilePageHide);
 
         this._bindEvents();
         this._setFilterPanelExpanded(false);
@@ -132,7 +85,6 @@ class GlobeExplorer {
     }
 
     _formatSelectedFiltersLabel() {
-        const filters = this.selectedFilters || {};
         const parts = this._getSelectedFilterLabels();
         return parts.length ? parts.join(' · ') : 'ALL';
     }
@@ -183,20 +135,6 @@ class GlobeExplorer {
 
     _formatLocationWithRegion(loc) {
         return window.LocationModel.formatWithRegion(loc);
-    }
-
-    _setHoverHighlight(type, key) {
-        const nextType = type || null;
-        const nextKey = key || null;
-        if (this.hoverHighlight.type === nextType && this.hoverHighlight.key === nextKey) {
-            return;
-        }
-        this.hoverHighlight = { type: nextType, key: nextKey };
-        this._applyDotHighlight();
-    }
-
-    _applyGlobePick(option) {
-        this._proposeGlobePick(option);
     }
 
     _buildPendingPick(option) {
@@ -300,10 +238,6 @@ class GlobeExplorer {
         await this._applyFilter(pending.type, pending.value);
     }
 
-    _normalizeCountryName(value) {
-        return window.LocationModel.normalizeCountryName(value);
-    }
-
     _seedCountryAliasesFromLocations() {
         this.countryFilterAliasMap = window.LocationModel.seedCountryAliases(this.locationsByCountry);
     }
@@ -317,171 +251,10 @@ class GlobeExplorer {
         );
     }
 
-    async _ensureCountryBoundariesLoaded() {
-        await window.countryBoundaries.ensureLoaded();
-        this.countryBoundaryFeatures = window.countryBoundaries.features;
-        this.countryBoundaryAliasMap = window.countryBoundaries.aliasMap;
-    }
-
-    _dirToLatLon(THREE, worldDirection, group) {
-        return window.countryBoundaries.dirToLatLon(THREE, worldDirection, group);
-    }
-
-    _findCountryFromDirection(THREE, direction, group) {
-        return window.countryBoundaries.findCountryFromDirection(THREE, direction, group);
-    }
-
-    _countryFeatureKey(featureRef) {
-        return window.countryBoundaries.countryFeatureKey(featureRef);
-    }
-
-    _clearCountryBorderHighlight() {
-        this.countryBorderHighlightKey = '';
-        this._setLineHover(0);
-    }
-
-    _setCountryBorderHighlight(_THREE, featureRef) {
-        if (!featureRef) {
-            this._clearCountryBorderHighlight();
-            return;
-        }
-        const featureKey = this._countryFeatureKey(featureRef);
-        this.countryBorderHighlightKey = featureKey;
-        this._setLineHover(featureRef.runtimeId || 0);
-    }
-
     _hideIntersectPicker() {
         if (!this.intersectPicker) return;
         this.intersectPicker.classList.add('hidden');
         this.intersectPicker.innerHTML = '';
-    }
-
-    _showClickPulse(THREE, group, worldDirection) {
-        const s = this.threeState;
-        if (!s || !THREE || !group || !worldDirection) return;
-
-        const localDir = worldDirection.clone().normalize();
-        const worldQuat = group.getWorldQuaternion(new THREE.Quaternion());
-        localDir.applyQuaternion(worldQuat.invert()).normalize();
-
-        const axisSeed = Math.abs(localDir.y) < 0.92
-            ? new THREE.Vector3(0, 1, 0)
-            : new THREE.Vector3(1, 0, 0);
-        const tangentA = new THREE.Vector3().crossVectors(axisSeed, localDir).normalize();
-        const tangentB = new THREE.Vector3().crossVectors(localDir, tangentA).normalize();
-        const dotScale = s.dotScale || 1;
-        const pulse = {
-            startedAt: performance.now(),
-            duration: 580,
-            delay: 130,
-            minAngle: THREE.MathUtils.degToRad(0.4) * dotScale,
-            maxAngle: THREE.MathUtils.degToRad(3.7) * dotScale,
-            radius: window.GlobeDetail?.CONFIG?.PULSE_RADIUS || 1.003,
-            centerDir: localDir,
-            tangentA,
-            tangentB,
-            rings: []
-        };
-
-        for (let i = 0; i < 3; i++) {
-            const positions = new Float32Array(96 * 3);
-            const geometry = new THREE.BufferGeometry();
-            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            const material = new THREE.LineBasicMaterial({
-                color: 0xffffff,
-                transparent: true,
-                opacity: 0,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false
-            });
-            const line = new THREE.LineLoop(geometry, material);
-            line.renderOrder = 4;
-            group.add(line);
-            pulse.rings.push({
-                line,
-                geometry,
-                material,
-                positions,
-                delay: i * pulse.delay
-            });
-        }
-
-        s.clickPulses.push(pulse);
-    }
-
-    _setClickPulseRingPositions(pulse, ring, angle) {
-        const sinAngle = Math.sin(angle);
-        const cosAngle = Math.cos(angle);
-        const { centerDir, tangentA, tangentB, radius } = pulse;
-        const positions = ring.positions;
-        const count = positions.length / 3;
-
-        for (let i = 0; i < count; i++) {
-            const theta = (i / count) * Math.PI * 2;
-            const ringX = Math.cos(theta) * sinAngle;
-            const ringY = Math.sin(theta) * sinAngle;
-            const point = centerDir.clone().multiplyScalar(cosAngle)
-                .add(tangentA.clone().multiplyScalar(ringX))
-                .add(tangentB.clone().multiplyScalar(ringY))
-                .normalize()
-                .multiplyScalar(radius);
-            const offset = i * 3;
-            positions[offset] = point.x;
-            positions[offset + 1] = point.y;
-            positions[offset + 2] = point.z;
-        }
-        ring.geometry.getAttribute('position').needsUpdate = true;
-    }
-
-    _updateClickPulses(now) {
-        const s = this.threeState;
-        if (!s?.clickPulses?.length) return;
-
-        for (let i = s.clickPulses.length - 1; i >= 0; i--) {
-            const pulse = s.clickPulses[i];
-            let isComplete = true;
-
-            for (const ring of pulse.rings) {
-                const progress = (now - pulse.startedAt - ring.delay) / pulse.duration;
-                if (progress < 0) {
-                    ring.material.opacity = 0;
-                    isComplete = false;
-                    continue;
-                }
-                if (progress >= 1) {
-                    ring.material.opacity = 0;
-                    continue;
-                }
-
-                isComplete = false;
-                const eased = 1 - Math.pow(1 - progress, 3);
-                const angle = pulse.minAngle + (pulse.maxAngle - pulse.minAngle) * eased;
-                this._setClickPulseRingPositions(pulse, ring, angle);
-                const fadeIn = Math.min(progress / 0.12, 1);
-                ring.material.opacity = 0.52 * fadeIn * Math.pow(1 - progress, 1.35);
-            }
-
-            if (isComplete) {
-                for (const ring of pulse.rings) {
-                    s.group.remove(ring.line);
-                    ring.geometry.dispose();
-                    ring.material.dispose();
-                }
-                s.clickPulses.splice(i, 1);
-            }
-        }
-    }
-
-    _getCameraFacingDirection(THREE, camera, group) {
-        const cameraPos = camera.getWorldPosition(new THREE.Vector3());
-        const groupPos = group.getWorldPosition(new THREE.Vector3());
-        return cameraPos.sub(groupPos).normalize();
-    }
-
-    _isLocationPointFacingCamera(idx, worldQuat, cameraDir) {
-        if (idx == null || idx >= this.locationUnitVectors.length) return false;
-        const worldNormal = this.locationUnitVectors[idx].clone().applyQuaternion(worldQuat).normalize();
-        return worldNormal.dot(cameraDir) > 0.015;
     }
 
     _showIntersectPicker(choices, onPick, anchorClient = null) {
@@ -538,111 +311,121 @@ class GlobeExplorer {
         }
     }
 
-    _pickPrecisePointIndex(hits, pointerPx, camera, renderer, group, THREE, maxPixelDistance = 14) {
-        if (!Array.isArray(hits) || !hits.length) return null;
-        const width = renderer.domElement.clientWidth || 1;
-        const height = renderer.domElement.clientHeight || 1;
-        const worldQuat = group.getWorldQuaternion(new THREE.Quaternion());
-        const cameraDir = this._getCameraFacingDirection(THREE, camera, group);
-        let bestIdx = null;
-        let bestDistSq = Infinity;
-        const maxSq = maxPixelDistance * maxPixelDistance;
+    // ── globe ──
 
-        for (const hit of hits) {
-            const idx = hit.index;
-            if (idx == null || idx >= this.locationUnitVectors.length) continue;
-            if (!this._isLocationPointFacingCamera(idx, worldQuat, cameraDir)) continue;
-            const worldPos = this.locationUnitVectors[idx].clone().multiplyScalar(this._dotRadius()).applyQuaternion(worldQuat);
-            const ndc = worldPos.clone().project(camera);
-            if (ndc.z < -1 || ndc.z > 1) continue;
-            const sx = (ndc.x * 0.5 + 0.5) * width;
-            const sy = (-ndc.y * 0.5 + 0.5) * height;
-            const dx = sx - pointerPx.x;
-            const dy = sy - pointerPx.y;
-            const d2 = dx * dx + dy * dy;
-            if (d2 <= maxSq && d2 < bestDistSq) {
-                bestDistSq = d2;
-                bestIdx = idx;
-            }
-        }
-        return bestIdx;
+    _ensureGlobe() {
+        this._globePromise = this._globePromise || this._createGlobe().catch((err) => {
+            this._globePromise = null;
+            throw err;
+        });
+        return this._globePromise;
     }
 
-    _collectIntersectingLocationKeys(hits, pointerPx, camera, renderer, group, THREE, maxPixelDistance = 15) {
-        if (!Array.isArray(hits) || !hits.length) return [];
-        const width = renderer.domElement.clientWidth || 1;
-        const height = renderer.domElement.clientHeight || 1;
-        const worldQuat = group.getWorldQuaternion(new THREE.Quaternion());
-        const cameraDir = this._getCameraFacingDirection(THREE, camera, group);
-        const maxSq = maxPixelDistance * maxPixelDistance;
-        const byKey = new Map();
-
-        for (const hit of hits) {
-            const idx = hit.index;
-            if (idx == null || idx >= this.locationUnitVectors.length) continue;
-            if (!this._isLocationPointFacingCamera(idx, worldQuat, cameraDir)) continue;
-            const worldPos = this.locationUnitVectors[idx].clone().multiplyScalar(this._dotRadius()).applyQuaternion(worldQuat);
-            const ndc = worldPos.clone().project(camera);
-            if (ndc.z < -1 || ndc.z > 1) continue;
-            const sx = (ndc.x * 0.5 + 0.5) * width;
-            const sy = (-ndc.y * 0.5 + 0.5) * height;
-            const dx = sx - pointerPx.x;
-            const dy = sy - pointerPx.y;
-            const d2 = dx * dx + dy * dy;
-            if (d2 > maxSq) continue;
-
-            const key = this._locationKeyFor(this.renderedPointLocations[idx]);
-            const prev = byKey.get(key);
-            if (!prev || d2 < prev.distSq) {
-                byKey.set(key, { key, distSq: d2 });
-            }
-        }
-
-        return Array.from(byKey.values())
-            .sort((a, b) => {
-                if (a.distSq !== b.distSq) return a.distSq - b.distSq;
-                return a.key.localeCompare(b.key);
-            })
-            .map((x) => x.key);
+    async _createGlobe() {
+        const boundaries = await window.countryBoundaries.ensureLoaded();
+        const globe = await window.GlobeMap.create(this.sceneContainer, {
+            image: window.threeLoader.loadEarthImage(),
+            countries: boundaries.lines,
+            onTap: (tap) => this._onGlobeTap(tap),
+            onHover: (point) => this._onGlobeHover(point),
+            onSpinChange: () => this._syncRotateToggleUI()
+        });
+        globe.setPlaces(this._places());
+        globe.setRoutes(window.globeRoutes.arcSegments(this.locations, (loc) => this._locationKeyFor(loc)));
+        this.globeMap = globe;
+        return globe;
     }
 
-    _applyDotHighlight() {
-        const s = this.threeState;
-        const colors = s?.dotColors;
-        const mesh = s?.dotsMesh;
-        if (!colors || !mesh) return;
-
-        const base = [1.0, 1.0, 1.0];
-        const highlight = [0.3, 0.3, 0.3];
-        for (const i of this.highlightedDotIndices || []) {
-            if (i < 0 || i >= this.renderedPointLocations.length) continue;
-            const p = i * 3;
-            colors[p] = base[0];
-            colors[p + 1] = base[1];
-            colors[p + 2] = base[2];
+    /** One marker per place key, at the mean direction of its photos. */
+    _places() {
+        const { sphere, lngLat } = window.GlobeGl;
+        this.locationGroupByKey = new Map();
+        for (const loc of this.locations) {
+            const lat = Number(loc?.latitude);
+            const lon = Number(loc?.longitude);
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+            const key = this._locationKeyFor(loc);
+            const group = this.locationGroupByKey.get(key)
+                || { key, sample: loc, sum: [0, 0, 0], count: 0 };
+            sphere(lon, lat, 1).forEach((value, axis) => { group.sum[axis] += value; });
+            group.count += 1;
+            this.locationGroupByKey.set(key, group);
         }
+        return Array.from(this.locationGroupByKey.values(), (group) => {
+            const { lng, lat } = lngLat(...group.sum);
+            return { key: group.key, lng, lat, count: group.count };
+        });
+    }
 
-        let indices = [];
-        if (this.hoverHighlight.type === 'location' && this.hoverHighlight.key) {
-            indices = this.locationGroupByKey.get(this.hoverHighlight.key)?.indices || [];
-        }
+    _setMarkerHover(keys) {
+        this.globeMap?.setMarkerHover(keys);
+    }
 
-        for (const idx of indices) {
-            const p = idx * 3;
-            colors[p] = highlight[0];
-            colors[p + 1] = highlight[1];
-            colors[p + 2] = highlight[2];
-        }
-        this.highlightedDotIndices = [...indices];
+    _setCountryHover(feature) {
+        const key = feature ? window.countryBoundaries.countryFeatureKey(feature) : '';
+        if (key === this.hoveredCountryKey) return;
+        this.hoveredCountryKey = key;
+        this.globeMap?.setCountryOutline(feature ? window.countryBoundaries.outline(feature) : null);
+    }
 
-        if (mesh.instanceColor) {
-            mesh.instanceColor.needsUpdate = true;
+    /** Screen distance picks the marker, so a ring edge-on at the limb still hovers. */
+    _onGlobeHover(point) {
+        const hit = point && this.globeMap.markerHits(point.x, point.y, 13)[0];
+        if (hit) {
+            this._setMarkerHover(hit.keys);
+            this._setCountryHover(null);
             return;
         }
-        const colorAttr = mesh.geometry?.getAttribute('color');
-        if (colorAttr) {
-            colorAttr.needsUpdate = true;
+        this._setMarkerHover([]);
+        const surface = point && this.globeMap.surfaceAt(point.x, point.y);
+        this._setCountryHover(surface ? window.countryBoundaries.findCountry(surface.lng, surface.lat) : null);
+    }
+
+    /**
+     * A tap near markers offers their places, plus the country when there
+     * is more than one choice. A tap on bare land offers the country. The
+     * radius is in screen pixels, so an empty country never snaps to a
+     * marker that is visibly elsewhere.
+     */
+    _onGlobeTap(tap) {
+        if (this.isExiting) return;
+        const surface = this.globeMap.surfaceAt(tap.x, tap.y);
+        if (!surface) return;
+        this.globeMap.pulse(surface);
+        const country = window.countryBoundaries.findCountry(surface.lng, surface.lat);
+        const radius = tap.pointerType === 'mouse' ? 18 : 26;
+        const keys = [...new Set(this.globeMap.markerHits(tap.x, tap.y, radius).flatMap((hit) => hit.keys))];
+        const options = keys
+            .map((key) => this.locationGroupByKey.get(key)?.sample)
+            .filter(Boolean)
+            .map((sample) => ({
+                key: this._locationKeyFor(sample),
+                label: sample.location || sample.country || 'Unknown',
+                country: sample.country || '',
+                state: sample.state || '',
+                sample
+            }));
+        if (options.length > 1 && country) {
+            options.unshift({ key: '__country__', kind: 'country', label: country.name, country: '', feature: country });
         }
+        const pick = (option) => this._proposeGlobePick(
+            option.kind === 'country' ? { kind: 'country', feature: option.feature } : { sample: option.sample }
+        );
+
+        if (options.length > 1) {
+            this._showIntersectPicker(options, pick, { x: tap.clientX, y: tap.clientY });
+            return;
+        }
+        this._hideIntersectPicker();
+        if (options.length === 1) {
+            pick(options[0]);
+            return;
+        }
+        if (!country) {
+            this._hidePickConfirm();
+            return;
+        }
+        pick({ kind: 'country', feature: country });
     }
 
     // ── event wiring ──
@@ -734,6 +517,7 @@ class GlobeExplorer {
         return this.lifecycle.isClosing;
     }
 
+    /** MapLibre loads here, never on idle or menu intent. */
     async open(focusLocation = null) {
         if (this.isOpen) {
             if (focusLocation) {
@@ -746,32 +530,16 @@ class GlobeExplorer {
         this.backStack?.claim('globe', () => this.close());
 
         try {
-            this._prefetchAssets({ includeBoundaries: true, includeGeo: true });
-            // Idle spin stays on when nothing is focused. A photo click must
-            // not orbit, and a resumed scene must not paint, before the place
-            // is facing the camera. The geo fetch below yields a frame.
-            const focusLat = Number(focusLocation?.latitude);
-            const focusLon = Number(focusLocation?.longitude);
-            const focusOnPlace = Number.isFinite(focusLat) && Number.isFinite(focusLon);
-            if (focusOnPlace) {
-                this.autoRotateEnabled = false;
-                if (this.threeState?.controls) this.threeState.controls.autoRotate = false;
-                this._setSceneRunning(false);
-            }
+            this.prefetch();
             await this._fetchLocations();
             if (this.lifecycle.phase === 'closed') return;
-            await this._initScene();
+            const globe = await this._ensureGlobe();
             if (this.lifecycle.phase === 'closed') return;
-            // Photo pinch-zoom is a ctrl/meta wheel. Those listeners exist
-            // only while this overlay is open, so a closed explorer cannot
-            // cancel them.
-            this._bindZoomInput();
+            globe.fit();
             if (focusLocation) {
                 this._focusLocation(focusLocation);
             }
-            this.threeState?.onResize?.();
-            this._fitGlobeInView();
-            if (this.isOpen) this._setSceneRunning(true);
+            globe.setActive(true);
             this._syncRotateToggleUI();
         } catch (err) {
             console.error('[GlobeExplorer] failed to initialize', err);
@@ -790,23 +558,26 @@ class GlobeExplorer {
     }
 
     _onOverlayClosed() {
-        this._setHoverHighlight(null, null);
-        this._clearCountryBorderHighlight();
+        this._setMarkerHover([]);
+        this._setCountryHover(null);
         this._hideIntersectPicker();
         this._hidePickConfirm();
-        this._dropTileOverlay();
-        this._unbindZoomInput();
-        this._setSceneRunning(false);
+        this.globeMap?.setActive(false);
     }
 
+    /** A focused photo faces the camera at the fit zoom, at any latitude, and the spin stops. */
     _focusLocation(location) {
-        if (!this.threeState || !location) return;
+        const globe = this.globeMap;
+        const match = location && (this._findLocationMatch(location) || location);
+        const lat = Number(match?.latitude);
+        const lon = Number(match?.longitude);
+        if (!globe || !Number.isFinite(lat) || !Number.isFinite(lon)) return;
 
-        const match = this._findLocationMatch(location) || location;
-        this._rotateToLocation(match);
+        globe.setSpin(false);
+        globe.focus(lon, lat);
         const key = this._locationKeyFor(match);
         if (this.locationGroupByKey.has(key)) {
-            this._setHoverHighlight('location', key);
+            this._setMarkerHover([key]);
         }
     }
 
@@ -832,77 +603,11 @@ class GlobeExplorer {
         return this.locationGroupByKey.get(key)?.sample || null;
     }
 
-    /**
-     * Upright group yaw plus camera polar angle that puts this coordinate on
-     * the camera axis while keeping the globe's North Pole on world +Y.
-     * Pitching group.rotation.x would tilt the mesh pole off OrbitControls's
-     * (0, 1, 0) orbit axis and make subsequent spins wobble on a skewed axis.
-     */
-    static focusRotation(lat, lon) {
-        const clampedLat = Math.max(-85, Math.min(85, Number(lat) || 0));
-        const latRad = (clampedLat * Math.PI) / 180;
-        return {
-            x: 0,
-            y: -Math.PI / 2 - (lon * Math.PI) / 180,
-            latRad,
-            polarAngle: Math.PI / 2 - latRad
-        };
-    }
-
-    _rotateToLocation(location) {
-        const s = this.threeState;
-        const lat = Number(location?.latitude);
-        const lon = Number(location?.longitude);
-        if (!s?.group || !Number.isFinite(lat) || !Number.isFinite(lon)) return;
-
-        this.autoRotateEnabled = false;
-        const pose = GlobeExplorer.focusRotation(lat, lon);
-        s.group.rotation.x = 0;
-        s.group.rotation.y = pose.y;
-        if (s.camera) {
-            const distance = s.camera.position.length() || 3.2;
-            s.camera.position.set(
-                0,
-                distance * Math.sin(pose.latRad),
-                distance * Math.cos(pose.latRad)
-            );
-            s.camera.lookAt(0, 0, 0);
-        }
-        if (s.controls) {
-            s.controls.autoRotate = false;
-            this._resetFocusOrbit(s.controls, pose.polarAngle);
-        }
-        this.lastManualRotateAt = Date.now();
-        this._syncRotateToggleUI();
-        this._syncZoomFromCamera();
-    }
-
-    _resetFocusOrbit(controls, polarAngle = Math.PI / 2) {
-        const damping = controls.enableDamping;
-        const minAzimuthAngle = controls.minAzimuthAngle;
-        const maxAzimuthAngle = controls.maxAzimuthAngle;
-        const minPolarAngle = Math.min(controls.minPolarAngle, polarAngle);
-        const maxPolarAngle = Math.max(controls.maxPolarAngle, polarAngle);
-        controls.target?.set?.(0, 0, 0);
-        controls.saveState?.();
-        controls.enableDamping = false;
-        controls.minAzimuthAngle = 0;
-        controls.maxAzimuthAngle = 0;
-        controls.minPolarAngle = polarAngle;
-        controls.maxPolarAngle = polarAngle;
-        try {
-            controls.reset();
-        } finally {
-            controls.minAzimuthAngle = minAzimuthAngle;
-            controls.maxAzimuthAngle = maxAzimuthAngle;
-            controls.minPolarAngle = minPolarAngle;
-            controls.maxPolarAngle = maxPolarAngle;
-            controls.enableDamping = damping;
-        }
-    }
-
+    /** Data, borders and the earth photo: everything the globe needs except MapLibre. */
     prefetch() {
-        this._prefetchAssets({ includeBoundaries: true, includeGeo: true });
+        this._prefetchGeo();
+        window.countryBoundaries?.ensureLoaded();
+        window.threeLoader?.prefetchEarthImage();
     }
 
     _bindPrefetchIntent() {
@@ -910,27 +615,17 @@ class GlobeExplorer {
         this.openBtn?.addEventListener('focus', () => this.prefetch());
     }
 
-    _prefetchAssets({ includeBoundaries = false, includeGeo = false } = {}) {
-        window.threeLoader?.prefetchSceneGraph();
-        if (includeGeo) {
-            this._fetchLocations().catch(() => {});
-            this._fetchColors().catch(() => {});
-            this._fetchCameras().catch(() => {});
-        }
-        if (includeBoundaries) {
-            window.countryBoundaries?.ensureLoaded()
-                .then(() => {
-                    this.countryBoundaryFeatures = window.countryBoundaries.features;
-                    this.countryBoundaryAliasMap = window.countryBoundaries.aliasMap;
-                })
-                .catch(() => {});
-        }
+    _prefetchGeo() {
+        this._fetchLocations().catch(() => {});
+        this._fetchColors().catch(() => {});
+        this._fetchCameras().catch(() => {});
     }
 
     _warmup() {
-        // Idle warmup must not race first-viewport thumbnails. Opening the
-        // CONTROL menu, or hovering GLOBE, still starts Three + geo + borders.
-        const start = () => this._prefetchAssets({ includeBoundaries: false, includeGeo: true });
+        // Idle warmup must not race first-viewport thumbnails, and fetches
+        // only the filter data. Opening the CONTROL menu adds borders and
+        // the earth photo.
+        const start = () => this._prefetchGeo();
         if (typeof window.requestIdleCallback === 'function') {
             window.requestIdleCallback(start, { timeout: 3500 });
         } else {
@@ -938,43 +633,21 @@ class GlobeExplorer {
         }
     }
 
-    _setSceneRunning(running) {
-        const s = this.threeState;
-        if (!s) {
-            return;
-        }
-        s.running = Boolean(running);
-        if (s.running) {
-            if (!s.rafId && typeof s.animate === 'function') {
-                s.animate();
-            }
-            return;
-        }
-        if (s.rafId) {
-            cancelAnimationFrame(s.rafId);
-            s.rafId = null;
-        }
-    }
-
     _toggleRotation() {
-        this.autoRotateEnabled = !this.autoRotateEnabled;
-        const s = this.threeState;
-        if (s?.controls) {
-            s.controls.autoRotate = this.autoRotateEnabled;
-        }
-        this._syncRotateToggleUI();
+        this.globeMap?.setSpin(!this.globeMap.spinning);
     }
 
     _syncRotateToggleUI() {
         if (!this.rotateToggleBtn) return;
-        this.rotateToggleBtn.classList.toggle('paused', !this.autoRotateEnabled);
+        const spinning = this.globeMap ? this.globeMap.spinning : true;
+        this.rotateToggleBtn.classList.toggle('paused', !spinning);
         this.rotateToggleBtn.setAttribute(
             'aria-label',
-            this.autoRotateEnabled ? 'Pause globe rotation' : 'Resume globe rotation'
+            spinning ? 'Pause globe rotation' : 'Resume globe rotation'
         );
         this.rotateToggleBtn.setAttribute(
             'title',
-            this.autoRotateEnabled ? 'Pause rotation' : 'Resume rotation'
+            spinning ? 'Pause rotation' : 'Resume rotation'
         );
     }
 
@@ -1181,766 +854,6 @@ class GlobeExplorer {
         }
     }
 
-    // ── Three.js loading ──
-
-    _loadThree() {
-        if (window.threeLoader) {
-            return window.threeLoader.loadThree();
-        }
-        if (window.THREE) return Promise.resolve(window.THREE);
-        if (this._threePromise) return this._threePromise;
-        this._threePromise = import('three').then(mod => {
-            window.THREE = mod;
-            return mod;
-        });
-        return this._threePromise;
-    }
-
-    _loadOrbitControls() {
-        if (window.threeLoader) {
-            return window.threeLoader.loadOrbitControls();
-        }
-        if (this._orbitPromise) return this._orbitPromise;
-        this._orbitPromise = import('three/addons/controls/OrbitControls.js')
-            .then(mod => mod.OrbitControls);
-        return this._orbitPromise;
-    }
-
-    // ── scene lifecycle ──
-
-    async _initScene() {
-        if (this.threeState) return;
-
-        const THREE = await this._loadThree();
-        let OrbitControls = null;
-        try {
-            OrbitControls = await this._loadOrbitControls();
-        } catch (err) {
-            console.warn('[GlobeExplorer] OrbitControls unavailable, continuing without controls', err);
-        }
-
-        await new Promise(r => requestAnimationFrame(r));
-        const rect = this.sceneContainer.getBoundingClientRect();
-        const w = rect.width || 600;
-        const h = rect.height || 600;
-        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-        renderer.setSize(w, h);
-        this.sceneContainer.innerHTML = '';
-        this.sceneContainer.appendChild(renderer.domElement);
-        renderer.domElement.style.touchAction = 'none';
-
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 1000);
-        camera.position.set(0, 0, GlobeExplorer.globeFitDistance(w, h, 45));
-
-        scene.add(new THREE.AmbientLight(0xffffff, 1.0));
-        const dir = new THREE.DirectionalLight(0xffffff, 0.8);
-        dir.position.set(3, 2, 4);
-        scene.add(dir);
-        const front = new THREE.DirectionalLight(0xffffff, 0.6);
-        front.position.set(0, 0, 5);
-        scene.add(front);
-
-        let controls = null;
-        if (OrbitControls) {
-            // Zoom is owned by _bindZoomInput. OrbitControls still registers
-            // a non-passive wheel listener when enableZoom is false, and that
-            // listener would stay on the full-screen canvas after close.
-            const canvas = renderer.domElement;
-            const addEventListener = canvas.addEventListener.bind(canvas);
-            canvas.addEventListener = (type, listener, options) => {
-                if (type === 'wheel') return;
-                addEventListener(type, listener, options);
-            };
-            try {
-                controls = new OrbitControls(camera, canvas);
-            } finally {
-                canvas.addEventListener = addEventListener;
-            }
-            controls.enableDamping = true;
-            controls.dampingFactor = 0.16;
-            controls.enableRotate = true;
-            controls.enablePan = false;
-            controls.minDistance = 1.30;
-            controls.maxDistance = 8;
-            controls.minPolarAngle = Math.PI / 2 - THREE.MathUtils.degToRad(62);
-            controls.maxPolarAngle = Math.PI / 2 + THREE.MathUtils.degToRad(62);
-            controls.rotateSpeed = 0.65;
-            controls.enableZoom = false;
-            controls.autoRotate = false;
-            controls.autoRotateSpeed = 0.85;
-            controls.touches.TWO = -1;
-        }
-
-        const group = new THREE.Group();
-        group.rotation.y = -Math.PI / 2; // align globe texture and data points
-        scene.add(group);
-
-        const explorerSegments = window.threeLoader?.explorerSphereSegments?.() || [192, 96];
-        const geo = new THREE.SphereGeometry(1, explorerSegments[0], explorerSegments[1]);
-        let tex = null;
-        let mat = null;
-        try {
-            tex = window.threeLoader
-                ? await window.threeLoader.createEarthTexture(THREE)
-                : await new THREE.TextureLoader().loadAsync('/earth_atmos_2048.jpg');
-            if (!window.threeLoader) {
-                tex.colorSpace = THREE.SRGBColorSpace;
-            }
-            mat = new THREE.MeshPhongMaterial({ map: tex, shininess: 1, color: 0xcccccc });
-        } catch (err) {
-            console.warn('[GlobeExplorer] texture load failed, using fallback material', err);
-            mat = new THREE.MeshPhongMaterial({ color: 0xbdbdbd, shininess: 1 });
-        }
-        const globe = new THREE.Mesh(geo, mat);
-        group.add(globe);
-        await this._ensureCountryBoundariesLoaded();
-
-        const dotsMesh = this._buildDots(THREE, group);
-        const arcLines = this._buildArcs(THREE, group);
-        const raycaster = new THREE.Raycaster();
-        raycaster.params.Points = { threshold: 0.034 };
-        const mouse = new THREE.Vector2();
-
-        // Fallback drag-rotate keeps interaction available if OrbitControls fails to load.
-        let drag = null;
-        renderer.domElement.addEventListener('pointerdown', (e) => {
-            this.pointerGesture = {
-                x: e.clientX,
-                y: e.clientY,
-                pointerType: e.pointerType || 'mouse',
-                dragged: false,
-                hadWheel: false,
-                tapHandled: false
-            };
-            this._pointers = this._pointers || new Map();
-            this._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-            if (this._pointers.size >= 2) {
-                this._beginPinch();
-            }
-            const camDist = camera.position.length() || 3.2;
-            drag = {
-                x: e.clientX,
-                y: e.clientY,
-                lat: Math.asin(THREE.MathUtils.clamp(camera.position.y / camDist, -1, 1)),
-                rotY: group.rotation.y
-            };
-        });
-        renderer.domElement.addEventListener('pointermove', (e) => {
-            if (this._pointers?.has(e.pointerId)) {
-                this._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-            }
-            if ((this._pointers?.size || 0) >= 2) {
-                this._updatePinch();
-                if (this.pointerGesture) {
-                    this.pointerGesture.dragged = true;
-                }
-                return;
-            }
-            if (!drag) return;
-            const dx = e.clientX - drag.x;
-            const dy = e.clientY - drag.y;
-            const slop = (this.pointerGesture?.pointerType === 'touch') ? 18 : 6;
-            if (this.pointerGesture && ((dx * dx + dy * dy) > slop * slop)) {
-                this.pointerGesture.dragged = true;
-                this.lastManualRotateAt = Date.now();
-                if (this.autoRotateEnabled) {
-                    this.autoRotateEnabled = false;
-                    if (controls) {
-                        controls.autoRotate = false;
-                    }
-                    this._syncRotateToggleUI();
-                }
-            }
-            if (!controls) {
-                group.rotation.y = drag.rotY + dx * 0.005;
-                const maxLat = THREE.MathUtils.degToRad(85);
-                const nextLat = Math.max(-maxLat, Math.min(maxLat, drag.lat + dy * 0.005));
-                const dist = camera.position.length() || 3.2;
-                camera.position.set(0, dist * Math.sin(nextLat), dist * Math.cos(nextLat));
-                camera.lookAt(0, 0, 0);
-            }
-        });
-        let pendingHoverPointer = null;
-        let hoverRafId = null;
-        const processHoverPointer = (e) => {
-            if (this._zoomBlocksHover()) {
-                return;
-            }
-            const rect = this._canvasRect();
-            const hoverMouse = new THREE.Vector2(
-                ((e.clientX - rect.left) / rect.width) * 2 - 1,
-                -((e.clientY - rect.top) / rect.height) * 2 + 1
-            );
-            raycaster.setFromCamera(hoverMouse, camera);
-            if (dotsMesh) {
-                // Screen distance, not a ray against the disc. A ring lying on
-                // the sphere is edge-on near the limb, and that ray would miss it.
-                const allDots = this.locationUnitVectors.map((_, index) => ({ index }));
-                const preciseIdx = this._pickPrecisePointIndex(
-                    allDots,
-                    { x: e.clientX - rect.left, y: e.clientY - rect.top },
-                    camera,
-                    renderer,
-                    group,
-                    THREE,
-                    13
-                );
-                if (preciseIdx != null && preciseIdx < this.renderedPointLocations.length) {
-                    const key = this._locationKeyFor(this.renderedPointLocations[preciseIdx]);
-                    this._setHoverHighlight('location', key);
-                    this._clearCountryBorderHighlight();
-                    return;
-                }
-            }
-
-            const hit = this._hitGlobeNdc(hoverMouse, raycaster, camera);
-            if (!hit) {
-                this._setHoverHighlight(null, null);
-                this._clearCountryBorderHighlight();
-                return;
-            }
-            this._setHoverHighlight(null, null);
-            const countryHit = this._findCountryFromDirection(THREE, hit.normalize(), group);
-            if (countryHit?.feature) {
-                this._setCountryBorderHighlight(THREE, countryHit.feature, group);
-            } else {
-                this._clearCountryBorderHighlight();
-            }
-        };
-        let lastHoverPointer = null;
-        renderer.domElement.addEventListener('mousemove', (e) => {
-            lastHoverPointer = { clientX: e.clientX, clientY: e.clientY };
-            if (this._zoomBlocksHover()) {
-                return;
-            }
-            pendingHoverPointer = lastHoverPointer;
-            if (hoverRafId != null) {
-                return;
-            }
-            hoverRafId = requestAnimationFrame(() => {
-                hoverRafId = null;
-                const nextPointer = pendingHoverPointer;
-                pendingHoverPointer = null;
-                if (nextPointer) {
-                    processHoverPointer(nextPointer);
-                }
-            });
-        });
-        const endDrag = (e) => {
-            if (e && e.pointerId != null) {
-                const pinching = (this._pointers?.size || 0) >= 2;
-                this._pointers?.delete(e.pointerId);
-                if (pinching && this.pointerGesture) {
-                    this.pointerGesture.dragged = true;
-                }
-                if ((this._pointers?.size || 0) < 2) {
-                    this._endPinch();
-                }
-            }
-            const gesture = this.pointerGesture;
-            this.lastPointerGesture = gesture;
-            const shouldTap = Boolean(
-                e
-                && e.type === 'pointerup'
-                && gesture
-                && !gesture.dragged
-                && !gesture.hadWheel
-                && (gesture.pointerType === 'touch' || gesture.pointerType === 'pen')
-            );
-            this.pointerGesture = null;
-            drag = null;
-            if (shouldTap) {
-                gesture.tapHandled = true;
-                this.lastPointerGesture = gesture;
-                handleGlobePick(e);
-            }
-        };
-        renderer.domElement.addEventListener('pointerup', endDrag);
-        renderer.domElement.addEventListener('pointercancel', endDrag);
-        renderer.domElement.addEventListener('pointerleave', (e) => {
-            if (e.pointerType === 'touch' || e.pointerType === 'pen') {
-                return;
-            }
-            endDrag(e);
-        });
-        renderer.domElement.addEventListener('mouseleave', () => {
-            this._setHoverHighlight(null, null);
-        });
-
-        const handleGlobePick = (e) => {
-            if (this.isExiting) return;
-            const rect = this._canvasRect();
-            mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-            mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-
-            const hit = this._hitGlobeNdc(mouse, raycaster, camera);
-            if (!hit) {
-                return;
-            }
-            const clickDir = hit.normalize();
-            this._showClickPulse(THREE, group, clickDir);
-            const countryHit = this._findCountryFromDirection(THREE, clickDir, group);
-            const applyCountryChoice = () => {
-                if (!countryHit?.feature) return;
-                this._applyGlobePick({
-                    kind: 'country',
-                    feature: countryHit.feature
-                });
-            };
-
-            if (dotsMesh) {
-                const pointerPx = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-                const pointerType = e.pointerType || 'mouse';
-                // Screen-space radius, so a tap on an empty country never
-                // snaps to a dot that is visibly elsewhere on the globe.
-                const pickRadiusPx = (pointerType === 'touch' || pointerType === 'pen') ? 26 : 18;
-                const allDots = this.locationUnitVectors.map((_, index) => ({ index }));
-                const candidateKeys = this._collectIntersectingLocationKeys(
-                    allDots,
-                    pointerPx,
-                    camera,
-                    renderer,
-                    group,
-                    THREE,
-                    pickRadiusPx
-                );
-
-                const options = candidateKeys
-                    .map((key) => {
-                        const groupEntry = this.locationGroupByKey.get(key);
-                        const sample = groupEntry?.sample;
-                        if (!sample) return null;
-                        return {
-                            key,
-                            label: sample.location || sample.country || 'Unknown',
-                            country: sample.country || '',
-                            state: sample.state || '',
-                            sample
-                        };
-                    })
-                    .filter(Boolean);
-
-                if (options.length > 1 && countryHit?.feature) {
-                    options.unshift({
-                        key: '__country__',
-                        kind: 'country',
-                        label: countryHit.feature.name,
-                        country: '',
-                        feature: countryHit.feature
-                    });
-                }
-
-                const applyPickedOption = (option) => {
-                    if (option?.kind === 'country') {
-                        applyCountryChoice();
-                        return;
-                    }
-                    this._applyGlobePick({
-                        sample: option?.sample
-                    });
-                };
-
-                if (options.length > 1) {
-                    this._showIntersectPicker(options, applyPickedOption, { x: e.clientX, y: e.clientY });
-                    return;
-                }
-                if (options.length === 1) {
-                    this._hideIntersectPicker();
-                    applyPickedOption(options[0]);
-                    return;
-                }
-            }
-
-            // If no point is selected, fallback to country polygons.
-            this._hideIntersectPicker();
-            if (!countryHit?.feature) {
-                this._hidePickConfirm();
-                return;
-            }
-            applyCountryChoice();
-        };
-
-        renderer.domElement.addEventListener('click', (e) => {
-            const gesture = this.lastPointerGesture;
-            if (gesture?.tapHandled) {
-                e.preventDefault();
-                e.stopPropagation();
-                return;
-            }
-            if (gesture?.dragged || gesture?.hadWheel) {
-                return;
-            }
-            handleGlobePick(e);
-        });
-
-        const fitDistance = camera.position.length() || 3.2;
-        const zoom = {
-            h: Math.max(0.3, fitDistance - 1),
-            hGoal: Math.max(0.3, fitDistance - 1),
-            hMax: (controls?.maxDistance || 8) - 1,
-            tau: 110,
-            settled: true,
-            settledAt: performance.now(),
-            anchor: null,
-            pointerNdc: { x: 0, y: 0 },
-            pinch: null,
-            gestureH: null,
-            needsHover: false,
-            viewWidth: w,
-            viewHeight: h,
-            rampStart: 0,
-            rampOn: false
-        };
-        const lines = {
-            meshes: { world: null, regional: null, local: null },
-            level: 'world',
-            lod: 0,
-            worldIntro: 0,
-            worldIntroStart: 0,
-            worldStarted: false,
-            baseMaterial: null,
-            worker: null,
-            workerFailed: false,
-            requests: {},
-            requestSerial: 0,
-            loaded: { '50m': false, '10m': false },
-            loading: { '50m': false, '10m': false },
-            failed: { '50m': false, '10m': false },
-            warned: { '50m': false, '10m': false },
-            cooldown: { '50m': 0, '10m': 0 },
-            rearm: { '50m': false, '10m': false },
-            hoverA: { id: 0, weight: 0, from: 0, to: 0, startedAt: 0, duration: 0 },
-            hoverB: { id: 0, weight: 0, from: 0, to: 0, startedAt: 0, duration: 0 },
-            cancelled: false,
-            idleId: 0,
-            worldIdle: 0
-        };
-        const state = {
-            renderer, scene, camera, group, globe, controls, geo, mat, tex,
-            THREE,
-            rafId: null, disposed: false, onResize: null, dotsMesh, arcLines,
-            raycaster,
-            dotScale: 1,
-            canvasRect: renderer.domElement.getBoundingClientRect(),
-            zoom,
-            lines,
-            dotColors: dotsMesh?.instanceColor?.array
-                || dotsMesh?.geometry?.getAttribute('color')?.array
-                || null,
-            clickPulses: []
-        };
-
-        state.onResize = () => {
-            if (state.disposed) return;
-            const r = this.sceneContainer.getBoundingClientRect();
-            const nw = r.width || w;
-            const nh = r.height || h;
-            renderer.setSize(nw, nh);
-            camera.aspect = nw / nh;
-            camera.updateProjectionMatrix();
-            state.canvasRect = renderer.domElement.getBoundingClientRect();
-            state.zoom.viewWidth = nw;
-            state.zoom.viewHeight = nh;
-            this._syncZoomFromCamera();
-            this._applyLineDprScale();
-        };
-        window.addEventListener('resize', state.onResize);
-
-        const animate = () => {
-            if (state.disposed || state.running === false) {
-                state.rafId = null;
-                return;
-            }
-            const now = performance.now();
-            const dt = state.lastTick == null ? 16.67 : Math.min(48, now - state.lastTick);
-            state.lastTick = now;
-            this._stepZoom(dt, now);
-            if (controls) {
-                controls.update();
-            } else if (this.autoRotateEnabled) {
-                group.rotation.y += 0.12 * (dt / 1000);
-            }
-            this._stepLines(dt, now);
-            this._stepTiles(dt, now);
-            if (state.zoom.needsHover && state.zoom.settled && lastHoverPointer) {
-                state.zoom.needsHover = false;
-                processHoverPointer(lastHoverPointer);
-            }
-            this._updateClickPulses(now);
-            renderer.render(scene, camera);
-            state.rafId = requestAnimationFrame(animate);
-        };
-        state.animate = animate;
-        // open() focuses a photo, then starts the loop, so the first frame
-        // is not an auto-rotate step around the pole.
-        state.running = false;
-
-        this.threeState = state;
-        group.updateMatrixWorld(true);
-        this._syncMarkerScale();
-        this._applyDotHighlight();
-        this._startWorldLines();
-    }
-
-    _destroyScene() {
-        const s = this.threeState;
-        if (!s) return;
-        s.disposed = true;
-        this._unbindZoomInput();
-        this._releaseTileGpu();
-        this._disposeLines();
-        this._clearCountryBorderHighlight();
-        if (s.rafId) cancelAnimationFrame(s.rafId);
-        if (s.onResize) window.removeEventListener('resize', s.onResize);
-        if (s.controls) s.controls.dispose();
-        try {
-            s.geo?.dispose();
-            s.mat?.dispose();
-            s.tex?.dispose();
-            s.dotsMesh?.geometry?.dispose();
-            s.dotsMesh?.material?.map?.dispose();
-            s.dotsMesh?.material?.dispose();
-            s.arcLines?.geometry?.dispose();
-            s.arcLines?.material?.dispose();
-            for (const pulse of s.clickPulses || []) {
-                for (const ring of pulse.rings || []) {
-                    ring.geometry?.dispose();
-                    ring.material?.dispose();
-                }
-            }
-            s.renderer?.dispose();
-            if (s.renderer?.domElement?.parentNode) {
-                s.renderer.domElement.parentNode.removeChild(s.renderer.domElement);
-            }
-        } catch (e) { /* ignore */ }
-        this.threeState = null;
-    }
-
-    // ── dots + arcs ──
-
-    _latLonToVec3(lat, lon, radius, THREE) {
-        return window.globeRoutes.latLonToVec3(lat, lon, radius, THREE);
-    }
-
-    _buildDots(THREE, group) {
-        if (this.locations.length === 0) return null;
-
-        const radius = this._dotRadius();
-        this.locationUnitVectors = [];
-        this.renderedPointLocations = [];
-        this.locationGroups = [];
-        this.locationGroupByKey = new Map();
-        this.highlightedDotIndices = [];
-        const groupMap = new Map();
-
-        for (let i = 0; i < this.locations.length; i++) {
-            const loc = this.locations[i];
-            const lat = Number(loc?.latitude);
-            const lon = Number(loc?.longitude);
-            if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-
-            const v = this._latLonToVec3(lat, lon, radius, THREE);
-            const key = this._locationKeyFor(loc);
-            if (!groupMap.has(key)) {
-                groupMap.set(key, {
-                    key,
-                    sample: loc,
-                    photoIndices: [],
-                    sum: new THREE.Vector3(),
-                    count: 0
-                });
-            }
-            const entry = groupMap.get(key);
-            entry.photoIndices.push(i);
-            entry.sum.add(v.clone().normalize());
-            entry.count += 1;
-        }
-
-        this.locationGroups = Array.from(groupMap.values()).map((entry, index) => {
-            const unitVec = entry.sum.clone().normalize();
-            return {
-                key: entry.key,
-                sample: entry.sample,
-                indices: [index],
-                photoIndices: entry.photoIndices,
-                unitVec,
-                count: entry.count
-            };
-        });
-        if (this.locationGroups.length === 0) return null;
-
-        this.locationGroups.forEach((entry) => {
-            this.locationUnitVectors.push(entry.unitVec.clone());
-            this.renderedPointLocations.push(entry.sample);
-            this.locationGroupByKey.set(entry.key, entry);
-        });
-
-        // CircleGeometry lies in XY, so +Z is the face normal. Each instance
-        // turns that normal out along the surface, flush with the globe.
-        const dotGeo = new THREE.CircleGeometry(0.5, 32);
-        const dotMat = new THREE.MeshBasicMaterial({
-            map: this._createLocationMarkerTexture(THREE),
-            transparent: true,
-            opacity: 1,
-            alphaTest: 0.15,
-            depthTest: true,
-            depthWrite: false,
-            side: THREE.FrontSide,
-            polygonOffset: true,
-            polygonOffsetFactor: -2,
-            polygonOffsetUnits: -2
-        });
-        const dots = new THREE.InstancedMesh(dotGeo, dotMat, this.locationGroups.length);
-        const white = new THREE.Color(1, 1, 1);
-        for (let i = 0; i < this.locationGroups.length; i++) {
-            dots.setColorAt(i, white);
-        }
-        dots.userData.markerScale = null;
-        dots.renderOrder = 2;
-        dots.frustumCulled = false;
-        group.add(dots);
-        return dots;
-    }
-
-    _syncMarkerScale() {
-        const state = this.threeState;
-        const mesh = state?.dotsMesh;
-        if (!mesh?.isInstancedMesh || !state.THREE) {
-            return;
-        }
-        const GD = window.GlobeDetail;
-        const scale = (GD?.CONFIG?.DOT_SIZE || 0.06) * (state.dotScale || 1);
-        if (mesh.userData.markerScale === scale) {
-            return;
-        }
-        mesh.userData.markerScale = scale;
-        const THREE = state.THREE;
-        const dummy = mesh.userData.dummy || new THREE.Object3D();
-        const zAxis = mesh.userData.zAxis || new THREE.Vector3(0, 0, 1);
-        mesh.userData.dummy = dummy;
-        mesh.userData.zAxis = zAxis;
-        const radius = this._dotRadius();
-        for (let i = 0; i < this.locationUnitVectors.length; i++) {
-            const normal = this.locationUnitVectors[i];
-            dummy.position.copy(normal).multiplyScalar(radius);
-            dummy.quaternion.setFromUnitVectors(zAxis, normal);
-            dummy.scale.setScalar(scale);
-            dummy.updateMatrix();
-            mesh.setMatrixAt(i, dummy.matrix);
-        }
-        mesh.instanceMatrix.needsUpdate = true;
-    }
-
-    _buildArcs(THREE, group) {
-        return window.globeRoutes.buildArcs(
-            THREE,
-            group,
-            this.locations,
-            (loc) => this._locationKeyFor(loc)
-        );
-    }
-
-    _pickNearestCountryFromSurface(THREE, clickDir, group, maxAngleDeg = 24) {
-        const groupQuat = group.getWorldQuaternion(new THREE.Quaternion());
-        const maxAngle = THREE.MathUtils.degToRad(maxAngleDeg);
-        let bestGroup = null;
-        let bestAngle = Infinity;
-
-        for (const item of this.locationGroups) {
-            const loc = item.sample;
-            if (!loc || !loc.country) continue;
-            const worldDir = item.unitVec.clone().applyQuaternion(groupQuat).normalize();
-            const dot = THREE.MathUtils.clamp(clickDir.dot(worldDir), -1, 1);
-            const angle = Math.acos(dot);
-            if (angle < bestAngle) {
-                bestAngle = angle;
-                bestGroup = item;
-            }
-        }
-
-        if (!bestGroup || bestAngle > maxAngle) return null;
-        return {
-            key: bestGroup.key,
-            location: bestGroup.sample,
-            angleDeg: THREE.MathUtils.radToDeg(bestAngle)
-        };
-    }
-
-    _getGlobeCenterDirection(raycaster, camera) {
-        const hit = this._hitGlobeNdc({ x: 0, y: 0 }, raycaster, camera);
-        return hit ? hit.normalize() : null;
-    }
-
-    _resolveClusterClick(THREE, clickDir, group, preferredKey = '') {
-        const cluster = this._buildClickCluster(THREE, clickDir, group);
-        if (!cluster.length) return null;
-
-        const now = Date.now();
-        const clusterKey = cluster.map((item) => item.key).join(',');
-        const anchorTolerance = THREE.MathUtils.degToRad(2.0);
-        const cycleTimeoutMs = 1800;
-        let position = cluster.findIndex((item) => item.key === preferredKey);
-        if (position === -1) position = 0;
-
-        const canCycle = Boolean(
-            this.clickCycleState
-            && this.clickCycleState.clusterKey === clusterKey
-            && (now - this.clickCycleState.timestamp) <= cycleTimeoutMs
-            && this.clickCycleState.anchorDir.dot(clickDir) >= Math.cos(anchorTolerance)
-        );
-        if (canCycle) {
-            position = (this.clickCycleState.position + 1) % cluster.length;
-        }
-
-        this.clickCycleState = {
-            anchorDir: clickDir.clone(),
-            clusterKey,
-            position,
-            timestamp: now
-        };
-
-        const chosen = cluster[position];
-        return {
-            key: chosen.key,
-            location: chosen.location,
-            angleDeg: THREE.MathUtils.radToDeg(chosen.angle),
-            clusterPosition: position,
-            clusterTotal: cluster.length
-        };
-    }
-
-    _buildClickCluster(THREE, clickDir, group) {
-        const groupQuat = group.getWorldQuaternion(new THREE.Quaternion());
-        const clusterRadius = THREE.MathUtils.degToRad(5.0);
-        const cluster = [];
-
-        for (const item of this.locationGroups) {
-            const loc = item.sample;
-            if (!loc || !loc.country) continue;
-            const worldDir = item.unitVec.clone().applyQuaternion(groupQuat).normalize();
-            const dot = THREE.MathUtils.clamp(clickDir.dot(worldDir), -1, 1);
-            const angle = Math.acos(dot);
-            if (angle <= clusterRadius) {
-                cluster.push({
-                    key: item.key,
-                    angle,
-                    location: loc
-                });
-            }
-        }
-
-        cluster.sort((a, b) => {
-            if (a.angle !== b.angle) return a.angle - b.angle;
-            const la = String(a.location.location || '');
-            const lb = String(b.location.location || '');
-            const byLoc = la.localeCompare(lb);
-            if (byLoc !== 0) return byLoc;
-            return String(a.location.takenAt || '').localeCompare(String(b.location.takenAt || ''));
-        });
-        return cluster;
-    }
 
     // ── filtering: public API for the radial control menu ──
 
@@ -2377,1514 +1290,6 @@ class GlobeExplorer {
         if (window.gallery) {
             await window.gallery.loadImages();
         }
-    }
-
-    /**
-     * Camera distance that keeps a radius-1 globe inside the viewport
-     * with a little air on the short side. Portrait phones crop the
-     * sides at the old z=3.2 framing.
-     */
-    static globeFitDistance(width, height, fovDeg = 45, pad = 1.28) {
-        const aspect = Math.max(1, Number(width) || 1) / Math.max(1, Number(height) || 1);
-        const halfFov = (Number(fovDeg) || 45) * Math.PI / 360;
-        const halfMin = Math.min(1, aspect) * Math.tan(halfFov);
-        const distance = (Number(pad) || 1.28) / Math.max(halfMin, 0.001);
-        return Math.min(8, Math.max(2.6, distance));
-    }
-
-    _fitGlobeInView() {
-        const state = this.threeState;
-        if (!state?.camera || !this.sceneContainer) {
-            return;
-        }
-        const rect = this.sceneContainer.getBoundingClientRect();
-        const width = rect.width || 1;
-        const height = rect.height || 1;
-        const distance = GlobeExplorer.globeFitDistance(width, height, state.camera.fov);
-        if (state.controls) {
-            state.controls.maxDistance = Math.max(state.controls.maxDistance, distance + 0.35);
-            state.controls.minDistance = 1.30;
-        }
-        if (state.zoom) {
-            state.zoom.viewWidth = width;
-            state.zoom.viewHeight = height;
-        }
-        state.canvasRect = state.renderer?.domElement?.getBoundingClientRect?.() || rect;
-        const current = state.camera.position.length();
-        if (current > 0.001) {
-            state.camera.position.multiplyScalar(distance / current);
-        } else {
-            state.camera.position.set(0, 0, distance);
-        }
-        state.camera.lookAt(0, 0, 0);
-        state.camera.updateProjectionMatrix();
-        state.controls?.update?.();
-        this._syncZoomFromCamera();
-        this._resetLineLevelToCamera();
-    }
-
-    _dotRadius() {
-        return window.GlobeDetail?.CONFIG?.DOT_RADIUS || 1.0025;
-    }
-
-    // Hollow ring with a centre dot. The dark rim keeps the mark readable on
-    // snow, where a white square used to disappear into the texture.
-    _createLocationMarkerTexture(THREE) {
-        const size = 64;
-        const canvas = document.createElement('canvas');
-        canvas.width = size;
-        canvas.height = size;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-            return null;
-        }
-        const center = size / 2;
-        ctx.clearRect(0, 0, size, size);
-        ctx.lineCap = 'round';
-        ctx.strokeStyle = 'rgba(12, 12, 12, 0.92)';
-        ctx.lineWidth = 7.2;
-        ctx.beginPath();
-        ctx.arc(center, center, 24, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.strokeStyle = 'rgba(244, 244, 244, 0.98)';
-        ctx.lineWidth = 3.4;
-        ctx.beginPath();
-        ctx.arc(center, center, 24, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.fillStyle = 'rgba(12, 12, 12, 0.94)';
-        ctx.beginPath();
-        ctx.arc(center, center, 5.2, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = 'rgba(248, 248, 248, 0.98)';
-        ctx.beginPath();
-        ctx.arc(center, center, 2.6, 0, Math.PI * 2);
-        ctx.fill();
-        const texture = new THREE.CanvasTexture(canvas);
-        texture.colorSpace = THREE.SRGBColorSpace;
-        texture.generateMipmaps = false;
-        texture.minFilter = THREE.LinearFilter;
-        texture.magFilter = THREE.LinearFilter;
-        texture.needsUpdate = true;
-        return texture;
-    }
-
-    _canvasRect() {
-        const state = this.threeState;
-        if (state?.canvasRect?.width) {
-            return state.canvasRect;
-        }
-        const rect = state?.renderer?.domElement?.getBoundingClientRect?.();
-        if (state && rect) {
-            state.canvasRect = rect;
-        }
-        return rect || { left: 0, top: 0, width: 1, height: 1 };
-    }
-
-    _clientToNdc(clientX, clientY) {
-        const rect = this._canvasRect();
-        const width = rect.width || 1;
-        const height = rect.height || 1;
-        return {
-            x: ((clientX - rect.left) / width) * 2 - 1,
-            y: -((clientY - rect.top) / height) * 2 + 1
-        };
-    }
-
-    _hitGlobeNdc(ndc, raycaster = this.threeState?.raycaster, camera = this.threeState?.camera) {
-        const state = this.threeState;
-        const GD = window.GlobeDetail;
-        if (!state || !GD || !raycaster || !camera) {
-            return null;
-        }
-        raycaster.setFromCamera(ndc, camera);
-        const ray = raycaster.ray;
-        const hit = GD.rayUnitSphere(
-            ray.origin.x,
-            ray.origin.y,
-            ray.origin.z,
-            ray.direction.x,
-            ray.direction.y,
-            ray.direction.z
-        );
-        if (!hit) {
-            return null;
-        }
-        return new state.THREE.Vector3(hit.x, hit.y, hit.z);
-    }
-
-    _zoomBlocksHover() {
-        const zoom = this.threeState?.zoom;
-        if (!zoom || !(zoom.h > 0) || !(zoom.hGoal > 0)) {
-            return false;
-        }
-        return Math.abs(Math.log(zoom.h / zoom.hGoal)) > 0.002;
-    }
-
-    _syncZoomFromCamera() {
-        const state = this.threeState;
-        if (!state?.camera || !state.zoom) {
-            return;
-        }
-        const distance = state.camera.position.length();
-        const altitude = Math.max(0.3, distance - 1);
-        state.zoom.h = altitude;
-        state.zoom.hGoal = altitude;
-        state.zoom.settled = true;
-        state.zoom.settledAt = performance.now();
-        if (state.controls) {
-            state.zoom.hMax = state.controls.maxDistance - 1;
-            state.controls.minDistance = 1.30;
-            state.controls.maxDistance = state.zoom.hMax + 1;
-        }
-    }
-
-    _resetLineLevelToCamera() {
-        const state = this.threeState;
-        const GD = window.GlobeDetail;
-        if (!state?.lines || !state.camera || !GD) {
-            return;
-        }
-        const distance = state.camera.position.length();
-        const level = distance < GD.CONFIG.LEVEL_D.local
-            ? 'local'
-            : distance < GD.CONFIG.LEVEL_D.regional
-                ? 'regional'
-                : 'world';
-        state.lines.level = level;
-        const cap = state.lines.meshes.local ? 2 : state.lines.meshes.regional ? 1 : 0;
-        state.lines.lod = Math.min(GD.levelIndex(level), cap);
-    }
-
-    _onZoomWheel(event) {
-        const state = this.threeState;
-        const GD = window.GlobeDetail;
-        if (!state?.zoom || !GD || !this.isOpen) {
-            return;
-        }
-        const rect = this._canvasRect();
-        const norm = GD.normalizeWheel({
-            deltaY: event.deltaY,
-            deltaMode: event.deltaMode,
-            ctrlKey: event.ctrlKey,
-            canvasHeight: rect.height || 0
-        });
-        state.zoom.hGoal = GD.nextAltitudeGoal(
-            state.zoom.hGoal,
-            norm.px,
-            norm.k,
-            GD.CONFIG.H_MIN,
-            state.zoom.hMax
-        );
-        state.zoom.tau = this._prefersReducedMotion() ? GD.CONFIG.TAU_REDUCED_MS : norm.tau;
-        state.zoom.settled = false;
-        this._captureZoomAnchor(event.clientX, event.clientY);
-    }
-
-    /**
-     * Wheel and Safari pinch listeners for the explorer canvas.
-     * Attached only while the overlay is open. Photo pinch-zoom uses the
-     * same ctrl-wheel and gesture events, and must not hit this path.
-     */
-    _bindZoomInput() {
-        const canvas = this.threeState?.renderer?.domElement;
-        if (!canvas || this._zoomInputBound) return;
-        this._zoomWheelListener = (event) => {
-            if (!this.isOpen) return;
-            event.preventDefault();
-            if (this.pointerGesture) {
-                this.pointerGesture.hadWheel = true;
-            }
-            this._onZoomWheel(event);
-        };
-        this._zoomGestureListener = (event) => {
-            this._onGesture(event);
-        };
-        canvas.addEventListener('wheel', this._zoomWheelListener, { passive: false });
-        for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
-            canvas.addEventListener(type, this._zoomGestureListener, { passive: false });
-        }
-        this._zoomInputBound = true;
-    }
-
-    _unbindZoomInput() {
-        const canvas = this.threeState?.renderer?.domElement;
-        if (canvas && this._zoomInputBound) {
-            canvas.removeEventListener('wheel', this._zoomWheelListener);
-            for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
-                canvas.removeEventListener(type, this._zoomGestureListener);
-            }
-        }
-        this._zoomInputBound = false;
-    }
-
-    _onGesture(event) {
-        const state = this.threeState;
-        const GD = window.GlobeDetail;
-        if (!state?.zoom || !GD || !this.isOpen) {
-            return;
-        }
-        if (event?.preventDefault) {
-            event.preventDefault();
-        }
-        state.zoom.tau = this._prefersReducedMotion() ? GD.CONFIG.TAU_REDUCED_MS : GD.CONFIG.TAU_PINCH_MS;
-        if (event.type === 'gesturestart') {
-            state.zoom.gestureH = state.zoom.hGoal;
-            this._captureZoomAnchor(event.clientX, event.clientY);
-            return;
-        }
-        if (event.type === 'gesturechange') {
-            const scale = Number(event.scale) || 1;
-            const base = state.zoom.gestureH || state.zoom.hGoal;
-            state.zoom.hGoal = Math.max(GD.CONFIG.H_MIN, Math.min(state.zoom.hMax, base / (scale || 1)));
-            state.zoom.settled = false;
-        }
-    }
-
-    _captureZoomAnchor(clientX, clientY) {
-        const state = this.threeState;
-        const GD = window.GlobeDetail;
-        if (!state?.zoom || !GD || !state.group) {
-            return;
-        }
-        const ndc = this._clientToNdc(clientX, clientY);
-        state.zoom.pointerNdc = ndc;
-        state.group.updateMatrixWorld(true);
-        const hit = this._hitGlobeNdc(ndc);
-        if (!hit) {
-            state.zoom.anchor = null;
-            return;
-        }
-        state.group.worldToLocal(hit);
-        hit.normalize();
-        state.zoom.anchor = hit;
-    }
-
-    _beginPinch() {
-        const state = this.threeState;
-        const GD = window.GlobeDetail;
-        const points = [...(this._pointers?.values() || [])];
-        if (!state?.zoom || points.length < 2) {
-            return;
-        }
-        const a = points[0];
-        const b = points[1];
-        const span = Math.hypot(a.x - b.x, a.y - b.y) || 1;
-        state.zoom.pinch = { span, h: state.zoom.hGoal };
-        state.zoom.tau = this._prefersReducedMotion()
-            ? (GD?.CONFIG?.TAU_REDUCED_MS || 40)
-            : (GD?.CONFIG?.TAU_TOUCH_MS || 30);
-        this._captureZoomAnchor((a.x + b.x) / 2, (a.y + b.y) / 2);
-        if (state.controls) {
-            state.controls.enableRotate = false;
-        }
-        if (this.pointerGesture) {
-            this.pointerGesture.dragged = true;
-        }
-    }
-
-    _updatePinch() {
-        const state = this.threeState;
-        const GD = window.GlobeDetail;
-        const points = [...(this._pointers?.values() || [])];
-        if (!state?.zoom?.pinch || points.length < 2) {
-            return;
-        }
-        const a = points[0];
-        const b = points[1];
-        const span = Math.hypot(a.x - b.x, a.y - b.y) || 1;
-        const hMin = GD?.CONFIG?.H_MIN || 0.3;
-        const next = state.zoom.pinch.h * state.zoom.pinch.span / span;
-        state.zoom.hGoal = Math.max(hMin, Math.min(state.zoom.hMax, next));
-        state.zoom.tau = this._prefersReducedMotion()
-            ? (GD?.CONFIG?.TAU_REDUCED_MS || 40)
-            : (GD?.CONFIG?.TAU_TOUCH_MS || 30);
-        state.zoom.settled = false;
-        state.zoom.pointerNdc = this._clientToNdc((a.x + b.x) / 2, (a.y + b.y) / 2);
-    }
-
-    _endPinch() {
-        const state = this.threeState;
-        if (state?.zoom) {
-            state.zoom.pinch = null;
-        }
-        if (state?.controls) {
-            state.controls.enableRotate = true;
-        }
-    }
-
-    _prefersReducedMotion() {
-        return Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
-    }
-
-    _autoRotateRamp(active, now) {
-        const zoom = this.threeState?.zoom;
-        const rampMs = window.GlobeDetail?.CONFIG?.AUTO_ROTATE_RAMP_MS || 600;
-        if (!zoom) {
-            return active ? 1 : 0;
-        }
-        if (!active) {
-            zoom.rampOn = false;
-            zoom.rampStart = 0;
-            return 0;
-        }
-        if (!zoom.rampOn) {
-            zoom.rampOn = true;
-            zoom.rampStart = now;
-        }
-        const t = Math.min(1, (now - zoom.rampStart) / rampMs);
-        return t * t * (3 - 2 * t);
-    }
-
-    _stepZoom(dt, now) {
-        const state = this.threeState;
-        const GD = window.GlobeDetail;
-        if (!state?.zoom || !state.camera || !GD) {
-            return;
-        }
-        const zoom = state.zoom;
-        const stepped = GD.stepAltitude(zoom.h, zoom.hGoal, dt, zoom.tau);
-        const wasSettled = zoom.settled;
-        zoom.h = stepped.h;
-        zoom.settled = stepped.settled;
-        if (zoom.settled && !wasSettled) {
-            zoom.settledAt = now;
-            zoom.needsHover = true;
-        } else if (!zoom.settled) {
-            zoom.settledAt = 0;
-        }
-        const radius = 1 + zoom.h;
-        const camera = state.camera;
-        if (camera.position.length() > 0.001) {
-            camera.position.setLength(radius);
-        } else {
-            camera.position.set(0, 0, radius);
-        }
-        camera.lookAt(0, 0, 0);
-        camera.updateMatrixWorld();
-        if (!zoom.settled && zoom.anchor && state.raycaster && state.group) {
-            state.group.updateMatrixWorld(true);
-            const worldAnchor = zoom.anchor.clone().applyMatrix4(state.group.matrixWorld).normalize();
-            state.raycaster.setFromCamera(zoom.pointerNdc, camera);
-            const ray = state.raycaster.ray;
-            const hit = GD.rayUnitSphere(
-                ray.origin.x, ray.origin.y, ray.origin.z,
-                ray.direction.x, ray.direction.y, ray.direction.z
-            );
-            if (hit) {
-                const fit = GlobeExplorer.globeFitDistance(zoom.viewWidth, zoom.viewHeight, camera.fov);
-                const weight = GD.anchorWeight(
-                    worldAnchor.x, worldAnchor.y, worldAnchor.z,
-                    camera.position.x, camera.position.y, camera.position.z,
-                    fit
-                );
-                const phiMin = state.controls
-                    ? state.controls.minPolarAngle
-                    : Math.PI / 2 - (62 * Math.PI) / 180;
-                const phiMax = state.controls
-                    ? state.controls.maxPolarAngle
-                    : Math.PI / 2 + (62 * Math.PI) / 180;
-                const next = GD.adjustSpherical({
-                    x: camera.position.x,
-                    y: camera.position.y,
-                    z: camera.position.z,
-                    px: worldAnchor.x,
-                    py: worldAnchor.y,
-                    pz: worldAnchor.z,
-                    qx: hit.x,
-                    qy: hit.y,
-                    qz: hit.z,
-                    w: weight,
-                    phiMin,
-                    phiMax
-                });
-                camera.position.set(next.x, next.y, next.z);
-                camera.lookAt(0, 0, 0);
-                camera.updateMatrixWorld();
-            }
-        }
-        const distance = camera.position.length();
-        const altitude = distance - 1;
-        if (state.lines) {
-            state.lines.level = GD.stepLevel(state.lines.level, distance);
-        }
-        const clip = GD.clipPlanes(altitude, distance);
-        if (GD.clipChanged(camera.near, camera.far, clip.near, clip.far)) {
-            camera.near = clip.near;
-            camera.far = clip.far;
-            camera.updateProjectionMatrix();
-        }
-        const dot = GD.dotScale(altitude);
-        state.dotScale = dot;
-        this._syncMarkerScale();
-        if (state.raycaster?.params?.Points) {
-            state.raycaster.params.Points.threshold = GD.CONFIG.POINTS_THRESHOLD * dot;
-        }
-        if (state.controls) {
-            state.controls.rotateSpeed = GD.CONFIG.ROTATE_SPEED * GD.rotateScale(altitude);
-            state.controls.minDistance = 1 + GD.CONFIG.H_MIN;
-            state.controls.maxDistance = zoom.hMax + 1;
-            if (this._prefersReducedMotion()) {
-                state.controls.autoRotate = this.autoRotateEnabled;
-                state.controls.autoRotateSpeed = GD.CONFIG.AUTO_ROTATE_SPEED;
-            } else {
-                const level = state.lines?.level || 'world';
-                const resume = Boolean(
-                    zoom.settled
-                    && zoom.settledAt
-                    && (now - zoom.settledAt > GD.CONFIG.AUTO_ROTATE_RESUME_MS)
-                );
-                const spinning = this.autoRotateEnabled && level === 'world' && resume;
-                state.controls.autoRotate = spinning;
-                state.controls.autoRotateSpeed = GD.CONFIG.AUTO_ROTATE_SPEED
-                    * GD.autoRotateScale(altitude)
-                    * this._autoRotateRamp(spinning, now);
-            }
-        }
-    }
-
-    _stepHoverSlots(now) {
-        const lines = this.threeState?.lines;
-        if (!lines) {
-            return;
-        }
-        for (const slot of [lines.hoverA, lines.hoverB]) {
-            const duration = slot.duration > 0 ? slot.duration : 1;
-            const t = Math.min(1, (now - slot.startedAt) / duration);
-            const eased = 1 - (1 - t) * (1 - t);
-            slot.weight = slot.from + (slot.to - slot.from) * eased;
-        }
-    }
-
-    _setLineHover(id) {
-        const lines = this.threeState?.lines;
-        const GD = window.GlobeDetail;
-        if (!lines) {
-            return;
-        }
-        const nextId = id || 0;
-        const now = performance.now();
-        const fadeIn = GD?.CONFIG?.HOVER_IN_MS || 140;
-        const fadeOut = GD?.CONFIG?.HOVER_OUT_MS || 220;
-        const slots = [lines.hoverA, lines.hoverB];
-        if (nextId && slots.some((slot) => slot.id === nextId && slot.to === 1)) {
-            for (const slot of slots) {
-                if (slot.id !== nextId && slot.to !== 0) {
-                    slot.from = slot.weight;
-                    slot.to = 0;
-                    slot.startedAt = now;
-                    slot.duration = fadeOut;
-                }
-            }
-            return;
-        }
-        if (!nextId) {
-            for (const slot of slots) {
-                if (slot.weight > 0 || slot.to !== 0) {
-                    slot.from = slot.weight;
-                    slot.to = 0;
-                    slot.startedAt = now;
-                    slot.duration = fadeOut;
-                }
-            }
-            return;
-        }
-        const slot = lines.hoverA.weight <= lines.hoverB.weight ? lines.hoverA : lines.hoverB;
-        const other = slot === lines.hoverA ? lines.hoverB : lines.hoverA;
-        slot.id = nextId;
-        slot.from = 0;
-        slot.weight = 0;
-        slot.to = 1;
-        slot.startedAt = now;
-        slot.duration = fadeIn;
-        other.from = other.weight;
-        other.to = 0;
-        other.startedAt = now;
-        other.duration = fadeOut;
-    }
-
-    _stepLines(dt, now) {
-        // Boundaries arrive after the first frame. Retry until the 110m
-        // rings are in memory, then build the world mesh in idle chunks.
-        this._startWorldLines();
-        const state = this.threeState;
-        const GD = window.GlobeDetail;
-        if (!state?.lines || !state.camera || !GD) {
-            return;
-        }
-        const lines = state.lines;
-        const distance = state.camera.position.length();
-        const reduced = this._prefersReducedMotion();
-        const fadeMs = reduced ? GD.CONFIG.CROSSFADE_REDUCED_MS : GD.CONFIG.CROSSFADE_MS;
-        if (lines.worldIntroStart) {
-            const intro = Math.min(1, (now - lines.worldIntroStart) / fadeMs);
-            lines.worldIntro = intro;
-            if (intro >= 1) {
-                lines.worldIntroStart = 0;
-            }
-        }
-        let cap = -1;
-        if (lines.meshes.world) cap = 0;
-        if (lines.meshes.regional) cap = 1;
-        if (lines.meshes.local) cap = 2;
-        let target = GD.levelIndex(lines.level);
-        if (cap < 0) {
-            target = 0;
-        } else if (target > cap) {
-            target = cap;
-        }
-        const maxStep = fadeMs > 0 ? dt / fadeMs : 1;
-        lines.lod += Math.max(-maxStep, Math.min(maxStep, target - lines.lod));
-        if (Math.abs(lines.lod - target) < 1e-4) {
-            lines.lod = target;
-        }
-        this._stepHoverSlots(now);
-        const weights = GD.crossfadeWeights(lines.lod);
-        weights[0] *= lines.meshes.world ? lines.worldIntro : 0;
-        const names = ['world', 'regional', 'local'];
-        for (let i = 0; i < names.length; i++) {
-            const mesh = lines.meshes[names[i]];
-            if (!mesh) {
-                continue;
-            }
-            const weight = weights[i] || 0;
-            mesh.visible = weight > 0.0001;
-            const uniforms = mesh.material.uniforms;
-            uniforms.uLevelWeight.value = weight;
-            uniforms.uDistance.value = distance;
-            uniforms.uHoverIdA.value = lines.hoverA.id;
-            uniforms.uHoverWA.value = lines.hoverA.weight;
-            uniforms.uHoverIdB.value = lines.hoverB.id;
-            uniforms.uHoverWB.value = lines.hoverB.weight;
-        }
-        if (this.isOpen) {
-            this._considerLinePrefetch(distance);
-        }
-    }
-
-    _scheduleIdle(fn) {
-        if (typeof window.requestIdleCallback === 'function') {
-            return window.requestIdleCallback(fn, { timeout: 500 });
-        }
-        return window.setTimeout(() => fn({ timeRemaining: () => 4, didTimeout: true }), 0);
-    }
-
-    _cancelIdle(id) {
-        if (id == null) {
-            return;
-        }
-        if (typeof window.cancelIdleCallback === 'function') {
-            window.cancelIdleCallback(id);
-        }
-        window.clearTimeout(id);
-    }
-
-    _startWorldLines() {
-        const state = this.threeState;
-        const GD = window.GlobeDetail;
-        const features = window.countryBoundaries?.features;
-        if (!state?.lines || !GD || !features?.length || state.lines.worldStarted) {
-            return;
-        }
-        state.lines.worldStarted = true;
-        const acc = GD.createEdgeAccumulator();
-        let index = 0;
-        const step = (deadline) => {
-            if (state.disposed || state.lines.cancelled) {
-                return;
-            }
-            const start = performance.now();
-            let processed = 0;
-            while (index < features.length && processed < 20 && (performance.now() - start) < 4) {
-                if (
-                    processed > 0
-                    && deadline
-                    && typeof deadline.timeRemaining === 'function'
-                    && deadline.timeRemaining() < 1
-                ) {
-                    break;
-                }
-                const feature = features[index];
-                index += 1;
-                processed += 1;
-                if (feature) {
-                    GD.addFeatureEdges(acc, feature, feature.runtimeId || index);
-                }
-            }
-            // The first slice waits for idle. Later slices use a timeout so a
-            // continuous render loop, which never goes idle, still finishes
-            // the build in ≤4 ms pieces instead of waiting out every timeout.
-            const scheduleSlice = (fn) => {
-                state.lines.worldIdle = window.setTimeout(() => {
-                    fn({ timeRemaining: () => 4, didTimeout: true });
-                }, 0);
-            };
-            if (index < features.length) {
-                scheduleSlice(step);
-                return;
-            }
-            scheduleSlice(() => {
-                if (state.disposed || state.lines.cancelled) {
-                    return;
-                }
-                this._installLineMesh('world', GD.projectWorldEdges(GD.finalizeWorldEdges(acc)));
-            });
-        };
-        state.lines.worldIdle = this._scheduleIdle(step);
-    }
-
-    _lineLevelName(kind) {
-        return kind === '10m' ? 'local' : 'regional';
-    }
-
-    _lineUrl(kind) {
-        return kind === '10m' ? '/data/globe-lines-10m.v1.json' : '/data/globe-lines-50m.v1.json';
-    }
-
-    _adm0RuntimeIds() {
-        const map = {};
-        const byCode = window.countryBoundaries?.byAdm0A3;
-        if (!byCode) {
-            return map;
-        }
-        for (const [code, index] of byCode.entries()) {
-            map[code] = index + 1;
-        }
-        return map;
-    }
-
-    _applyLineDprScale() {
-        const state = this.threeState;
-        const GD = window.GlobeDetail;
-        if (!state?.lines || !GD) {
-            return;
-        }
-        const dpr = state.renderer?.getPixelRatio?.() || window.devicePixelRatio || 1;
-        const scale = dpr < 1.5 ? GD.CONFIG.ALPHA.lowDprScale : 1;
-        for (const mesh of Object.values(state.lines.meshes)) {
-            if (mesh?.material?.uniforms?.uDprScale) {
-                mesh.material.uniforms.uDprScale.value = scale;
-            }
-        }
-    }
-
-    _installLineMesh(level, buffers) {
-        const state = this.threeState;
-        const GD = window.GlobeDetail;
-        if (!state || state.disposed || !GD || !buffers?.positions?.length) {
-            return;
-        }
-        if (!state.lines.baseMaterial) {
-            state.lines.baseMaterial = GD.createInkMaterial(state.THREE);
-        }
-        const material = state.lines.baseMaterial.clone();
-        const dpr = state.renderer?.getPixelRatio?.() || window.devicePixelRatio || 1;
-        GD.applyLevelUniforms(material, level, dpr);
-        const geometry = new state.THREE.BufferGeometry();
-        geometry.setAttribute('position', new state.THREE.BufferAttribute(buffers.positions, 3));
-        geometry.setAttribute('meta', new state.THREE.BufferAttribute(buffers.meta, 4));
-        geometry.setIndex(new state.THREE.BufferAttribute(buffers.index, 1));
-        const mesh = new state.THREE.LineSegments(geometry, material);
-        mesh.renderOrder = 0;
-        mesh.visible = false;
-        state.group.add(mesh);
-        const previous = state.lines.meshes[level];
-        if (previous) {
-            state.group.remove(previous);
-            previous.geometry?.dispose();
-            previous.material?.dispose();
-        }
-        state.lines.meshes[level] = mesh;
-        if (level === 'world') {
-            state.lines.worldIntro = 0;
-            state.lines.worldIntroStart = performance.now();
-        }
-    }
-
-    _considerLinePrefetch(distance) {
-        const state = this.threeState;
-        const GD = window.GlobeDetail;
-        if (!state?.zoom || !state.lines || !GD || !this.isOpen) {
-            return;
-        }
-        const saveData = Boolean(navigator.connection && navigator.connection.saveData);
-        for (const kind of ['50m', '10m']) {
-            if (!GD.shouldFetch(kind, distance, state.zoom.hGoal) && state.lines.failed[kind]) {
-                state.lines.rearm[kind] = true;
-            }
-        }
-        if (GD.shouldFetch('50m', distance, state.zoom.hGoal)) {
-            this._ensureLineLevel('50m');
-        }
-        if (!saveData && GD.shouldFetch('10m', distance, state.zoom.hGoal)) {
-            this._ensureLineLevel('10m');
-        }
-    }
-
-    _ensureLineLevel(kind) {
-        const lines = this.threeState?.lines;
-        if (!lines || lines.loaded[kind] || lines.loading[kind]) {
-            return;
-        }
-        if (lines.failed[kind]) {
-            if (!lines.rearm[kind] || performance.now() < (lines.cooldown[kind] || 0)) {
-                return;
-            }
-        }
-        lines.loading[kind] = true;
-        lines.rearm[kind] = false;
-        const url = this._lineUrl(kind);
-        const begin = () => {
-            const current = this.threeState?.lines;
-            if (!current || current.cancelled || this.threeState.disposed) {
-                return;
-            }
-            if (current.loaded[kind]) {
-                current.loading[kind] = false;
-                return;
-            }
-            const codeToId = this._adm0RuntimeIds();
-            if (!this._postLineBuild(url, kind, codeToId)) {
-                void this._buildLinesOnMain(url, kind, codeToId);
-            }
-        };
-        const boundaries = window.countryBoundaries;
-        if (
-            boundaries
-            && boundaries.features.length === 0
-            && typeof boundaries.ensureLoaded === 'function'
-        ) {
-            boundaries.ensureLoaded().then(begin, begin);
-            return;
-        }
-        begin();
-    }
-
-    _postLineBuild(url, kind, codeToId) {
-        const lines = this.threeState?.lines;
-        if (!lines || lines.workerFailed || typeof Worker === 'undefined') {
-            if (lines) {
-                lines.workerFailed = true;
-            }
-            return false;
-        }
-        if (!lines.worker) {
-            try {
-                lines.worker = new Worker('/js/globeLinesWorker.js?v=20261025a');
-                lines.worker.onmessage = (event) => this._onLineWorkerMessage(event);
-                lines.worker.onerror = () => {
-                    const pending = { ...lines.requests };
-                    lines.workerFailed = true;
-                    try {
-                        lines.worker.terminate();
-                    } catch (err) {
-                        /* ignore */
-                    }
-                    lines.worker = null;
-                    lines.requests = {};
-                    for (const requestId of Object.keys(pending)) {
-                        const pendingKind = pending[requestId];
-                        if (!pendingKind || !lines.loading[pendingKind]) {
-                            continue;
-                        }
-                        lines.loading[pendingKind] = false;
-                        void this._buildLinesOnMain(this._lineUrl(pendingKind), pendingKind, this._adm0RuntimeIds());
-                    }
-                };
-            } catch (err) {
-                lines.workerFailed = true;
-                return false;
-            }
-        }
-        const id = lines.requestSerial + 1;
-        lines.requestSerial = id;
-        lines.requests[id] = kind;
-        lines.worker.postMessage({ type: 'build', id, url, codeToId });
-        return true;
-    }
-
-    _onLineWorkerMessage(event) {
-        const lines = this.threeState?.lines;
-        const data = event?.data || {};
-        if (!lines) {
-            return;
-        }
-        const kind = lines.requests[data.id];
-        delete lines.requests[data.id];
-        if (!kind) {
-            return;
-        }
-        lines.loading[kind] = false;
-        if (!data.ok) {
-            this._failLineLevel(kind, data.error);
-            return;
-        }
-        lines.loaded[kind] = true;
-        lines.failed[kind] = false;
-        this._installLineMesh(this._lineLevelName(kind), data);
-    }
-
-    _failLineLevel(kind, err) {
-        const lines = this.threeState?.lines;
-        if (!lines) {
-            return;
-        }
-        lines.loading[kind] = false;
-        lines.failed[kind] = true;
-        lines.cooldown[kind] = performance.now() + 30000;
-        lines.rearm[kind] = false;
-        if (!lines.warned[kind]) {
-            lines.warned[kind] = true;
-            console.warn('[GlobeExplorer] globe lines failed', kind, err);
-        }
-    }
-
-    async _buildLinesOnMain(url, kind, codeToId) {
-        const state = this.threeState;
-        const GD = window.GlobeDetail;
-        const lines = state?.lines;
-        if (!lines || !GD) {
-            return;
-        }
-        lines.loading[kind] = true;
-        try {
-            const res = await fetch(url, { cache: 'force-cache' });
-            if (!res.ok) {
-                throw new Error(`status ${res.status}`);
-            }
-            const doc = await res.json();
-            const build = GD.createChunkedLineBuild(doc, codeToId);
-            const step = (deadline) => {
-                if (!this.threeState || this.threeState.disposed || lines.cancelled) {
-                    return;
-                }
-                const start = performance.now();
-                let done = false;
-                do {
-                    done = GD.stepChunkedLineBuild(build, 5000);
-                    if (done) {
-                        lines.loading[kind] = false;
-                        lines.loaded[kind] = true;
-                        lines.failed[kind] = false;
-                        this._installLineMesh(this._lineLevelName(kind), GD.finishChunkedLineBuild(build));
-                        return;
-                    }
-                } while (
-                    (performance.now() - start) < 4
-                    && !(deadline && typeof deadline.timeRemaining === 'function' && deadline.timeRemaining() < 1)
-                );
-                lines.idleId = this._scheduleIdle(step);
-            };
-            lines.idleId = this._scheduleIdle(step);
-        } catch (err) {
-            this._failLineLevel(kind, err);
-        }
-    }
-
-    _disposeLines() {
-        const state = this.threeState;
-        if (!state?.lines) {
-            return;
-        }
-        const lines = state.lines;
-        lines.cancelled = true;
-        this._cancelIdle(lines.idleId);
-        this._cancelIdle(lines.worldIdle);
-        if (lines.worker) {
-            lines.worker.terminate();
-            lines.worker = null;
-        }
-        for (const mesh of Object.values(lines.meshes)) {
-            if (!mesh) {
-                continue;
-            }
-            state.group?.remove(mesh);
-            mesh.geometry?.dispose();
-            mesh.material?.dispose();
-        }
-        lines.baseMaterial?.dispose();
-        lines.baseMaterial = null;
-    }
-
-    _stepTiles(dt) {
-        if (!this.isOpen) {
-            return;
-        }
-        const state = this.threeState;
-        const GD = window.GlobeDetail;
-        const session = this._tileSession;
-        if (!state?.camera || !state.zoom || !state.group || !GD?.CONFIG?.TEXTURE || !session) {
-            return;
-        }
-        const viewWidth = state.zoom.viewWidth;
-        const viewHeight = state.zoom.viewHeight;
-        if (!(viewWidth > 0) || !(viewHeight > 0)) {
-            return;
-        }
-        const saveData = Boolean(navigator.connection && navigator.connection.saveData);
-        const distance = state.camera.position.length();
-        const hGoal = state.zoom.hGoal;
-        const allowFetch = GD.shouldFetchTexture(distance, hGoal, saveData);
-        const manifestReady = Boolean(session.manifest) && !session.manifestFailed;
-        const level = state.lines?.level || 'world';
-        const target = level === 'local' && !saveData && manifestReady ? 1 : 0;
-        const fadeMs = this._prefersReducedMotion()
-            ? GD.CONFIG.CROSSFADE_REDUCED_MS
-            : GD.CONFIG.CROSSFADE_MS;
-        const step = fadeMs > 0 ? dt / fadeMs : 1;
-        const delta = Math.max(-step, Math.min(step, target - session.levelOpacity));
-        session.levelOpacity += delta;
-        if (session.levelOpacity < 0) {
-            session.levelOpacity = 0;
-        }
-        if (session.levelOpacity > 1) {
-            session.levelOpacity = 1;
-        }
-        if (target === 0 && session.levelOpacity <= 1e-6) {
-            session.levelOpacity = 0;
-        }
-        if (target === 1 && session.levelOpacity >= 1 - 1e-6) {
-            session.levelOpacity = 1;
-        }
-        if (allowFetch && !session.manifest && !session.manifestFailed) {
-            this._loadTileManifest();
-        }
-        if (allowFetch && manifestReady) {
-            this._refreshTileWanted(distance, hGoal, viewWidth / viewHeight);
-            this._pumpTileFetches();
-        }
-        const showGpu = target === 1 || session.levelOpacity > 0;
-        if (showGpu && manifestReady) {
-            this._pumpTileDecode();
-            this._touchTileLru();
-            this._pumpTileUpload();
-            this._updateTileUniforms(step);
-        }
-        if (session.levelOpacity === 0) {
-            this._releaseTileGpu();
-        }
-    }
-
-    _loadTileManifest() {
-        const session = this._tileSession;
-        const GD = window.GlobeDetail;
-        if (!session || !GD || session.manifestLoading || session.manifest || session.manifestFailed) {
-            return;
-        }
-        session.manifestLoading = true;
-        const url = GD.CONFIG.TEXTURE.manifest;
-        fetch(url, { cache: 'force-cache', signal: session.abort.signal })
-            .then((res) => {
-                if (!res.ok) {
-                    throw new Error(`status ${res.status}`);
-                }
-                return res.json();
-            })
-            .then((doc) => {
-                if (!this._tileManifestValid(doc)) {
-                    throw new Error('manifest mismatch');
-                }
-                session.manifest = doc;
-            })
-            .catch((err) => {
-                if (err && err.name === 'AbortError') {
-                    return;
-                }
-                session.manifestFailed = true;
-                if (!session.warnedManifest) {
-                    session.warnedManifest = true;
-                    console.warn('[GlobeExplorer] globe tile manifest unavailable');
-                }
-            })
-            .finally(() => {
-                session.manifestLoading = false;
-            });
-    }
-
-    _tileManifestValid(doc) {
-        const tex = window.GlobeDetail?.CONFIG?.TEXTURE;
-        if (!tex || !doc || typeof doc !== 'object') {
-            return false;
-        }
-        return doc.width === 10800
-            && doc.height === 5400
-            && doc.tileSize === tex.tileSize
-            && doc.cols === tex.cols
-            && doc.rows === tex.rows
-            && doc.tileDeg === tex.tileDeg;
-    }
-
-    _groupLocalAim() {
-        const state = this.threeState;
-        if (!state?.camera || !state.group) {
-            return null;
-        }
-        state.group.updateMatrixWorld(true);
-        const local = state.camera.position.clone();
-        state.group.worldToLocal(local);
-        const len = Math.hypot(local.x, local.y, local.z);
-        if (!(len > 0)) {
-            return null;
-        }
-        const dir = { x: local.x / len, y: local.y / len, z: local.z / len };
-        const lat = Math.asin(Math.max(-1, Math.min(1, dir.y))) * 180 / Math.PI;
-        let lon = 0;
-        if (Math.hypot(local.x, local.z) >= 1e-8) {
-            const degrees = Math.atan2(local.z, -local.x) * 180 / Math.PI - 180;
-            lon = ((degrees + 180) % 360 + 360) % 360 - 180;
-        }
-        return { lat, lon, dir };
-    }
-
-    _refreshTileWanted(distance, hGoal, aspect) {
-        const session = this._tileSession;
-        const state = this.threeState;
-        const GD = window.GlobeDetail;
-        if (!session || !state?.camera || !GD) {
-            return;
-        }
-        const aim = this._groupLocalAim();
-        if (!aim) {
-            return;
-        }
-        const cosAim = Math.cos(0.5 * Math.PI / 180);
-        let aimDot = 1;
-        if (session.lastDir) {
-            aimDot = session.lastDir.x * aim.dir.x
-                + session.lastDir.y * aim.dir.y
-                + session.lastDir.z * aim.dir.z;
-        }
-        const moved = session.lastD == null
-            || Math.abs(distance - session.lastD) > 0.01
-            || aimDot < cosAim;
-        if (!moved) {
-            return;
-        }
-        const dAhead = Math.min(distance, 1 + hGoal);
-        const dSelect = Math.max(
-            1 + GD.CONFIG.H_MIN,
-            Math.min(GD.CONFIG.LEVEL_D.local, dAhead)
-        );
-        session.wanted = GD.tilesForView({
-            lat: aim.lat,
-            lon: aim.lon,
-            d: dSelect,
-            aspect,
-            fovDeg: state.camera.fov || 45
-        });
-        session.lastD = distance;
-        session.lastDir = aim.dir;
-        const nextQueue = [];
-        for (let i = 0; i < session.wanted.length; i += 1) {
-            const id = session.wanted[i];
-            if (!id) {
-                continue;
-            }
-            const url = this._tileUrl(id.row, id.col);
-            if (session.requested.has(url) || session.blobs.has(url)) {
-                continue;
-            }
-            nextQueue.push(id);
-        }
-        session.queue = nextQueue;
-    }
-
-    _pumpTileFetches() {
-        const session = this._tileSession;
-        const state = this.threeState;
-        const GD = window.GlobeDetail;
-        if (!this.isOpen || !session || !state?.camera || !state.zoom || !GD) {
-            return;
-        }
-        if (!session.manifest || session.manifestFailed) {
-            return;
-        }
-        const saveData = Boolean(navigator.connection && navigator.connection.saveData);
-        const distance = state.camera.position.length();
-        if (!GD.shouldFetchTexture(distance, state.zoom.hGoal, saveData)) {
-            return;
-        }
-        const cap = GD.CONFIG.TEXTURE.inflight;
-        while (session.inflight < cap && session.queue.length > 0) {
-            const id = session.queue.shift();
-            if (!id) {
-                continue;
-            }
-            const url = this._tileUrl(id.row, id.col);
-            if (session.requested.has(url) || session.blobs.has(url)) {
-                continue;
-            }
-            session.requested.add(url);
-            session.inflight += 1;
-            this._startTileFetch(url);
-        }
-    }
-
-    _startTileFetch(url) {
-        const session = this._tileSession;
-        if (!session) {
-            return;
-        }
-        fetch(url, { cache: 'force-cache', signal: session.abort.signal })
-            .then((res) => {
-                if (!res.ok) {
-                    throw new Error(`status ${res.status}`);
-                }
-                return res.blob();
-            })
-            .then((blob) => {
-                session.blobs.set(url, blob);
-            })
-            .catch((err) => {
-                if (err && err.name === 'AbortError') {
-                    return;
-                }
-                this._warnTileFailure();
-            })
-            .finally(() => {
-                session.inflight = Math.max(0, session.inflight - 1);
-                this._pumpTileFetches();
-            });
-    }
-
-    _pumpTileDecode() {
-        const session = this._tileSession;
-        if (!session || session.decodingUrl || typeof createImageBitmap !== 'function') {
-            return;
-        }
-        for (let i = 0; i < session.wanted.length; i += 1) {
-            const id = session.wanted[i];
-            if (!id) {
-                continue;
-            }
-            const url = this._tileUrl(id.row, id.col);
-            if (session.decodeFailed.has(url) || session.bitmaps.has(url)) {
-                continue;
-            }
-            if (session.entries.has(this._tileKey(id.row, id.col))) {
-                continue;
-            }
-            const blob = session.blobs.get(url);
-            if (!blob) {
-                continue;
-            }
-            session.decodingUrl = url;
-            const generation = session.gpuGeneration;
-            // ImageBitmap ignores UNPACK_FLIP_Y_WEBGL, so flip during decode.
-            // Texture.flipY stays false. The north edge of the JPEG stays north.
-            createImageBitmap(blob, {
-                imageOrientation: 'flipY',
-                premultiplyAlpha: 'none',
-                colorSpaceConversion: 'none'
-            }).then((bitmap) => {
-                if (session.decodingUrl === url) {
-                    session.decodingUrl = null;
-                }
-                if (generation !== session.gpuGeneration) {
-                    if (bitmap && typeof bitmap.close === 'function') {
-                        bitmap.close();
-                    }
-                    return;
-                }
-                session.bitmaps.set(url, bitmap);
-            }, () => {
-                if (session.decodingUrl === url) {
-                    session.decodingUrl = null;
-                }
-                session.decodeFailed.add(url);
-                this._warnTileFailure();
-            });
-            return;
-        }
-    }
-
-    _pumpTileUpload() {
-        const session = this._tileSession;
-        if (!session) {
-            return;
-        }
-        for (let i = 0; i < session.wanted.length; i += 1) {
-            const id = session.wanted[i];
-            if (!id) {
-                continue;
-            }
-            const key = this._tileKey(id.row, id.col);
-            if (session.entries.has(key)) {
-                continue;
-            }
-            const url = this._tileUrl(id.row, id.col);
-            const bitmap = session.bitmaps.get(url);
-            if (!bitmap) {
-                continue;
-            }
-            this._uploadTile(id.row, id.col, url, bitmap);
-            return;
-        }
-    }
-
-    _uploadTile(row, col, url, bitmap) {
-        const session = this._tileSession;
-        const state = this.threeState;
-        const GD = window.GlobeDetail;
-        if (!session || !state?.THREE || !state.group || !GD) {
-            return;
-        }
-        const THREE = state.THREE;
-        const tex = GD.CONFIG.TEXTURE;
-        const key = this._tileKey(row, col);
-        const texture = new THREE.Texture(bitmap);
-        texture.colorSpace = THREE.SRGBColorSpace;
-        texture.wrapS = THREE.ClampToEdgeWrapping;
-        texture.wrapT = THREE.ClampToEdgeWrapping;
-        texture.minFilter = THREE.LinearMipmapLinearFilter;
-        texture.magFilter = THREE.LinearFilter;
-        texture.generateMipmaps = true;
-        texture.flipY = false;
-        const maxAniso = state.renderer?.capabilities?.getMaxAnisotropy?.() || 1;
-        texture.anisotropy = Math.min(4, maxAniso);
-        texture.needsUpdate = true;
-        const radians = tex.tileDeg * Math.PI / 180;
-        const geometry = new THREE.SphereGeometry(
-            tex.radius,
-            8,
-            8,
-            col * radians,
-            radians,
-            row * radians,
-            radians
-        );
-        const uniforms = {
-            uMissing: { value: new THREE.Vector4(1, 1, 1, 1) },
-            uLevelOpacity: { value: session.levelOpacity },
-            uTileOpacity: { value: 0 }
-        };
-        const material = new THREE.MeshPhongMaterial({
-            map: texture,
-            color: 0xcccccc,
-            shininess: 1,
-            transparent: true,
-            // Phong's opacity stays 1. The fragment fades by levelOpacity * tileOpacity * edge,
-            // and each tile's opacity uniform starts at 0.
-            opacity: 1,
-            depthWrite: false,
-            depthTest: true,
-            side: THREE.FrontSide
-        });
-        material.onBeforeCompile = (shader) => {
-            this._prepareTileShader(shader, uniforms);
-        };
-        material.customProgramCacheKey = () => 'globe-tile-feather';
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.renderOrder = -1;
-        state.group.add(mesh);
-        session.entries.set(key, {
-            row,
-            col,
-            url,
-            opacity: 0,
-            mesh,
-            geometry,
-            material,
-            texture,
-            uniforms
-        });
-        session.lru.push(key);
-        session.gpuLive = true;
-        this._evictTileLru(key);
-    }
-
-    _prepareTileShader(shader, uniforms) {
-        const tex = window.GlobeDetail?.CONFIG?.TEXTURE;
-        const featherTexels = tex?.featherTexels || 8;
-        const tileSize = tex?.tileSize || 450;
-        shader.uniforms.uMissing = uniforms.uMissing;
-        shader.uniforms.uLevelOpacity = uniforms.uLevelOpacity;
-        shader.uniforms.uTileOpacity = uniforms.uTileOpacity;
-        if (shader.fragmentShader.includes('uLevelOpacity')) {
-            return;
-        }
-        shader.fragmentShader = shader.fragmentShader
-            .replace(
-                '#include <common>',
-                '#include <common>\nuniform vec4 uMissing;\nuniform float uLevelOpacity;\nuniform float uTileOpacity;'
-            )
-            .replace(
-                '#include <opaque_fragment>',
-                `float feather = ${featherTexels}.0 / ${tileSize}.0;\n`
-                + 'float edge = 1.0;\n'
-                + 'if (uMissing.x > 0.5) edge = min(edge, smoothstep(0.0, feather, 1.0 - vMapUv.y));\n'
-                + 'if (uMissing.y > 0.5) edge = min(edge, smoothstep(0.0, feather, 1.0 - vMapUv.x));\n'
-                + 'if (uMissing.z > 0.5) edge = min(edge, smoothstep(0.0, feather, vMapUv.y));\n'
-                + 'if (uMissing.w > 0.5) edge = min(edge, smoothstep(0.0, feather, vMapUv.x));\n'
-                + 'diffuseColor.a *= uLevelOpacity * uTileOpacity * edge;\n'
-                + '#include <opaque_fragment>'
-            );
-    }
-
-    _touchTileLru() {
-        const session = this._tileSession;
-        if (!session) {
-            return;
-        }
-        const protect = new Set();
-        for (let i = 0; i < session.wanted.length; i += 1) {
-            const id = session.wanted[i];
-            if (!id) {
-                continue;
-            }
-            const key = this._tileKey(id.row, id.col);
-            if (!session.entries.has(key)) {
-                continue;
-            }
-            protect.add(key);
-            const index = session.lru.indexOf(key);
-            if (index >= 0) {
-                session.lru.splice(index, 1);
-            }
-            session.lru.push(key);
-        }
-        session.lruProtect = protect;
-    }
-
-    _evictTileLru(keepKey) {
-        const session = this._tileSession;
-        const cap = window.GlobeDetail?.CONFIG?.TEXTURE?.lru || 16;
-        if (!session) {
-            return;
-        }
-        const protect = session.lruProtect || new Set();
-        while (session.lru.length > cap) {
-            let index = -1;
-            for (let i = 0; i < session.lru.length; i += 1) {
-                const key = session.lru[i];
-                if (!key || key === keepKey || protect.has(key)) {
-                    continue;
-                }
-                index = i;
-                break;
-            }
-            if (index < 0) {
-                for (let i = 0; i < session.lru.length; i += 1) {
-                    if (session.lru[i] !== keepKey) {
-                        index = i;
-                        break;
-                    }
-                }
-            }
-            if (index < 0) {
-                break;
-            }
-            const removed = session.lru.splice(index, 1);
-            const key = removed[0];
-            if (key) {
-                this._disposeTileEntry(key);
-            }
-        }
-    }
-
-    _updateTileUniforms(step) {
-        const session = this._tileSession;
-        if (!session) {
-            return;
-        }
-        for (const entry of session.entries.values()) {
-            const delta = Math.max(-step, Math.min(step, 1 - entry.opacity));
-            entry.opacity += delta;
-            if (entry.opacity > 1) {
-                entry.opacity = 1;
-            }
-            const missing = this._tileMissing(entry.row, entry.col);
-            entry.uniforms.uLevelOpacity.value = session.levelOpacity;
-            entry.uniforms.uTileOpacity.value = entry.opacity;
-            entry.uniforms.uMissing.value.set(missing.north, missing.east, missing.south, missing.west);
-        }
-    }
-
-    _tileMissing(row, col) {
-        const session = this._tileSession;
-        const tex = window.GlobeDetail?.CONFIG?.TEXTURE;
-        const rows = tex?.rows || 12;
-        const cols = tex?.cols || 24;
-        const has = (r, c) => Boolean(session?.entries.has(`${r},${c}`));
-        return {
-            north: row > 0 && !has(row - 1, col) ? 1 : 0,
-            east: has(row, (col + 1) % cols) ? 0 : 1,
-            south: row < rows - 1 && !has(row + 1, col) ? 1 : 0,
-            west: has(row, (col + cols - 1) % cols) ? 0 : 1
-        };
-    }
-
-    _disposeTileEntry(key) {
-        const session = this._tileSession;
-        const state = this.threeState;
-        const entry = session?.entries.get(key);
-        if (!session || !entry) {
-            return;
-        }
-        session.entries.delete(key);
-        if (entry.mesh && state?.group) {
-            state.group.remove(entry.mesh);
-        }
-        entry.geometry?.dispose();
-        entry.material?.dispose();
-        entry.texture?.dispose();
-    }
-
-    _releaseTileGpu() {
-        const session = this._tileSession;
-        if (!session) {
-            return;
-        }
-        if (!session.gpuLive && session.entries.size === 0 && session.bitmaps.size === 0) {
-            return;
-        }
-        session.gpuGeneration += 1;
-        session.gpuLive = false;
-        for (const key of Array.from(session.entries.keys())) {
-            this._disposeTileEntry(key);
-        }
-        session.lru = [];
-        session.lruProtect = new Set();
-        for (const bitmap of session.bitmaps.values()) {
-            if (bitmap && typeof bitmap.close === 'function') {
-                bitmap.close();
-            }
-        }
-        session.bitmaps.clear();
-    }
-
-    _dropTileOverlay() {
-        const session = this._tileSession;
-        this._releaseTileGpu();
-        if (!session) {
-            return;
-        }
-        session.levelOpacity = 0;
-        session.queue = [];
-        session.wanted = [];
-        session.lastD = null;
-        session.lastDir = null;
-    }
-
-    _warnTileFailure() {
-        const session = this._tileSession;
-        if (!session) {
-            return;
-        }
-        session.tileFailures += 1;
-        if (!session.warnedTile) {
-            session.warnedTile = true;
-            console.warn('[GlobeExplorer] globe tile failed');
-        }
-    }
-
-    _tileKey(row, col) {
-        return `${row},${col}`;
-    }
-
-    _tileUrl(row, col) {
-        const rr = String(row).padStart(2, '0');
-        const cc = String(col).padStart(2, '0');
-        return `/data/globe-tiles/v1/r${rr}-c${cc}.jpg`;
     }
 }
 

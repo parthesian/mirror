@@ -1,44 +1,274 @@
 import { expect, type Page, test } from '@playwright/test';
 
-test('explorer globe loads the earth texture from the site root', async ({ page }) => {
-    const textureStatuses: number[] = [];
-    const boundaryStatuses: number[] = [];
-    page.on('response', (response) => {
-        const url = response.url();
-        if (url.includes('earth_atmos_2048.jpg')) {
-            textureStatuses.push(response.status());
-        }
-        if (url.includes('/data/ne_110m_admin_0_countries.geojson')) {
-            boundaryStatuses.push(response.status());
-        }
-    });
+type Point = { x: number; y: number };
+type Rect = { left: number; top: number; width: number; height: number };
+interface PageMap {
+    loaded(): boolean;
+    getZoom(): number;
+    getCenter(): { lng: number; lat: number };
+    getBearing(): number;
+    getPitch(): number;
+    jumpTo(options: { center?: [number, number]; zoom?: number }): void;
+    getStyle(): { sources: Record<string, unknown> };
+    getContainer(): { getBoundingClientRect(): Rect };
+    project(lngLat: [number, number]): Point;
+}
+interface PageGlobe {
+    map: PageMap;
+    spinning: boolean;
+    setSpin(enabled: boolean): void;
+    focus(lng: number, lat: number): void;
+}
+interface PageWindow {
+    app: {
+        globeExplorer: {
+            open(focus?: { latitude: number; longitude: number } | null): Promise<void>;
+            close(): Promise<void>;
+            isOpen: boolean;
+            hasPlaceFilterData: boolean;
+            globeMap: PageGlobe;
+            locationGroupByKey: Map<string, { sample: { latitude: unknown; longitude: unknown } }>;
+            sceneContainer: { getBoundingClientRect(): Rect };
+        };
+        imageService: { getImageById(id: string): { latitude: unknown; longitude: unknown } };
+        globeService: {
+            instances: Map<
+                unknown,
+                { geometry: { parameters: { widthSegments: number; heightSegments: number } } }
+            >;
+        };
+    };
+    modal: { currentImageId: string };
+    threeLoader: { sphereSegments(): number };
+    GlobeMap: {
+        fitDistance(width: number, height: number): number;
+        zoomForDistance(distance: number, height: number, lat: number): number;
+    };
+}
+declare const window: PageWindow;
+declare const document: {
+    getElementById(id: string): { classList: { contains(name: string): boolean } };
+};
+declare const navigator: object;
 
+const TILE_HOSTS = /tiles\.versatiles\.org|gibs\.earthdata\.nasa\.gov/;
+
+function trackRequests(page: Page) {
+    const urls: string[] = [];
+    page.on('request', (request) => {
+        urls.push(request.url());
+    });
+    return urls;
+}
+
+/** Tiles come from third parties; the suite never waits on them. */
+async function blockTiles(page: Page) {
+    await page.route(TILE_HOSTS, (route) => route.abort());
+}
+
+async function openExplorer(page: Page, focus?: { latitude: number; longitude: number }) {
+    await page.evaluate((location) => window.app.globeExplorer.open(location), focus ?? null);
+}
+
+test.beforeEach(async ({ page }) => {
+    await blockTiles(page);
+});
+
+test('the gallery never loads MapLibre before the explorer opens', async ({ page }) => {
+    const urls = trackRequests(page);
     await page.goto('/?mock=1');
     await expect(page.locator('.gallery-item').first()).toBeVisible();
+    await page
+        .locator('#control-menu .cm-hub, #control-menu [aria-label="Open control menu"]')
+        .first()
+        .click();
+    await page.waitForFunction(() => window.app.globeExplorer.hasPlaceFilterData);
 
-    await page.evaluate(`window.app.globeExplorer.open()`);
-    await expect(page.locator('#globe-explorer-scene canvas')).toBeVisible();
+    expect(await page.evaluate(() => 'maplibregl' in window)).toBe(false);
+    expect(urls.filter((url) => url.includes('/vendor/maplibre-gl'))).toEqual([]);
+});
 
-    const texture = (await page.evaluate(`(() => {
-        const image = window.app.globeExplorer.threeState && window.app.globeExplorer.threeState.tex
-            ? window.app.globeExplorer.threeState.tex.image
-            : null;
-        return {
-            complete: Boolean(image && image.complete && image.naturalWidth > 0),
-            width: image ? image.naturalWidth : 0,
-            src: image ? (image.currentSrc || image.src || '') : ''
-        };
-    })()`)) as { complete: boolean; width: number; src: string };
-
-    expect(textureStatuses).toContain(200);
-    expect(textureStatuses.some((status) => status >= 400)).toBe(false);
-    expect(texture).toEqual({
-        complete: true,
-        width: 2048,
-        src: expect.stringContaining('/earth_atmos_2048.jpg'),
+test('the far view loads the photo and the countries file, and no tiles', async ({ page }) => {
+    const statuses = new Map<string, number>();
+    page.on('response', (response) => {
+        statuses.set(new URL(response.url()).pathname, response.status());
     });
-    expect(String(texture.src)).not.toContain('/public/earth_atmos_2048.jpg');
-    expect(boundaryStatuses).toContain(200);
+    const urls = trackRequests(page);
+    await page.goto('/?mock=1');
+    await expect(page.locator('.gallery-item').first()).toBeVisible();
+    await openExplorer(page);
+    await page.waitForTimeout(300);
+
+    expect(statuses.get('/earth_atmos_2048.jpg')).toBe(200);
+    expect(statuses.get('/data/globe-countries-50m.v1.json')).toBe(200);
+    expect(statuses.get('/vendor/maplibre-gl-5.24.1/maplibre-gl.js')).toBe(200);
+    expect(urls.filter((url) => TILE_HOSTS.test(url))).toEqual([]);
+    expect(await page.evaluate(() => window.app.globeExplorer.globeMap.spinning)).toBe(true);
+});
+
+test('focusing a photo centres it at any latitude, at the fit zoom, and stops the spin', async ({
+    page,
+}) => {
+    await page.goto('/?mock=1');
+    await expect(page.locator('.gallery-item').first()).toBeVisible();
+    await openExplorer(page, { latitude: 72, longitude: -42 });
+
+    const view = await page.evaluate(() => {
+        const explorer = window.app.globeExplorer;
+        const center = explorer.globeMap.map.getCenter();
+        const { width, height } = explorer.sceneContainer.getBoundingClientRect();
+        const fit = window.GlobeMap.zoomForDistance(
+            window.GlobeMap.fitDistance(width, height),
+            height,
+            center.lat,
+        );
+        return {
+            ...center,
+            zoom: explorer.globeMap.map.getZoom(),
+            fit,
+            spinning: explorer.globeMap.spinning,
+        };
+    });
+    expect(view.lat).toBeCloseTo(72, 3);
+    expect(view.lng).toBeCloseTo(-42, 3);
+    expect(view.zoom).toBeCloseTo(view.fit, 3);
+    expect(view.spinning).toBe(false);
+
+    await page.evaluate(() => window.app.globeExplorer.close());
+    await expect.poll(() => page.evaluate(() => window.app.globeExplorer.isOpen)).toBe(false);
+    await openExplorer(page, { latitude: -10, longitude: 20 });
+    expect(
+        await page.evaluate(() => window.app.globeExplorer.globeMap.map.getCenter().lat),
+    ).toBeCloseTo(-10, 3);
+});
+
+test('clicking the photo globe opens the explorer on that photo', async ({ page }) => {
+    await page.goto('/?mock=1');
+    await page.locator('.gallery-item').first().click();
+    const modalGlobe = page.locator('#modal-globe');
+    await expect(modalGlobe).toBeVisible();
+    await expect(modalGlobe.locator('canvas')).toBeVisible();
+    const photo = await page.evaluate(() => {
+        const image = window.app.imageService.getImageById(window.modal.currentImageId);
+        return { lat: Number(image.latitude), lng: Number(image.longitude) };
+    });
+    await modalGlobe.click();
+    await page.waitForFunction(
+        () => window.app.globeExplorer.isOpen && Boolean(window.app.globeExplorer.globeMap),
+    );
+
+    const center = await page.evaluate(() => window.app.globeExplorer.globeMap.map.getCenter());
+    expect(center.lat).toBeCloseTo(photo.lat, 3);
+    expect(center.lng).toBeCloseTo(photo.lng, 3);
+});
+
+test('a drag turns the globe north-up and stops the idle spin', async ({ page }) => {
+    await page.goto('/?mock=1');
+    await expect(page.locator('.gallery-item').first()).toBeVisible();
+    await openExplorer(page);
+    const box = await page.locator('#globe-explorer-scene canvas').boundingBox();
+    if (!box) throw new Error('globe canvas has no box');
+    const before = await page.evaluate(() => window.app.globeExplorer.globeMap.map.getCenter().lng);
+
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.mouse.move(cx + 160, cy + 60, { steps: 12 });
+    await page.mouse.up();
+
+    const after = await page.evaluate(() => {
+        const globe = window.app.globeExplorer.globeMap;
+        return {
+            lng: globe.map.getCenter().lng,
+            bearing: globe.map.getBearing(),
+            pitch: globe.map.getPitch(),
+            spinning: globe.spinning,
+            paused: document.getElementById('globe-rotate-toggle').classList.contains('paused'),
+        };
+    });
+    expect(Math.abs(after.lng - before)).toBeGreaterThan(5);
+    expect(after.bearing).toBe(0);
+    expect(after.pitch).toBe(0);
+    expect(after.spinning).toBe(false);
+    expect(after.paused).toBe(true);
+});
+
+test('wheel zoom moves in steps and the camera can reach street level', async ({ page }) => {
+    await page.goto('/?mock=1');
+    await expect(page.locator('.gallery-item').first()).toBeVisible();
+    await openExplorer(page);
+    const box = await page.locator('#globe-explorer-scene canvas').boundingBox();
+    if (!box) throw new Error('globe canvas has no box');
+    const fit = await page.evaluate(() => window.app.globeExplorer.globeMap.map.getZoom());
+
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, -100);
+    await expect
+        .poll(() => page.evaluate(() => window.app.globeExplorer.globeMap.map.getZoom()))
+        .toBeGreaterThan(fit + 0.2);
+    const oneNotch = await page.evaluate(() => window.app.globeExplorer.globeMap.map.getZoom());
+    expect(oneNotch - fit).toBeLessThan(1.5);
+
+    const close = await page.evaluate(() => {
+        const map = window.app.globeExplorer.globeMap.map;
+        map.jumpTo({ center: [12.48, 41.9], zoom: 12 });
+        return map.getZoom();
+    });
+    expect(close).toBeCloseTo(12, 3);
+});
+
+test('tapping a photo place offers that place', async ({ page }) => {
+    await page.goto('/?mock=1');
+    await expect(page.locator('.gallery-item').first()).toBeVisible();
+    const target = await page.evaluate(async () => {
+        const explorer = window.app.globeExplorer;
+        await explorer.open();
+        const [group] = explorer.locationGroupByKey.values();
+        const lat = Number(group?.sample.latitude);
+        const lng = Number(group?.sample.longitude);
+        explorer.globeMap.setSpin(false);
+        explorer.globeMap.focus(lng, lat);
+        explorer.globeMap.map.jumpTo({ zoom: 6 });
+        return { lng, lat };
+    });
+    await page.waitForTimeout(200);
+    const point = await page.evaluate(({ lng, lat }) => {
+        const map = window.app.globeExplorer.globeMap.map;
+        const rect = map.getContainer().getBoundingClientRect();
+        const projected = map.project([lng, lat]);
+        return { x: rect.left + projected.x, y: rect.top + projected.y };
+    }, target);
+
+    await page.mouse.click(point.x, point.y);
+    await expect(
+        page
+            .locator('#globe-pick-confirm:not([hidden]), #globe-intersect-picker:not(.hidden)')
+            .first(),
+    ).toBeVisible();
+});
+
+test('save-data keeps the explorer on the photo and country lines', async ({ page }) => {
+    await page.addInitScript(() => {
+        Object.defineProperty(navigator, 'connection', {
+            configurable: true,
+            value: { saveData: true },
+        });
+    });
+    const urls = trackRequests(page);
+    await page.goto('/?mock=1');
+    await expect(page.locator('.gallery-item').first()).toBeVisible();
+    await openExplorer(page);
+    const result = await page.evaluate(() => {
+        const map = window.app.globeExplorer.globeMap.map;
+        map.jumpTo({ zoom: 12 });
+        return { sources: Object.keys(map.getStyle().sources), zoom: map.getZoom() };
+    });
+    await page.waitForTimeout(300);
+    expect(result.sources).not.toContain('basemap');
+    expect(result.sources).not.toContain('imagery');
+    expect(result.zoom).toBeLessThanOrEqual(7);
+    expect(urls.filter((url) => TILE_HOSTS.test(url))).toEqual([]);
 });
 
 test('phone photo view shows the location globe', async ({ page }) => {
@@ -59,368 +289,23 @@ test('phone photo view shows the location globe', async ({ page }) => {
     expect(sized.height).toBeGreaterThan(40);
 });
 
-test('clicking a photo globe and spinning keeps the polar axis upright', async ({ page }) => {
-    await page.goto('/?mock=1');
-    await page.locator('.gallery-item').first().click();
-
-    const modalGlobe = page.locator('#modal-globe');
-    await expect(modalGlobe).toBeVisible();
-    await modalGlobe.click();
-
-    const canvas = page.locator('#globe-explorer-scene canvas');
-    await expect(canvas).toBeVisible();
-
-    const box = await canvas.boundingBox();
-    expect(box).not.toBeNull();
-    if (!box) return;
-
-    const cx = box.x + box.width / 2;
-    const cy = box.y + box.height / 2;
-    await page.mouse.move(cx, cy);
-    await page.mouse.down();
-    await page.mouse.move(cx + 140, cy, { steps: 10 });
-    await page.mouse.up();
-
-    const afterDrag = (await page.evaluate(`(() => {
-        const THREE = window.THREE;
-        const s = window.app.globeExplorer.threeState;
-        const worldPole = new THREE.Vector3(0, 1, 0).applyQuaternion(s.group.quaternion);
-        const theta = s.controls.getAzimuthalAngle();
-        const cameraRight = new THREE.Vector3(Math.cos(theta), 0, -Math.sin(theta));
-        return {
-            rotX: s.group.rotation.x,
-            poleX: worldPole.x,
-            poleY: worldPole.y,
-            poleZ: worldPole.z,
-            screenPoleSkew: worldPole.dot(cameraRight),
-            azimuth: theta
-        };
-    })()`)) as {
-        rotX: number;
-        poleX: number;
-        poleY: number;
-        poleZ: number;
-        screenPoleSkew: number;
-        azimuth: number;
-    };
-
-    expect(afterDrag.rotX).toBe(0);
-    expect(afterDrag.poleX).toBeCloseTo(0, 6);
-    expect(afterDrag.poleY).toBeCloseTo(1, 6);
-    expect(afterDrag.poleZ).toBeCloseTo(0, 6);
-    expect(afterDrag.screenPoleSkew).toBeCloseTo(0, 6);
-    expect(Math.abs(afterDrag.azimuth)).toBeGreaterThan(0.05);
-});
-
-function trackLineRequests(page: Page) {
-    const urls: string[] = [];
-    const statuses: number[] = [];
-    page.on('response', (response) => {
-        const url = response.url();
-        if (url.includes('/data/globe-lines-')) {
-            urls.push(url);
-            statuses.push(response.status());
-        }
-    });
-    return { urls, statuses };
-}
-
-async function openExplorer(page: Page) {
-    await page.evaluate(`window.app.globeExplorer.open()`);
-    await expect(page.locator('#globe-explorer-scene canvas')).toBeVisible();
-}
-
-async function wheelNotches(page: Page, count: number, deltaY: number) {
-    await page.evaluate(
-        `(() => {
-            const canvas = document.querySelector('#globe-explorer-scene canvas');
-            const rect = canvas.getBoundingClientRect();
-            for (let i = 0; i < ${count}; i += 1) {
-                canvas.dispatchEvent(new WheelEvent('wheel', {
-                    deltaY: ${deltaY},
-                    deltaMode: 0,
-                    clientX: rect.left + rect.width / 2,
-                    clientY: rect.top + rect.height / 2,
-                    bubbles: true,
-                    cancelable: true
-                }));
-            }
-        })()`,
-    );
-}
-
-async function watchCamera(page: Page) {
-    await page.evaluate(`(() => {
-        const sample = { minD: Infinity, nearOk: true, running: true };
-        window.__globeZoomSample = sample;
-        const tick = () => {
-            const camera = window.app.globeExplorer.threeState
-                && window.app.globeExplorer.threeState.camera;
-            if (camera) {
-                const d = camera.position.length();
-                if (d < sample.minD) sample.minD = d;
-                if (!(camera.near < d - 1)) sample.nearOk = false;
-            }
-            if (sample.running) requestAnimationFrame(tick);
-        };
-        requestAnimationFrame(tick);
-    })()`);
-}
-
-async function readCameraWatch(page: Page) {
-    return (await page.evaluate(`(() => {
-        const sample = window.__globeZoomSample || { minD: Infinity, nearOk: false };
-        sample.running = false;
-        return { minD: sample.minD, nearOk: sample.nearOk };
-    })()`)) as { minD: number; nearOk: boolean };
-}
-
-test('gallery idle does not request globe line files', async ({ page }) => {
-    const lines = trackLineRequests(page);
-    await page.goto('/?mock=1');
-    await expect(page.locator('.gallery-item').first()).toBeVisible();
-    await page.waitForTimeout(5000);
-    expect(lines.urls).toEqual([]);
-});
-
-test('opening the explorer at the fit distance does not request globe lines', async ({ page }) => {
-    const textureStatuses: number[] = [];
-    const boundaryStatuses: number[] = [];
-    const lines = trackLineRequests(page);
-    page.on('response', (response) => {
-        const url = response.url();
-        if (url.includes('earth_atmos_2048.jpg')) textureStatuses.push(response.status());
-        if (url.includes('/data/ne_110m_admin_0_countries.geojson')) {
-            boundaryStatuses.push(response.status());
-        }
-    });
-
-    await page.goto('/?mock=1');
-    await expect(page.locator('.gallery-item').first()).toBeVisible();
-    await openExplorer(page);
-    await page.waitForTimeout(2000);
-    await expect
-        .poll(async () => {
-            return page.evaluate(`Boolean(window.app.globeExplorer.threeState.lines.meshes.world)`);
-        })
-        .toBe(true);
-
-    const texture = (await page.evaluate(`(() => {
-        const image = window.app.globeExplorer.threeState
-            && window.app.globeExplorer.threeState.tex
-            ? window.app.globeExplorer.threeState.tex.image
-            : null;
-        const geo = window.app.globeExplorer.threeState.geo.parameters;
-        return {
-            complete: Boolean(image && image.complete && image.naturalWidth > 0),
-            width: image ? image.naturalWidth : 0,
-            src: image ? (image.currentSrc || image.src || '') : '',
-            segments: [geo.widthSegments, geo.heightSegments]
-        };
-    })()`)) as { complete: boolean; width: number; src: string; segments: number[] };
-
-    expect(lines.urls).toEqual([]);
-    expect(textureStatuses).toContain(200);
-    expect(boundaryStatuses).toContain(200);
-    expect(texture.complete).toBe(true);
-    expect(texture.width).toBe(2048);
-    expect(texture.src).toContain('/earth_atmos_2048.jpg');
-    expect(texture.segments).toEqual([192, 96]);
-});
-
-test('three zoom-in notches fetch the regional lines once', async ({ page }) => {
-    const lines = trackLineRequests(page);
-    await page.goto('/?mock=1');
-    await openExplorer(page);
-    await watchCamera(page);
-    await wheelNotches(page, 3, -100);
-    await expect
-        .poll(() => lines.urls.filter((url) => url.includes('globe-lines-50m')).length)
-        .toBe(1);
-    expect(
-        lines.statuses.filter((_, index) => lines.urls[index]?.includes('globe-lines-50m')),
-    ).toEqual([200]);
-    expect(lines.urls.some((url) => url.includes('globe-lines-10m'))).toBe(false);
-
-    await wheelNotches(page, 3, 100);
-    await page.waitForTimeout(400);
-    await wheelNotches(page, 3, -100);
-    await page.waitForTimeout(800);
-    expect(lines.urls.filter((url) => url.includes('globe-lines-50m'))).toHaveLength(1);
-    expect(lines.urls.some((url) => url.includes('globe-lines-10m'))).toBe(false);
-
-    const watch = await readCameraWatch(page);
-    expect(watch.minD).toBeGreaterThanOrEqual(1.3 - 1e-4);
-    expect(watch.nearOk).toBe(true);
-});
-
-test('zooming to local detail fetches the 10m file once across reopen', async ({ page }) => {
-    const lines = trackLineRequests(page);
-    await page.goto('/?mock=1');
-    await openExplorer(page);
-    await watchCamera(page);
-    await wheelNotches(page, 8, -100);
-    await expect
-        .poll(async () => {
-            return page.evaluate(`window.app.globeExplorer.threeState.camera.position.length()`);
-        })
-        .toBeLessThan(1.51);
-    expect(lines.urls.filter((url) => url.includes('globe-lines-10m'))).toHaveLength(1);
-    expect(
-        lines.statuses.filter((_, index) => lines.urls[index]?.includes('globe-lines-10m')),
-    ).toEqual([200]);
-
-    await page.evaluate(`window.app.globeExplorer.close()`);
-    await expect(page.locator('#globe-explorer')).toHaveClass(/hidden/);
-    await openExplorer(page);
-    await wheelNotches(page, 8, -100);
-    await expect
-        .poll(async () => {
-            return page.evaluate(`window.app.globeExplorer.threeState.camera.position.length()`);
-        })
-        .toBeLessThan(1.51);
-    await page.waitForTimeout(500);
-    expect(lines.urls.filter((url) => url.includes('globe-lines-10m'))).toHaveLength(1);
-
-    const watch = await readCameraWatch(page);
-    expect(watch.minD).toBeGreaterThanOrEqual(1.3 - 1e-4);
-    expect(watch.nearOk).toBe(true);
-});
-
-test('texture tiles stay off at the fit distance and the base photo remains', async ({ page }) => {
-    test.setTimeout(60_000);
-    const tileUrls: string[] = [];
-    const tileStatuses: number[] = [];
-    const pageErrors: string[] = [];
-    page.on('pageerror', (error) => {
-        pageErrors.push(String(error));
-    });
-    page.on('response', (response) => {
-        const url = response.url();
-        if (url.includes('/data/globe-tiles/')) {
-            tileUrls.push(url);
-            tileStatuses.push(response.status());
-        }
-    });
-
-    await page.goto('/?mock=1');
-    await openExplorer(page);
-    await page.waitForTimeout(2000);
-    expect(tileUrls).toEqual([]);
-    const fitDistance = (await page.evaluate(
-        `window.app.globeExplorer.threeState.camera.position.length()`,
-    )) as number;
-    expect(fitDistance).toBeGreaterThanOrEqual(2.6);
-
-    await wheelNotches(page, 8, -100);
-    await expect
-        .poll(async () => {
-            return page.evaluate(`window.app.globeExplorer.threeState.camera.position.length()`);
-        })
-        .toBeLessThan(1.51);
-    await expect
-        .poll(() => {
-            return tileUrls.some((url, index) => {
-                const path = url.split('?')[0] ?? url;
-                return (
-                    path.includes('/data/globe-tiles/v1/r') &&
-                    path.endsWith('.jpg') &&
-                    tileStatuses[index] === 200
-                );
-            });
-        })
-        .toBe(true);
-
-    await expect
-        .poll(
-            async () => {
-                await wheelNotches(page, 2, 100);
-                return page.evaluate(
-                    `window.app.globeExplorer.threeState.camera.position.length()`,
-                );
-            },
-            { timeout: 20000 },
-        )
-        .toBeGreaterThan(2.2);
-
-    expect(pageErrors).toEqual([]);
-    const texture = (await page.evaluate(`(() => {
-        const image = window.app.globeExplorer.threeState.tex
-            ? window.app.globeExplorer.threeState.tex.image
-            : null;
-        return {
-            width: image ? image.naturalWidth : 0,
-            src: image ? (image.currentSrc || image.src || '') : ''
-        };
-    })()`)) as { width: number; src: string };
-    expect(texture.width).toBe(2048);
-    expect(texture.src).toContain('/earth_atmos_2048.jpg');
-});
-
-test('wheel zoom then drag keeps the polar axis upright', async ({ page }) => {
-    await page.goto('/?mock=1');
-    await openExplorer(page);
-    await wheelNotches(page, 3, -100);
-    await page.waitForTimeout(400);
-
-    const canvas = page.locator('#globe-explorer-scene canvas');
-    const box = await canvas.boundingBox();
-    expect(box).not.toBeNull();
-    if (!box) return;
-    const cx = box.x + box.width / 2;
-    const cy = box.y + box.height / 2;
-    await page.mouse.move(cx, cy);
-    await page.mouse.down();
-    await page.mouse.move(cx + 140, cy, { steps: 10 });
-    await page.mouse.up();
-
-    const afterDrag = (await page.evaluate(`(() => {
-        const THREE = window.THREE;
-        const s = window.app.globeExplorer.threeState;
-        const worldPole = new THREE.Vector3(0, 1, 0).applyQuaternion(s.group.quaternion);
-        const theta = s.controls.getAzimuthalAngle();
-        const cameraRight = new THREE.Vector3(Math.cos(theta), 0, -Math.sin(theta));
-        return {
-            rotX: s.group.rotation.x,
-            poleX: worldPole.x,
-            poleY: worldPole.y,
-            poleZ: worldPole.z,
-            screenPoleSkew: worldPole.dot(cameraRight)
-        };
-    })()`)) as {
-        rotX: number;
-        poleX: number;
-        poleY: number;
-        poleZ: number;
-        screenPoleSkew: number;
-    };
-    expect(afterDrag.rotX).toBe(0);
-    expect(afterDrag.poleX).toBeCloseTo(0, 6);
-    expect(afterDrag.poleY).toBeCloseTo(1, 6);
-    expect(afterDrag.poleZ).toBeCloseTo(0, 6);
-    expect(afterDrag.screenPoleSkew).toBeCloseTo(0, 6);
-});
-
-test('the photo modal globe does not request globe lines', async ({ page }) => {
-    const lines = trackLineRequests(page);
+test('the photo modal globe stays on Three.js and never loads MapLibre', async ({ page }) => {
+    const urls = trackRequests(page);
     await page.goto('/?mock=1');
     await page.locator('.gallery-item').first().click();
     const globe = page.locator('#modal-globe');
-    await expect(globe).toBeVisible();
     await expect(globe.locator('canvas')).toBeVisible();
     await page.waitForTimeout(500);
 
-    const segments = (await page.evaluate(`(() => {
-        const el = document.getElementById('modal-globe');
-        const inst = window.app.globeService.instances.get(el);
-        const expected = window.threeLoader.sphereSegments('modal');
+    const segments = await page.evaluate(() => {
+        const inst = window.app.globeService.instances.get(document.getElementById('modal-globe'));
         return {
-            width: inst.geometry.parameters.widthSegments,
-            height: inst.geometry.parameters.heightSegments,
-            expected
+            width: inst?.geometry.parameters.widthSegments,
+            height: inst?.geometry.parameters.heightSegments,
+            expected: window.threeLoader.sphereSegments(),
         };
-    })()`)) as { width: number; height: number; expected: number };
+    });
     expect(segments.width).toBe(segments.expected);
     expect(segments.height).toBe(segments.expected);
-    expect(lines.urls).toEqual([]);
+    expect(urls.filter((url) => url.includes('/vendor/maplibre-gl'))).toEqual([]);
 });

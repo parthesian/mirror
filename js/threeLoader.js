@@ -1,14 +1,10 @@
 /**
- * Shared Three.js / earth-texture loader.
- *
- * Reason: GlobeExplorer and the modal GlobeService both paid for the same
- * CDN graph and 2048px texture. One loader lets hover-intent and idle
- * warmup share work without starting a second WebGL download.
+ * Three.js for the modal globe, and the earth photo it shares with the
+ * explorer, each fetched once.
  */
 class ThreeLoader {
     constructor() {
         this._threePromise = null;
-        this._orbitPromise = null;
         this._earthImagePromise = null;
         // Vite copies public/ onto the site root. The old public/ prefix 404s
         // and the explorer falls back to a blank gray sphere.
@@ -29,20 +25,12 @@ class ThreeLoader {
         return this._threePromise;
     }
 
-    loadOrbitControls() {
-        if (this._orbitPromise) {
-            return this._orbitPromise;
-        }
-        this._orbitPromise = import('three/addons/controls/OrbitControls.js')
-            .then((mod) => mod.OrbitControls);
-        return this._orbitPromise;
-    }
-
     prefetchEarthImage() {
-        return this._loadEarthImage().catch(() => null);
+        return this.loadEarthImage().catch(() => null);
     }
 
-    _loadEarthImage() {
+    /** The explorer and the modal globe share one decoded 2048px JPEG. */
+    loadEarthImage() {
         if (this._earthImagePromise) {
             return this._earthImagePromise;
         }
@@ -61,53 +49,19 @@ class ThreeLoader {
         return this._earthImagePromise;
     }
 
-    /**
-     * Each renderer needs its own Texture instance, but they can share one
-     * decoded HTMLImageElement so the JPEG is fetched once.
-     */
     async createEarthTexture(THREE) {
-        const image = await this._loadEarthImage();
+        const image = await this.loadEarthImage();
         const texture = new THREE.Texture(image);
         texture.needsUpdate = true;
         texture.colorSpace = THREE.SRGBColorSpace;
         return texture;
     }
 
-    /**
-     * Modal globes are 160px; the explorer is large. Segment counts follow
-     * viewport so mobile does not build a 64-segment mesh it cannot resolve.
-     */
-    sphereSegments(kind = 'explorer') {
+    /** Modal globes are 160px, so small screens get a coarser mesh. */
+    sphereSegments() {
         const width = typeof window === 'undefined' ? 1024 : window.innerWidth;
         const dpr = typeof window === 'undefined' ? 1 : (window.devicePixelRatio || 1);
-        if (kind === 'modal') {
-            return width <= 768 || dpr >= 2.5 ? 24 : 32;
-        }
-        if (width <= 480) {
-            return 32;
-        }
-        if (width <= 768 || dpr >= 2.5) {
-            return 40;
-        }
-        return 48;
-    }
-
-    /**
-     * The full-screen explorer keeps a fixed tessellation so coast lines
-     * stay within a fraction of a pixel of the JPEG. The modal globe does
-     * not use this.
-     */
-    explorerSphereSegments() {
-        return [192, 96];
-    }
-
-    prefetchSceneGraph() {
-        return this.loadThree()
-            .then(() => Promise.all([
-                this.loadOrbitControls().catch(() => null),
-                this.prefetchEarthImage()
-            ]))
-            .catch(() => null);
+        return width <= 768 || dpr >= 2.5 ? 24 : 32;
     }
 }
 

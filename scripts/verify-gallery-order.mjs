@@ -264,12 +264,12 @@ for (let round = 0; round < 50; round++) {
 }
 assert(churnQueue.active === 0, 'fast scrolling past in-flight tiles never exhausts the slots');
 
-const globeSandbox = { window: {}, console, document: { getElementById() { return null; } } };
+const globeSandbox = { window: {}, console };
 vm.createContext(globeSandbox);
-vm.runInContext(fs.readFileSync(path.join(repoRoot, 'js/globeExplorer.js'), 'utf8'), globeSandbox);
-const GlobeExplorer = globeSandbox.window.GlobeExplorer;
-const phoneDist = GlobeExplorer.globeFitDistance(390, 844, 45);
-const squareDist = GlobeExplorer.globeFitDistance(800, 800, 45);
+vm.runInContext(fs.readFileSync(path.join(repoRoot, 'js/globeMap.js'), 'utf8'), globeSandbox);
+const { GlobeMap } = globeSandbox.window;
+const phoneDist = GlobeMap.fitDistance(390, 844, 45);
+const squareDist = GlobeMap.fitDistance(800, 800, 45);
 assert(phoneDist > squareDist + 1.5, 'a portrait phone pulls the camera back to show the whole globe');
 assert(phoneDist <= 8, 'fit distance stays inside the orbit max');
 assert(squareDist >= 2.6 && squareDist < 3.4, 'a square view stays near the original framing');

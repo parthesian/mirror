@@ -14,16 +14,6 @@
  * India vanish into the Himalayas when the camera moved in close.
  */
 class GlobeRoutes {
-    latLonToVec3(lat, lon, radius, THREE) {
-        const phi = THREE.MathUtils.degToRad(90 - lat);
-        const theta = THREE.MathUtils.degToRad(lon + 180);
-        return new THREE.Vector3(
-            -radius * Math.sin(phi) * Math.cos(theta),
-            radius * Math.cos(phi),
-            radius * Math.sin(phi) * Math.sin(theta)
-        );
-    }
-
     /**
      * Quadratic bulge from `start` to `end`, including both ends.
      * Matches the original arc. Any sample or chord that would enter the
@@ -139,20 +129,23 @@ class GlobeRoutes {
         return { x: wx / mag, y: wy / mag, z: wz / mag };
     }
 
-    buildArcs(THREE, group, locations, locationKeyFor) {
-        if (!Array.isArray(locations) || locations.length < 2) {
-            return null;
-        }
-
+    /**
+     * Line-segment endpoints for every route, as a flat xyz list in the
+     * globe's unit-sphere space: two points per segment.
+     * @param {{ latitude?: unknown, longitude?: unknown }[]} locations
+     * @param {(loc: object) => string} locationKeyFor
+     * @returns {Float32Array}
+     */
+    arcSegments(locations, locationKeyFor) {
         const radius = 1.0025;
-        const minArcAngle = THREE.MathUtils.degToRad(1.0);
+        const minArcAngle = Math.PI / 180;
         const seenEdges = new Set();
         const arcs = [];
         let prev = null;
         let prevKey = '';
         let sequence = 0;
 
-        for (const loc of locations) {
+        for (const loc of Array.isArray(locations) ? locations : []) {
             const lat = Number(loc?.latitude);
             const lon = Number(loc?.longitude);
             if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
@@ -160,8 +153,9 @@ class GlobeRoutes {
             }
 
             const locKey = locationKeyFor(loc);
+            const point = window.GlobeGl.sphere(lon, lat, radius);
             if (!prev) {
-                prev = loc;
+                prev = point;
                 prevKey = locKey;
                 continue;
             }
@@ -172,22 +166,17 @@ class GlobeRoutes {
 
             const edgeKey = [prevKey, locKey].sort().join('->');
             if (!seenEdges.has(edgeKey)) {
-                const start = this.latLonToVec3(prev.latitude, prev.longitude, radius, THREE);
-                const end = this.latLonToVec3(lat, lon, radius, THREE);
-                const angle = start.clone().normalize().angleTo(end.clone().normalize());
+                const cos = (prev[0] * point[0] + prev[1] * point[1] + prev[2] * point[2]) / (radius * radius);
+                const angle = Math.acos(Math.min(1, Math.max(-1, cos)));
                 if (angle >= minArcAngle) {
                     seenEdges.add(edgeKey);
-                    arcs.push({ start, end, angle, sequence });
+                    arcs.push({ start: prev, end: point, angle, sequence });
                     sequence += 1;
                 }
             }
 
-            prev = loc;
+            prev = point;
             prevKey = locKey;
-        }
-
-        if (!arcs.length) {
-            return null;
         }
 
         arcs.sort((a, b) => {
@@ -197,37 +186,19 @@ class GlobeRoutes {
             return a.sequence - b.sequence;
         });
 
-        const segmentPoints = [];
+        const out = [];
         for (const arc of arcs) {
-            const points = this.sampleArc(arc.start, arc.end);
+            const points = this.sampleArc(
+                { x: arc.start[0], y: arc.start[1], z: arc.start[2] },
+                { x: arc.end[0], y: arc.end[1], z: arc.end[2] }
+            );
             for (let i = 1; i < points.length; i++) {
                 const a = points[i - 1];
                 const b = points[i];
-                segmentPoints.push(
-                    new THREE.Vector3(a.x, a.y, a.z),
-                    new THREE.Vector3(b.x, b.y, b.z),
-                );
+                out.push(a.x, a.y, a.z, b.x, b.y, b.z);
             }
         }
-
-        if (!segmentPoints.length) {
-            return null;
-        }
-
-        const arcMat = new THREE.LineBasicMaterial({
-            color: 0xffffff,
-            transparent: true,
-            opacity: 0.12,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-        });
-        const arcLines = new THREE.LineSegments(
-            new THREE.BufferGeometry().setFromPoints(segmentPoints),
-            arcMat,
-        );
-        arcLines.renderOrder = 1;
-        group.add(arcLines);
-        return arcLines;
+        return new Float32Array(out);
     }
 }
 
