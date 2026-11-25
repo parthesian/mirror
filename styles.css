@@ -1888,6 +1888,7 @@ body.exposure-1 .btn-secondary {
 .admin-col-description { width: 210px; }
 .admin-col-actions { width: 104px; }
 
+.admin-col-film { width: 130px; }
 .admin-metadata-table th {
     position: sticky;
     top: 0;
