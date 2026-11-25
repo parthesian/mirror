@@ -7,6 +7,7 @@ export type PhotoPatch = {
     country?: string;
     state?: string;
     camera?: string;
+    film?: string;
     takenAt?: string;
     latitude?: number | null;
     longitude?: number | null;
@@ -15,7 +16,7 @@ export type PhotoPatch = {
 
 export type PatchRead = { ok: true; patch: PhotoPatch } | { ok: false; error: string };
 
-const TEXT_FIELDS = ['location', 'description', 'country', 'state', 'camera'] as const;
+const TEXT_FIELDS = ['location', 'description', 'country', 'state', 'camera', 'film'] as const;
 
 type TextField = (typeof TEXT_FIELDS)[number];
 

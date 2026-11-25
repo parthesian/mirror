@@ -95,6 +95,7 @@ function patchValues(patch: PhotoPatch): Partial<typeof photos.$inferInsert> {
     if (patch.country !== undefined) values.country = patch.country;
     if (patch.state !== undefined) values.state = patch.state;
     if (patch.camera !== undefined) values.camera = patch.camera;
+    if (patch.film !== undefined) values.film = patch.film;
     if (patch.takenAt !== undefined) values.takenAt = patch.takenAt;
     if (patch.latitude !== undefined) values.latitude = patch.latitude;
     if (patch.longitude !== undefined) values.longitude = patch.longitude;
@@ -205,6 +206,7 @@ export async function createPhoto(c: AppContext): Promise<Response> {
     const country = (formData.get('country') || '').toString().trim();
     const state = (formData.get('state') || '').toString().trim();
     const camera = (formData.get('camera') || '').toString().trim();
+    const film = (formData.get('film') || '').toString().trim();
     const colors = serializeColors(parseColors((formData.get('colors') || '').toString()));
 
     if (!(photo instanceof File)) {
@@ -229,8 +231,7 @@ export async function createPhoto(c: AppContext): Promise<Response> {
         httpMetadata: { contentType },
     });
 
-    const db = createDb(c.env);
-    await db.insert(photos).values({
+    const row: PhotoRow = {
         id: photoId,
         storageKey,
         location,
@@ -244,30 +245,17 @@ export async function createPhoto(c: AppContext): Promise<Response> {
         country,
         state,
         camera,
+        film,
         colors,
-    });
+    };
+    await createDb(c.env).insert(photos).values(row);
 
     return c.json(
         {
             success: true,
             photoId,
             message: 'Photo uploaded successfully.',
-            photo: mapPhotoDetail({
-                id: photoId,
-                storageKey,
-                location,
-                description,
-                takenAt: normalizedTakenAt,
-                uploadedAt,
-                width: normalizedWidth,
-                height: normalizedHeight,
-                latitude: normalizedLatitude,
-                longitude: normalizedLongitude,
-                country,
-                state,
-                camera,
-                colors,
-            }),
+            photo: mapPhotoDetail(row),
         },
         201,
     );
