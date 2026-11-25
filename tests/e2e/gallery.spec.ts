@@ -364,6 +364,30 @@ test('a failed metadata lookup shows the date without the last photo globe', asy
     await expect(page.locator('#modal-globe')).toBeHidden();
 });
 
+test('the viewer shows film only for photos that have one', async ({ page }) => {
+    await page.goto('/?mock=1');
+    await expect(page.locator('.gallery-item').first()).toBeVisible();
+    const [withFilm, withoutFilm] = (await page.evaluate(`(() => {
+        const ids = window.app.imageService.images.map((image) => image.id);
+        const hasFilm = (id) => Boolean(window.MockPhotos.byId(id).film);
+        return [ids.find(hasFilm), ids.find((id) => !hasFilm(id))];
+    })()`)) as [string, string];
+    const film = (await page.evaluate(
+        `window.MockPhotos.byId(${JSON.stringify(withFilm)}).film`,
+    )) as string;
+    const details = page.locator('#modal .modal-details');
+
+    await page.evaluate(`window.modal.open(${JSON.stringify(withFilm)})`);
+    await expect(details).not.toHaveClass(/is-pending/);
+    await expect(page.locator('#modal-film-row')).toBeVisible();
+    await expect(page.locator('#modal-film-name')).toHaveText(film);
+
+    await page.evaluate(`window.modal.open(${JSON.stringify(withoutFilm)})`);
+    await expect(details).not.toHaveClass(/is-pending/);
+    await expect(page.locator('#modal-film-row')).toBeHidden();
+    await expect(page.locator('#modal-film-name')).toBeEmpty();
+});
+
 test('the viewer shows the place, not the stored caption', async ({ page }) => {
     await page.goto('/?mock=1');
     await expect(page.locator('.gallery-item').first()).toBeVisible();

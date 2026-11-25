@@ -37,6 +37,16 @@ const MOCK_CAMERAS = [
     'Canon EOS R5'
 ];
 
+const MOCK_FILMS = [
+    'Portra 400',
+    'Ilford HP5',
+    'Kodak Gold 200'
+];
+
+function mockFilm(camera, index) {
+    return camera === 'Rolleicord' ? MOCK_FILMS[Math.floor(index / 3) % MOCK_FILMS.length] : '';
+}
+
 const MockPhotos = {
     LIMIT: 24,
 
@@ -59,6 +69,7 @@ const MockPhotos = {
             const month = String((i % 12) + 1).padStart(2, '0');
             const day = String((i % 27) + 1).padStart(2, '0');
             const year = 2019 + (i % 6);
+            const camera = MOCK_CAMERAS[i % MOCK_CAMERAS.length];
             photos.push({
                 id: `mock-${String(i + 1).padStart(3, '0')}`,
                 width,
@@ -73,7 +84,8 @@ const MockPhotos = {
                 description: `${place.location} ${i + 1}`,
                 color: place.color,
                 accent: place.accent,
-                camera: MOCK_CAMERAS[i % MOCK_CAMERAS.length]
+                camera,
+                film: mockFilm(camera, i)
             });
         }
         photos.sort((a, b) => {
@@ -198,6 +210,7 @@ const MockPhotos = {
             country: photo.country,
             state: photo.state,
             camera: photo.camera || 'Mock Camera',
+            film: photo.film,
             image: { url: `/api/photos/${photo.id}/image`, width: photo.width, height: photo.height },
             thumbnail: { url: this.svgDataUrl(photo), width: photo.width, height: photo.height }
         };

@@ -1017,7 +1017,8 @@ body.exposure-1 .scroll-loading p {
     display: none;
 }
 
-.modal-camera-row {
+.modal-camera-row,
+.modal-film-row {
     display: flex;
     flex-direction: row-reverse;
     align-items: center;
@@ -1027,14 +1028,16 @@ body.exposure-1 .scroll-loading p {
     line-height: 1.35;
 }
 
-.modal-camera-row #modal-camera-name {
+.modal-camera-row #modal-camera-name,
+.modal-film-row #modal-film-name {
     min-width: 0;
     text-align: left;
     overflow-wrap: anywhere;
     line-height: 1.35;
 }
 
-.modal-camera-icon-wrap {
+.modal-camera-icon-wrap,
+.modal-film-icon-wrap {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1051,7 +1054,8 @@ body.exposure-1 .scroll-loading p {
     margin-inline-start: -0.22em;
 }
 
-.modal-camera-svg {
+.modal-camera-svg,
+.modal-film-svg {
     display: block;
     width: 1em;
     height: 1em;
@@ -1884,11 +1888,11 @@ body.exposure-1 .btn-secondary {
 .admin-col-country { width: 120px; }
 .admin-col-state { width: 130px; }
 .admin-col-camera { width: 150px; }
+.admin-col-film { width: 130px; }
 .admin-col-coord { width: 104px; }
 .admin-col-description { width: 210px; }
 .admin-col-actions { width: 104px; }
 
-.admin-col-film { width: 130px; }
 .admin-metadata-table th {
     position: sticky;
     top: 0;
