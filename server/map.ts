@@ -35,6 +35,7 @@ export function mapPhotoDetail(row: PhotoRow): PhotoDetail {
         country: row.country ?? '',
         state: row.state ?? '',
         camera: row.camera ?? '',
+        film: row.film ?? '',
         colors: parseColors(row.colors),
         storageKey: row.storageKey,
         image: {

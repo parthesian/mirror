@@ -16,6 +16,8 @@ class Modal {
         this.modalCameraIconDslr = document.getElementById('modal-camera-icon-dslr');
         this.modalCameraIconMobile = document.getElementById('modal-camera-icon-mobile');
         this.modalCameraIconTlr = document.getElementById('modal-camera-icon-tlr');
+        this.modalFilmRow = document.getElementById('modal-film-row');
+        this.modalFilmName = document.getElementById('modal-film-name');
         this.modalTimestamp = document.getElementById('modal-timestamp');
         this.globeContainer = document.getElementById('modal-globe');
         this.modalCopy = this.modal?.querySelector('.modal-copy');
@@ -391,6 +393,10 @@ class Modal {
             this.modalCameraRow.classList.add('hidden');
             this.modalCameraRow.classList.remove('is-tlr');
         }
+
+        const film = image.film || '';
+        this.modalFilmName.textContent = film;
+        this.modalFilmRow.classList.toggle('hidden', !film);
 
         this.modalDetails?.classList.remove('is-pending');
         this.syncModalGlobeSize();

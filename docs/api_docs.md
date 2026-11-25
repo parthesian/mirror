@@ -93,6 +93,8 @@ Grid views should use `thumbnail.url`; fullscreen/modal views should use `image.
 - `width`: optional intrinsic image width
 - `height`: optional intrinsic image height
 - `colors`: optional JSON array of palette ids, already ordered by dominance, computed by the uploader
+- `camera`: optional camera or device name
+- `film`: optional film stock, such as `Portra 400`. Surrounding spaces are trimmed; a blank value stores no film.
 
 **Response:**
 
@@ -125,7 +127,7 @@ Grid views should use `thumbnail.url`; fullscreen/modal views should use `image.
 
 **Auth:** Cloudflare Access required.
 
-**Request body:** JSON object with any of `takenAt`, `location`, `country`, `state`, `camera`, `latitude`, `longitude`, `description`, `colors`.
+**Request body:** JSON object with any of `takenAt`, `location`, `country`, `state`, `camera`, `film`, `latitude`, `longitude`, `description`, `colors`. Text fields are trimmed; an empty `film` clears it.
 
 **Response:**
 

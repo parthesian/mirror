@@ -15,6 +15,7 @@ class AdminUploadPage {
         this.photoCountryInput = document.getElementById('photo-country');
         this.photoStateInput = document.getElementById('photo-state');
         this.photoCameraInput = document.getElementById('photo-camera');
+        this.photoFilmInput = document.getElementById('photo-film');
         this.previewImage = document.getElementById('preview-image');
         this.fileStatusIcon = document.getElementById('file-status-icon');
         this.submitUploadBtn = document.getElementById('submit-upload');
@@ -204,7 +205,10 @@ class AdminUploadPage {
         const longitudeValue = this.photoLongitudeInput.value.trim();
         const countryValue = this.photoCountryInput.value.trim();
         const stateValue = this.photoStateInput ? this.photoStateInput.value.trim() : '';
-        const cameraValue = this.photoCameraInput ? this.photoCameraInput.value.trim() : '';
+        const gear = {
+            camera: this.photoCameraInput.value.trim(),
+            film: this.photoFilmInput.value.trim()
+        };
 
         if (!file) {
             this.showUploadError('Please select a photo to upload.');
@@ -246,7 +250,7 @@ class AdminUploadPage {
             this.showUploadProgress();
             this.hideUploadError();
 
-            const result = await this.imageService.uploadPhoto(file, location, description, timestamp, coords, cameraValue);
+            const result = await this.imageService.uploadPhoto(file, location, description, timestamp, coords, gear);
             this.hideUploadProgress();
             this.resetForm();
             this.showUploadSuccess(result.message || 'Photo uploaded successfully.');
@@ -349,6 +353,7 @@ class AdminUploadPage {
             { name: 'country', type: 'text', value: photo.country },
             { name: 'state', type: 'text', value: photo.state },
             { name: 'camera', type: 'text', value: photo.camera },
+            { name: 'film', type: 'text', value: photo.film },
             { name: 'latitude', type: 'number', value: photo.latitude, min: -90, max: 90 },
             { name: 'longitude', type: 'number', value: photo.longitude, min: -180, max: 180 },
             { name: 'description', type: 'textarea', value: photo.description }
@@ -699,6 +704,7 @@ class AdminUploadPage {
             photo.country,
             photo.state,
             photo.camera,
+            photo.film,
             Array.isArray(photo.colors) ? photo.colors.join(' ') : '',
             photo.description,
             this.toDateInputValue(photo.timestamp)

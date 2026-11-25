@@ -157,6 +157,7 @@ class ImageService {
             country: photo.country || '',
             state: photo.state || '',
             camera: photo.camera || '',
+            film: photo.film || '',
             colors: window.PhotoColors
                 ? window.PhotoColors.parseColors(photo.colors)
                 : (Array.isArray(photo.colors) ? photo.colors : []),
@@ -197,6 +198,7 @@ class ImageService {
             country: '',
             state: '',
             camera: '',
+            film: '',
             colors: [],
             detailLoaded: false
         };
@@ -916,9 +918,11 @@ class ImageService {
      * @param {string} location - Required location information
      * @param {string} description - Optional description
      * @param {Object} timestamp - Optional timestamp object with day, month, year
+     * @param {Object} coords - Optional latitude, longitude, country, state
+     * @param {{camera?: string, film?: string}} gear - Optional camera and film stock
      * @returns {Promise<Object>} Upload response
      */
-    async uploadPhoto(file, location, description = '', timestamp = null, coords = null, camera = '') {
+    async uploadPhoto(file, location, description = '', timestamp = null, coords = null, gear = {}) {
         try {
             if (!this.apiBaseUrl && window.location.protocol === 'file:') {
                 throw new Error('API base URL not configured. Cannot upload photos.');
@@ -962,9 +966,10 @@ class ImageService {
                 }
             }
 
-            const cameraTrimmed = (camera || '').toString().trim();
-            if (cameraTrimmed) {
-                formData.append('camera', cameraTrimmed);
+            for (const field of ['camera', 'film']) {
+                if (gear[field]) {
+                    formData.append(field, gear[field]);
+                }
             }
 
             const response = await fetch(this.buildApiUrl('/api/admin/photos'), {

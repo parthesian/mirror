@@ -14,6 +14,7 @@ export const photos = sqliteTable('photos', {
     country: text('country').default(''),
     state: text('state').default(''),
     camera: text('camera').default(''),
+    film: text('film').default(''),
     colors: text('colors').default(''),
 });
 

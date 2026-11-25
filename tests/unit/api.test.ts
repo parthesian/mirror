@@ -242,6 +242,45 @@ describe('photo API', () => {
         expect(detail.thumbnail.url).toContain('format=auto');
     });
 
+    it('stores film as optional trimmed text on upload and patch', async () => {
+        const { env } = bindEnv();
+        const withFilm = await upload(env, {
+            location: 'Kyoto',
+            takenAt: '2020-01-01T00:00:00.000Z',
+            colors: '[]',
+            film: '  Portra 400  ',
+        });
+        const withoutFilm = await upload(env, {
+            location: 'Paris',
+            takenAt: '2021-01-01T00:00:00.000Z',
+            colors: '[]',
+        });
+
+        const detail = async (id: string) =>
+            photoDetailSchema.parse(
+                await (await app.request(`/api/photos/${id}/metadata`, {}, env)).json(),
+            ).film;
+        const patchFilm = (id: string, film: string) =>
+            app.request(
+                `/api/admin/photos/${id}`,
+                {
+                    method: 'PATCH',
+                    headers: { ...adminHeaders(), 'content-type': 'application/json' },
+                    body: JSON.stringify({ film }),
+                },
+                env,
+            );
+
+        expect(await detail(withFilm)).toBe('Portra 400');
+        expect(await detail(withoutFilm)).toBe('');
+
+        expect((await patchFilm(withoutFilm, ' Ilford HP5 ')).status).toBe(200);
+        expect(await detail(withoutFilm)).toBe('Ilford HP5');
+
+        expect((await patchFilm(withFilm, '   ')).status).toBe(200);
+        expect(await detail(withFilm)).toBe('');
+    });
+
     it('deletes the row and the stored object', async () => {
         const { env, bucket } = bindEnv();
         const id = await upload(env, {
@@ -353,6 +392,7 @@ async function upload(
         takenAt: string;
         colors: string;
         camera?: string;
+        film?: string;
         country?: string;
     },
 ): Promise<string> {
@@ -363,6 +403,9 @@ async function upload(
     form.set('colors', fields.colors);
     if (fields.camera !== undefined) {
         form.set('camera', fields.camera);
+    }
+    if (fields.film !== undefined) {
+        form.set('film', fields.film);
     }
     if (fields.country) {
         form.set('country', fields.country);
