@@ -1,0 +1,798 @@
+/* Throwaway mockups. Tokens copied from the dark exposure in /styles.css. */
+:root {
+    --ink: #ffffff;
+    --ink-dim: #cccccc;
+    --ink-soft: #999999;
+    --line: #666666;
+    --sans: 'Helvetica Neue', Arial, sans-serif;
+    --serif: 'Cormorant Garamond', 'Times New Roman', serif;
+    --amber: #f2a13f;
+    --gutter: 16px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { background: #000; }
+
+body {
+    font-family: var(--sans);
+    color: var(--ink);
+    line-height: 1.35;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+}
+
+/* Same light leak as .modal::before, frozen at one seed. */
+body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    mix-blend-mode: screen;
+    opacity: 0.85;
+    background:
+        radial-gradient(ellipse at 14% 40%, rgba(255, 165, 95, 0.24), rgba(255, 95, 72, 0.10) 34%, transparent 72%),
+        radial-gradient(ellipse at 86% 64%, rgba(255, 208, 136, 0.14), transparent 66%),
+        radial-gradient(ellipse at 52% 22%, rgba(116, 152, 255, 0.08), transparent 60%);
+}
+
+.stage {
+    position: relative;
+    z-index: 1;
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+    padding: 28px var(--gutter) 36px;
+}
+
+.viewer {
+    margin: auto;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+}
+
+.viewer figure { margin: 0; }
+
+.close-btn { display: none; }
+
+.photo {
+    display: block;
+    width: auto;
+    height: auto;
+    max-width: var(--max-w);
+    max-height: var(--max-h);
+    user-select: none;
+}
+
+.ico {
+    display: inline-flex;
+    width: 1em;
+    height: 1em;
+    flex-shrink: 0;
+    color: var(--ink-soft);
+}
+
+.ico svg { display: block; width: 1em; height: 1em; }
+
+canvas.globe {
+    display: block;
+    aspect-ratio: 1;
+    border-radius: 50%;
+}
+
+/* A caption that matches the photo width instead of widening the frame. */
+.edge-rebate,
+.inst-chin,
+.plc-foot,
+.strip-bar,
+.pm-stub {
+    width: 0;
+    min-width: 100%;
+}
+
+/* =========================================================
+   1. Edge Print — the frame is the film rebate
+   ========================================================= */
+.viewer--edge {
+    --max-w: calc(100vw - 2 * var(--gutter) - 14px);
+    --max-h: 56svh;
+}
+
+.edge {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 22px;
+}
+
+.edge-film {
+    display: flex;
+    padding: 0 7px;
+    border-radius: 2px;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 30%, transparent 70%, rgba(255, 255, 255, 0.02)),
+        #0b0908;
+    box-shadow:
+        0 24px 60px rgba(0, 0, 0, 0.65),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.edge--vertical .edge-film { padding: 0; }
+
+.edge-col {
+    display: flex;
+    flex-direction: column;
+}
+
+.edge-rebate { position: relative; }
+.edge-rebate--top { padding: 7px 1px 6px; }
+.edge-rebate--bottom { padding: 9px 1px 11px; }
+.edge--f35:not(.edge--vertical) .edge-rebate--top { padding-top: 21px; }
+.edge--f35:not(.edge--vertical) .edge-rebate--bottom { padding-bottom: 24px; }
+.edge--vertical .edge-col { padding: 0 2px; }
+
+.sprockets {
+    position: absolute;
+    left: -7px;
+    right: -7px;
+    height: 8px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='8'%3E%3Crect x='3' y='0' width='7' height='8' rx='1.4' fill='%23241d19'/%3E%3C/svg%3E") repeat-x 0 0 / 13px 8px;
+}
+
+.edge-rebate--top .sprockets { top: 6px; }
+.edge-rebate--bottom .sprockets { bottom: 7px; }
+
+.edge-side {
+    position: relative;
+    width: 20px;
+    flex-shrink: 0;
+}
+
+.edge-side .sprockets {
+    inset: 0 auto 0 6px;
+    width: 8px;
+    height: auto;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='13'%3E%3Crect x='0' y='3' width='8' height='7' rx='1.4' fill='%23241d19'/%3E%3C/svg%3E") repeat-y 0 0 / 8px 13px;
+}
+
+.edge-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.edge-text {
+    font-size: 8.5px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    color: var(--amber);
+    text-shadow: 0 0 6px rgba(242, 140, 40, 0.5);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+.edge-text:first-child { flex: 1 1 auto; }
+.edge-text--dim { opacity: 0.7; }
+.edge-arrow { margin-right: 0.6em; font-size: 0.95em; }
+.edge-databack { font-variant-numeric: tabular-nums; letter-spacing: 0.16em; }
+
+.edge--digital .edge-text {
+    color: rgba(255, 255, 255, 0.46);
+    text-shadow: none;
+}
+
+.edge-row--label { align-items: center; }
+
+.edge-place {
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
+    min-width: 0;
+    font-size: 17px;
+    font-weight: 300;
+    letter-spacing: 0.03em;
+    color: var(--ink);
+    white-space: nowrap;
+}
+
+.edge-country {
+    font-size: 8.5px;
+    font-weight: 400;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+}
+
+.edge-cam {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font-size: 10.5px;
+    letter-spacing: 0.03em;
+    color: var(--ink-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.edge-globe {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.edge-globe canvas { width: 104px; }
+
+.edge-coords {
+    font-size: 8.5px;
+    letter-spacing: 0.28em;
+    color: var(--ink-soft);
+    white-space: pre;
+}
+
+/* =========================================================
+   2. Instant — a dark instant print with a written chin
+   ========================================================= */
+.viewer--instant {
+    --max-w: calc(100vw - 2 * var(--gutter) - 26px);
+    --max-h: 52svh;
+}
+
+.inst-card {
+    display: flex;
+    flex-direction: column;
+    padding: 13px 13px 0;
+    border-radius: 3px;
+    background:
+        radial-gradient(120% 60% at 50% 100%, rgba(255, 200, 150, 0.035), transparent 70%),
+        linear-gradient(180deg, #1c1815, #161311);
+    box-shadow:
+        0 30px 70px rgba(0, 0, 0, 0.6),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.025);
+}
+
+.inst-window { position: relative; }
+
+.inst-window::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    box-shadow:
+        inset 0 0 0 1px rgba(0, 0, 0, 0.55),
+        inset 0 1px 6px rgba(0, 0, 0, 0.55);
+}
+
+.inst-chin {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    min-height: 104px;
+    padding: 14px 2px 18px 3px;
+}
+
+.inst-copy {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.inst-place {
+    font-family: var(--serif);
+    font-style: italic;
+    font-weight: 400;
+    font-size: 32px;
+    line-height: 1;
+    letter-spacing: 0.005em;
+    color: #f4ede5;
+}
+
+.inst-sub {
+    margin-top: 7px;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    color: var(--ink-dim);
+}
+
+.inst-sub i { font-style: normal; color: var(--ink-soft); margin: 0 0.25em; }
+
+.inst-gear {
+    margin-top: 9px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 10.5px;
+    letter-spacing: 0.02em;
+    color: var(--ink-soft);
+}
+
+.inst-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.inst-globe { width: 66px; flex-shrink: 0; }
+
+/* =========================================================
+   3. Placard — window mat with a museum wall label
+   ========================================================= */
+.viewer--placard {
+    --max-w: calc(100vw - 2 * var(--gutter) - 36px);
+    --max-h: 52svh;
+}
+
+.plc-mat {
+    display: flex;
+    flex-direction: column;
+    padding: 18px 18px 18px;
+    background:
+        linear-gradient(160deg, rgba(255, 255, 255, 0.025), transparent 40%),
+        #131110;
+    box-shadow:
+        0 34px 80px rgba(0, 0, 0, 0.6),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.plc-window { position: relative; }
+
+/* The bevelled edge of a cut window mat. */
+.plc-window::before {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    pointer-events: none;
+    border: 4px solid transparent;
+    border-image: linear-gradient(135deg, rgba(255, 240, 222, 0.30), rgba(255, 240, 222, 0.10) 55%, rgba(0, 0, 0, 0.45)) 1;
+}
+
+.plc-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding-top: 20px;
+}
+
+.plc-globe {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 9px;
+    padding-left: 2px;
+}
+
+.plc-globe canvas { width: 74px; }
+
+.plc-coords {
+    font-size: 7.5px;
+    letter-spacing: 0.24em;
+    line-height: 1.6;
+    text-align: center;
+    color: var(--ink-soft);
+}
+
+.plc-label {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    max-width: 224px;
+    padding: 12px 14px 13px;
+    background: linear-gradient(180deg, #ddd6cb, #d3ccc0);
+    color: #2b2623;
+    font-size: 10.5px;
+    line-height: 1.45;
+    box-shadow:
+        0 8px 18px rgba(0, 0, 0, 0.5),
+        0 1px 2px rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.plc-title {
+    font-family: var(--serif);
+    font-size: 20px;
+    font-weight: 500;
+    line-height: 1.05;
+    color: #1d1916;
+}
+
+.plc-country { font-weight: 400; }
+
+.plc-date {
+    margin-top: 2px;
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 13.5px;
+    color: #4a423d;
+}
+
+.plc-rule {
+    width: 18px;
+    height: 1px;
+    margin: 7px 0 6px;
+    background: rgba(43, 38, 35, 0.35);
+}
+
+.plc-gear { color: #2b2623; }
+.plc-medium { color: #6a615b; }
+.plc-format { letter-spacing: 0.04em; }
+
+/* =========================================================
+   4. Strip — a tinted data bar fused to the bottom edge
+   ========================================================= */
+.viewer--strip {
+    --max-w: calc(100vw - 2 * var(--gutter));
+    --max-h: 60svh;
+}
+
+.strip {
+    --tint: 60, 45, 38;
+    display: flex;
+    flex-direction: column;
+    border-radius: 3px;
+    overflow: hidden;
+    box-shadow: 0 30px 70px rgba(0, 0, 0, 0.6);
+}
+
+/* The layout follows the bar's own width, so a portrait photo on desktop
+   gets the stacked bar instead of a squeezed single row. */
+.strip-bar {
+    container-type: inline-size;
+    background:
+        linear-gradient(180deg, rgba(var(--tint), 0.34), rgba(var(--tint), 0.14)),
+        #0d0b0a;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.strip-grid {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+        "globe head"
+        "specs specs";
+    align-items: center;
+    column-gap: 12px;
+    row-gap: 11px;
+    padding: 12px 14px 13px;
+}
+
+@container (min-width: 620px) {
+    .strip-grid {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        grid-template-areas: "globe head specs";
+        column-gap: 16px;
+        padding: 14px 20px 14px 16px;
+    }
+
+    .strip-grid .strip-specs {
+        display: flex;
+        padding-top: 0;
+        border-top: 0;
+    }
+
+    .strip-grid .strip-spec,
+    .strip-grid .strip-spec + .strip-spec {
+        padding: 0 0 0 18px;
+        margin-left: 18px;
+        border-left: 1px solid rgba(255, 255, 255, 0.1);
+    }
+}
+
+.strip-globe { grid-area: globe; width: 46px; }
+
+.strip-head {
+    grid-area: head;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.strip-place {
+    font-size: 19px;
+    font-weight: 300;
+    letter-spacing: 0.03em;
+    line-height: 1.2;
+}
+
+.strip-sub {
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--ink-dim);
+}
+
+.strip-specs {
+    grid-area: specs;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 10.5px;
+    letter-spacing: 0.02em;
+    color: var(--ink-dim);
+}
+
+.strip.no-film .strip-specs { grid-template-columns: minmax(0, 1fr); }
+
+.strip-spec {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.strip-spec > span:last-child {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.strip-spec + .strip-spec {
+    padding-left: 12px;
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* =========================================================
+   5. Postmark — a perforated stub, the globe as a cancel
+   ========================================================= */
+.viewer--postmark {
+    --max-w: calc(100vw - 2 * var(--gutter) - 20px);
+    --max-h: 52svh;
+    --card: #17130f;
+}
+
+.pm-card {
+    display: flex;
+    flex-direction: column;
+    padding: 10px 10px 0;
+    border-radius: 4px;
+    background: var(--card);
+    box-shadow:
+        0 30px 70px rgba(0, 0, 0, 0.6),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.pm-photo .photo { border-radius: 2px; }
+
+.pm-perf {
+    position: relative;
+    height: 24px;
+    margin: 0 -10px;
+    background:
+        radial-gradient(circle at 0 50%, #000 9px, transparent 9.5px),
+        radial-gradient(circle at 100% 50%, #000 9px, transparent 9.5px);
+}
+
+.pm-perf::before {
+    content: '';
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    top: 50%;
+    border-top: 2px dotted rgba(255, 255, 255, 0.16);
+}
+
+.pm-stub {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 0 6px 16px;
+}
+
+.pm-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.pm-place,
+.pm-field {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.pm-k {
+    font-size: 7.5px;
+    letter-spacing: 0.26em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+}
+
+.pm-v {
+    margin-top: 3px;
+    font-size: 11.5px;
+    line-height: 1.3;
+    color: var(--ink);
+    overflow-wrap: anywhere;
+}
+
+.pm-place .pm-v {
+    font-family: var(--serif);
+    font-size: 27px;
+    font-weight: 400;
+    line-height: 1.05;
+}
+
+.pm-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 11px 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.pm-field:last-child:nth-child(odd) { grid-column: 1 / -1; }
+
+.pm-field:last-child .pm-v { white-space: pre; letter-spacing: 0.04em; color: var(--ink-dim); }
+
+/* The cancel straddles the perforation, as a real one would. */
+.pm-mark {
+    position: relative;
+    flex-shrink: 0;
+    width: 92px;
+    margin: -20px -2px -4px 0;
+}
+
+.pm-waves { display: none; }
+
+.pm-stamp {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1;
+    transform: rotate(-8deg);
+}
+
+.pm-ring {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+.pm-ring circle {
+    fill: none;
+    stroke: rgba(242, 176, 120, 0.42);
+    stroke-width: 1.6;
+}
+
+.pm-ring text {
+    font-family: var(--sans);
+    font-size: 15px;
+    font-weight: 500;
+    fill: rgba(242, 176, 120, 0.7);
+    letter-spacing: 0.08em;
+}
+
+.pm-globe {
+    position: absolute;
+    inset: 15%;
+    width: 70%;
+}
+
+/* =========================================================
+   Desktop
+   ========================================================= */
+@media (min-width: 769px) {
+    :root { --gutter: 2rem; }
+
+    .stage { padding: 2.5rem var(--gutter); }
+
+    .close-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        top: 2rem;
+        right: 2rem;
+        z-index: 2;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: 1px solid var(--line);
+        background: transparent;
+        color: var(--ink-dim);
+        font-size: 1.2rem;
+    }
+
+    .viewer--edge { --max-w: calc(100vw - 260px); --max-h: calc(100svh - 312px); }
+    .edge-film { padding: 0 9px; }
+    .edge-rebate--top { padding: 9px 2px 8px; }
+    .edge-rebate--bottom { padding: 11px 2px 13px; }
+    .edge--f35:not(.edge--vertical) .edge-rebate--top { padding-top: 25px; }
+    .edge--f35:not(.edge--vertical) .edge-rebate--bottom { padding-bottom: 28px; }
+    .sprockets { left: -9px; right: -9px; height: 10px; background-size: 16px 10px; }
+    .edge-side { width: 24px; }
+    .edge-side .sprockets { width: 10px; background-size: 10px 16px; left: 7px; }
+    .edge-text { font-size: 10px; }
+    .edge-place { font-size: 22px; gap: 12px; }
+    .edge-country { font-size: 9.5px; }
+    .edge-cam { font-size: 12px; gap: 8px; }
+    .edge-globe canvas { width: 92px; }
+    .edge { gap: 24px; }
+
+    .viewer--instant { --max-w: calc(100vw - 260px); --max-h: calc(100svh - 260px); }
+    .inst-card { padding: 20px 20px 0; }
+    .inst-chin { min-height: 138px; padding: 18px 4px 24px 4px; }
+    .inst-place { font-size: 44px; }
+    .inst-sub { font-size: 12.5px; margin-top: 9px; }
+    .inst-gear { font-size: 12px; flex-direction: row; gap: 18px; margin-top: 11px; }
+    .inst-line { gap: 8px; }
+    .inst-globe { width: 92px; }
+
+    .viewer--placard { --max-w: calc(100vw - 300px); --max-h: calc(100svh - 330px); }
+    .plc-mat { padding: 38px 38px 32px; }
+    .plc-foot { padding-top: 28px; }
+    .plc-globe canvas { width: 84px; }
+    .plc-coords { font-size: 8.5px; }
+    .plc-label { max-width: 260px; padding: 14px 18px 15px; font-size: 11.5px; }
+    .plc-title { font-size: 23px; }
+    .plc-date { font-size: 15px; }
+
+    .viewer--strip { --max-w: calc(100vw - 260px); --max-h: calc(100svh - 210px); }
+    .strip-globe { width: 52px; }
+    .strip-place { font-size: 22px; }
+    .strip-sub { font-size: 12px; }
+    .strip-specs { font-size: 12px; }
+
+    .viewer--postmark { --max-w: calc(100vw - 2 * var(--gutter) - 420px); --max-h: calc(100svh - 140px); }
+    .pm-card { flex-direction: row; padding: 12px 0 12px 12px; }
+    .pm-perf {
+        width: 26px;
+        height: auto;
+        margin: -12px 0;
+        background:
+            radial-gradient(circle at 50% 0, #000 10px, transparent 10.5px),
+            radial-gradient(circle at 50% 100%, #000 10px, transparent 10.5px);
+    }
+    .pm-perf::before {
+        left: 50%;
+        right: auto;
+        top: 18px;
+        bottom: 18px;
+        border-top: 0;
+        border-left: 2px dotted rgba(255, 255, 255, 0.16);
+    }
+    .pm-stub {
+        width: 270px;
+        min-width: 0;
+        gap: 20px;
+        padding: 14px 22px 14px 4px;
+    }
+    .pm-top { display: contents; }
+    .pm-place { order: 0; }
+    .pm-fields {
+        order: 1;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 14px;
+        padding-top: 18px;
+    }
+    .pm-field:last-child:nth-child(odd) { grid-column: auto; }
+    .pm-k { font-size: 8px; }
+    .pm-v { font-size: 13px; }
+    .pm-place .pm-v { font-size: 34px; }
+    .pm-mark { order: 2; margin: auto 0 0; align-self: flex-end; width: 124px; }
+    .pm-waves {
+        display: block;
+        position: absolute;
+        right: 74%;
+        top: 22%;
+        width: 96px;
+        height: 56%;
+        fill: none;
+        stroke: rgba(242, 176, 120, 0.22);
+        stroke-width: 1.4;
+    }
+}
